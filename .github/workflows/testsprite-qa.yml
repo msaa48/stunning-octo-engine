@@ -1,0 +1,97 @@
+name: QA آلي - TestSprite + Groq Auto-Fix
+
+on:
+  workflow_dispatch:      # تشغيل يدوي بضغطة زرار من تطبيق GitHub
+  push:
+    branches: [main]
+    paths: ["index.html"]
+  schedule:
+    - cron: "0 3 * * *"   # تشغيل يومي تلقائي الساعة 3 صباحًا UTC
+
+jobs:
+  qa-and-fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TESTSPRITE_API_KEY: ${{ secrets.TESTSPRITE_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      DEPLOYED_URL: "https://msaa48.github.io/stunning-octo-engine/"
+      MAX_FIX_ROUNDS: 3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install TestSprite CLI
+        run: npm install -g @testsprite/testsprite-cli
+
+      - name: Configure TestSprite auth
+        run: testsprite auth configure --from-env --yes --no-agent --skip-if-configured
+
+      - name: Get or create TestSprite project
+        id: project
+        run: |
+          python3 - << 'EOF'
+          import json, subprocess, os
+
+          def run(cmd):
+              r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+              return r.stdout.strip(), r.stderr.strip(), r.returncode
+
+          out, err, code = run("testsprite project list --output json")
+          data = json.loads(out) if out else {}
+          projects = data.get("items", [])
+          project_id = None
+          for p in projects:
+              if p.get("name") == "masar-centers":
+                  project_id = p.get("id")
+                  break
+
+          if not project_id:
+              url = os.environ["DEPLOYED_URL"]
+              out, err, code = run(
+                  f'testsprite project create --type frontend --name masar-centers --url "{url}" --output json'
+              )
+              project_id = json.loads(out)["id"] if out else ""
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"id={project_id}\n")
+          EOF
+
+      - name: Build test plan
+        run: |
+          python3 - << 'EOF'
+          import json, os
+          plan = {
+              "$schema": "https://raw.githubusercontent.com/TestSprite/testsprite-cli/v0.7.0/schemas/plan.schema.json",
+              "projectId": "${{ steps.project.outputs.id }}",
+              "type": "frontend",
+              "name": "تسجيل دخول أدمن - مسار",
+              "planSteps": [
+                  {
+                      "type": "action",
+                      "description": (
+                          f"افتح الرابط {os.environ['DEPLOYED_URL']} ثم املأ إيميل "
+                          "admin@masar-centers.demo وباسورد Admin@12345 واضغط على زر الدخول"
+                      ),
+                  },
+                  {
+                      "type": "assertion",
+                      "description": "تأكد أن لوحة تحكم الأدمن ظهرت بنجاح بعد تسجيل الدخول",
+                  },
+              ],
+          }
+          with open("/tmp/login.plan.json", "w", encoding="utf-8") as f:
+              json.dump(plan, f, ensure_ascii=False)
+          EOF
+
+      - name: Run QA + Auto-Fix loop
+        run: |
+          pip install requests --break-system-packages --quiet
+          python3 scripts/qa_autofix.py
