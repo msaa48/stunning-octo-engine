@@ -1,12 +1,12 @@
-name: QA آلي - TestSprite + Groq Auto-Fix
+name: QA آلي - Playwright + Groq Auto-Fix (مجاني بالكامل)
 
 on:
-  workflow_dispatch:      # تشغيل يدوي بضغطة زرار من تطبيق GitHub
+  workflow_dispatch:
   push:
     branches: [main]
     paths: ["index.html"]
   schedule:
-    - cron: "0 3 * * *"   # تشغيل يومي تلقائي الساعة 3 صباحًا UTC
+    - cron: "0 3 * * 0"   # مرة أسبوعيًا (الأحد 3ص UTC) بدل يومي، توفيرًا للوقت
 
 jobs:
   qa-and-fix:
@@ -14,7 +14,6 @@ jobs:
     permissions:
       contents: write
     env:
-      TESTSPRITE_API_KEY: ${{ secrets.TESTSPRITE_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       DEPLOYED_URL: "https://msaa48.github.io/stunning-octo-engine/"
       MAX_FIX_ROUNDS: 3
@@ -28,100 +27,21 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install TestSprite CLI
-        run: npm install -g @testsprite/testsprite-cli
-
-      - name: Configure TestSprite auth
-        run: testsprite auth configure --from-env --yes --no-agent --skip-if-configured
-
-      - name: Get or create TestSprite project
-        id: project
+      - name: Install Playwright + browsers
         run: |
-          python3 - << 'EOF'
-          import json, subprocess, os
+          npm init -y > /dev/null 2>&1 || true
+          npm install -D @playwright/test
+          npx playwright install --with-deps chromium
 
-          def run(cmd):
-              r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-              return r.stdout.strip(), r.stderr.strip(), r.returncode
-
-          out, err, code = run("testsprite project list --output json")
-          data = json.loads(out) if out else {}
-          projects = data.get("items", [])
-          project_id = None
-          for p in projects:
-              if p.get("name") == "masar-centers":
-                  project_id = p.get("id")
-                  break
-
-          if not project_id:
-              url = os.environ["DEPLOYED_URL"]
-              out, err, code = run(
-                  f'testsprite project create --type frontend --name masar-centers --url "{url}" --output json'
-              )
-              project_id = json.loads(out)["id"] if out else ""
-
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"id={project_id}\n")
-          EOF
-
-      - name: Build test plans (كل السيناريوهات)
-        run: |
-          mkdir -p /tmp/plans
-          python3 - << 'EOF'
-          import json, os
-
-          project_id = "${{ steps.project.outputs.id }}"
-          url = os.environ["DEPLOYED_URL"]
-          schema = "https://raw.githubusercontent.com/TestSprite/testsprite-cli/v0.7.0/schemas/plan.schema.json"
-
-          scenarios = [
-              {
-                  "file": "01-admin-login",
-                  "name": "تسجيل دخول أدمن - مسار",
-                  "steps": [
-                      {"type": "action", "description": f"افتح الرابط {url} ثم املأ إيميل admin@masar-centers.demo وباسورد Admin@12345 واضغط على زر الدخول"},
-                      {"type": "assertion", "description": "تأكد أن لوحة تحكم الأدمن ظهرت بنجاح بعد تسجيل الدخول"},
-                  ],
-              },
-              {
-                  "file": "02-teacher-login",
-                  "name": "تسجيل دخول مدرّس - مسار",
-                  "steps": [
-                      {"type": "action", "description": f"افتح الرابط {url} ثم املأ إيميل teacher1@masar-centers.demo وباسورد Teacher1@2025 واضغط على زر الدخول"},
-                      {"type": "assertion", "description": "تأكد أن شاشة المدرّس (تابات الجدول/الطلاب) ظهرت بنجاح بعد تسجيل الدخول"},
-                  ],
-              },
-              {
-                  "file": "03-parent-login",
-                  "name": "تسجيل دخول ولي أمر - مسار",
-                  "steps": [
-                      {"type": "action", "description": f"افتح الرابط {url} ثم املأ إيميل parent1@masar-centers.demo وباسورد Parent1@2025 واضغط على زر الدخول"},
-                      {"type": "assertion", "description": "تأكد أن لوحة ولي الأمر ظهرت بنجاح بعد تسجيل الدخول"},
-                  ],
-              },
-              {
-                  "file": "04-admin-add-student",
-                  "name": "الأدمن يضيف طالب جديد - مسار",
-                  "steps": [
-                      {"type": "action", "description": f"افتح الرابط {url} وسجّل دخول كأدمن (admin@masar-centers.demo / Admin@12345)، روح لتاب الطلاب، دوس إضافة طالب جديد، املأ اسم وهمي واختار مرحلة دراسية وتاريخ ميلاد مناسب، واحفظ"},
-                      {"type": "assertion", "description": "تأكد أن الطالب الجديد ظهر في قائمة الطلاب بعد الحفظ من غير أي رسالة خطأ"},
-                  ],
-              },
-          ]
-
-          for s in scenarios:
-              plan = {
-                  "$schema": schema,
-                  "projectId": project_id,
-                  "type": "frontend",
-                  "name": s["name"],
-                  "planSteps": s["steps"],
-              }
-              with open(f"/tmp/plans/{s['file']}.json", "w", encoding="utf-8") as f:
-                  json.dump(plan, f, ensure_ascii=False)
-          EOF
-
-      - name: Run QA + Auto-Fix loop (كل السيناريوهات بالترتيب)
+      - name: Run QA + Auto-Fix loop
         run: |
           pip install requests --break-system-packages --quiet
-          python3 scripts/qa_autofix.py
+          python3 qa_autofix.py
+
+      - name: Upload test report (لو فشل)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
