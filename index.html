@@ -43,8 +43,6 @@
   .screen{min-height:100vh; display:none; flex-direction:column;}
   .screen.active{display:flex;}
   .container{max-width:480px; margin:0 auto; width:100%; padding:20px; flex:1;}
-
-  /* ===== Login ===== */
   #login-screen{justify-content:center; position:relative; overflow:hidden; background:
     radial-gradient(circle at 15% 8%, rgba(201,164,92,.10), transparent 40%),
     radial-gradient(circle at 90% 88%, rgba(30,107,122,.08), transparent 45%),
@@ -56,8 +54,6 @@
   .brand h1 .mark{color:var(--gold); font-size:.6em; vertical-align:middle;}
   .brand p{color:var(--muted); margin:0; font-size:13.5px;}
   .brand .rule{width:44px; height:3px; background:var(--gold); border-radius:2px; margin:14px auto 0;}
-
-  /* ===== Decorative shapes / motion graphics ===== */
   .deco-layer{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
   .deco-shape{ position:absolute; color:var(--gold); opacity:.12; }
   [data-theme="dark"] .deco-shape{ opacity:.10; }
@@ -69,14 +65,10 @@
   .deco-dot-1{ width:8px; height:8px; top:22%; right:18%; animation: decoFloat 5.5s var(--ease-in-out) infinite; }
   .deco-dot-2{ width:5px; height:5px; bottom:28%; left:16%; background:var(--parent-1); animation: decoFloat 6.5s var(--ease-in-out) infinite .8s; }
   .deco-dot-3{ width:6px; height:6px; top:62%; right:10%; background:var(--admin-1); animation: decoFloat 7.5s var(--ease-in-out) infinite 1.4s; }
-
   @keyframes decoSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
   @keyframes decoFloat{ 0%,100%{ transform:translateY(0) translateX(0); } 50%{ transform:translateY(-14px) translateX(6px); } }
   @keyframes decoDrift1{ 0%,100%{ transform:translate(0,0) rotate(0deg); } 50%{ transform:translate(-10px,12px) rotate(8deg); } }
   @keyframes decoDrift2{ 0%,100%{ transform:translate(0,0); } 50%{ transform:translate(12px,-10px); } }
-
-  .container{ position:relative; z-index:1; }
-
   .student-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:14px;}
   .student-card{background:var(--card-bg,#fff); border:2px solid var(--border); border-radius:14px; padding:10px; text-align:center; cursor:pointer; transition:.15s;}
   .student-card.active{border-color:var(--teacher-1,#c2673a); box-shadow:0 4px 14px var(--shadow-1);}
@@ -84,4 +76,23 @@
   .student-card .sc-photo img{width:100%; height:100%; object-fit:cover;}
   .student-card .sc-photo input{position:absolute; inset:0; opacity:0; cursor:pointer;}
   .student-card .sc-name{font-weight:700; font-size:14px; font-family:'Cairo',sans-serif; margin-bottom:2px;}
-  .student-card .sc-sub{font-size:11px; color:var
+  .student-card .sc-sub{font-size:11px; color:var(--muted);}
+  .login-form{display:flex; flex-direction:column; gap:12px; margin-top:20px;}
+  .login-form input{padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--input-bg); color:var(--text);}
+  .login-form button{padding:10px; background:var(--teacher-1); color:#fff; border:none; border-radius:6px; cursor:pointer;}
+  .pw-eye{position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:18px; color:var(--muted);}
+  .password-wrapper{position:relative;}
+</style>
+</head>
+<body>
+
+<!-- Theme toggle button -->
+<div class="theme-toggle" aria-label="تبديل الوضع الليلي">
+  <span class="icon">🌙</span>
+</div>
+
+<!-- Login Screen -->
+<div id="login-screen" class="screen active">
+  <div class="container">
+    <div class="brand">
+      <
