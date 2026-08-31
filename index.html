@@ -67,3 +67,24 @@
   .deco-4{ width:110px; height:110px; bottom:16%; right:6%; color:var(--admin-1); opacity:.10; animation: decoSpin 50s linear infinite, decoFloat 9s var(--ease-in-out) infinite .5s; }
   .deco-dot{ position:absolute; border-radius:50%; background:var(--gold); opacity:.35; }
   .deco-dot-1{ width:8px; height:8px; top:22%; right:18%; animation: decoFloat 5.5s var(--ease-in-out) infinite; }
+</style>
+</head>
+<body>
+
+<!-- محتوى الصفحة الأصلي (النماذج، الأزرار، إلخ) -->
+<!-- مثال مبسط للنموذج لتوضيح وجود زر العين في نموذج الدخول -->
+<div id="login-screen" class="screen active">
+  <div class="container">
+    <form id="email-login-form">
+      <input id="login-password" type="password" placeholder="كلمة المرور">
+      <button type="button" class="pw-eye" onclick="togglePasswordVisibility('login-password', this)">👁️</button>
+    </form>
+  </div>
+</div>
+
+<!-- نموذج التسجيل (مخفي) -->
+<div id="signup-screen" class="screen">
+  <div class="container">
+    <form id="signup-form">
+      <input id="signup-password" type="password" placeholder="كلمة المرور">
+      <button type="button" class="pw-eye" onclick="togglePasswordVisibility('signup-password', this)">
