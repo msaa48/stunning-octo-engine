@@ -40,7 +40,7 @@ def run(cmd):
 def call_gemini(prompt: str, max_tokens: int = 4000) -> str:
     resp = requests.post(
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-        params={"key": GEMINI_API_KEY},
+        headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
         json={
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens},
