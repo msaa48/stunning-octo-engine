@@ -47,6 +47,7 @@ test('تبديل الوضع الليلي', async ({ page }) => {
 
 test('تبديل إظهار كلمة المرور في شاشة الدخول', async ({ page }) => {
   await page.goto(URL);
+  await page.getByText(ROLE_CARD.admin, { exact: true }).click();
   const passwordInput = page.locator('#login-password');
   await expect(passwordInput).toHaveAttribute('type', 'password');
 
