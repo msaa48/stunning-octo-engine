@@ -44,3 +44,15 @@ test('تبديل الوضع الليلي', async ({ page }) => {
   await themeToggle.click();
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark');
 });
+
+test('تبديل إظهار كلمة المرور في شاشة الدخول', async ({ page }) => {
+  await page.goto(URL);
+  const passwordInput = page.locator('#login-password');
+  await expect(passwordInput).toHaveAttribute('type', 'password');
+
+  const eyeToggle = page.locator('.pw-eye');
+  await expect(eyeToggle).toBeVisible();
+  await eyeToggle.click();
+
+  await expect(passwordInput).toHaveAttribute('type', 'text');
+});
