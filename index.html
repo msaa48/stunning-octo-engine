@@ -77,6 +77,22 @@
 
   .container{ position:relative; z-index:1; }
 
+  .student-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:14px;}
+  .student-card{background:var(--card-bg,#fff); border:2px solid var(--border); border-radius:14px; padding:10px; text-align:center; cursor:pointer; transition:.15s;}
+  .student-card.active{border-color:var(--teacher-1,#c2673a); box-shadow:0 4px 14px var(--shadow-1);}
+  .student-card .sc-photo{width:56px; height:56px; border-radius:50%; margin:0 auto 6px; background:var(--paper); display:flex; align-items:center; justify-content:center; font-size:26px; overflow:hidden; position:relative;}
+  .student-card .sc-photo img{width:100%; height:100%; object-fit:cover;}
+  .student-card .sc-photo input{position:absolute; inset:0; opacity:0; cursor:pointer;}
+  .student-card .sc-name{font-weight:700; font-size:14px; font-family:'Cairo',sans-serif; margin-bottom:2px;}
+  .student-card .sc-sub{font-size:11px; color:var(--muted); margin-bottom:6px;}
+  .student-card .sc-badges{display:flex; justify-content:center; gap:6px; flex-wrap:wrap;}
+  .sc-badge{font-size:10px; font-weight:700; border-radius:8px; padding:2px 6px; white-space:nowrap;}
+  .sc-badge.effort{background:#dcfce7; color:#15803d;}
+  .sc-badge.level{background:#e0e7ff; color:#3730a3;}
+  .sc-badge.pending{background:#f3f4f6; color:var(--muted);}
+  .task-check-row{display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border);}
+  .task-check-row:last-child{border-bottom:none;}
+  .task-check-row input{width:20px; height:20px;}
   .role-cards{display:flex; flex-direction:column; gap:14px;}
   .role-card{
     border-radius:18px; padding:0; color:var(--ink); display:flex; align-items:stretch; gap:0;
@@ -451,10 +467,12 @@
     <button class="tab-back" id="teacher-tab-back" onclick="history.back()" style="display:none;">→ رجوع للقائمة</button>
 
     <div id="teacher-panel-log">
-    <div class="child-select-row">
-      <div class="child-avatar">🧑‍🎓</div>
-      <select id="teacher-child-select" onchange="renderTeacherLog(); renderTeacherChat();"></select>
-    </div>
+    <div class="section-title" style="margin-top:0;">طلابي</div>
+    <div id="teacher-student-grid" class="student-grid"></div>
+    <select id="teacher-child-select" style="display:none;" onchange="renderTeacherLog(); renderTeacherChat(); renderTeacherStudentGrid();"></select>
+
+    <div class="section-title">مهام اليوم لهذا الطالب</div>
+    <div class="card" id="teacher-tasks-today"></div>
 
     <div class="section-title">حضور الحصة (QR)</div>
     <div class="event-grid" style="grid-template-columns:repeat(2,1fr);">
@@ -714,6 +732,20 @@
   </div>
 </div>
 
+<div class="modal-bg" id="subject-tasks-modal-bg">
+  <div class="modal">
+    <h3 id="subject-tasks-modal-title">مهام المادة</h3>
+    <div id="subject-tasks-list" style="display:flex; flex-direction:column; gap:0; margin-bottom:10px; max-height:260px; overflow-y:auto;"></div>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="subject-task-new-name" placeholder="اسم مهمة جديدة (مثلاً: تسليم الواجب)" style="flex:1;">
+      <button class="btn admin" onclick="addSubjectTask()">+ إضافة</button>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('subject-tasks-modal-bg')">إغلاق</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Note modal -->
@@ -849,7 +881,9 @@ function rowsToDB(rows){
   db.subjects = rows.subjects.map(r=>({id:r.id, name:r.name, color:r.color, grade:r.grade}));
   db.teachers = rows.teachers.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, classroomIds:r.classroom_ids||[]}));
   db.parents = rows.parents.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, childIds:r.child_ids||[]}));
-  db.children = rows.children.map(r=>({id:r.id, name:r.name, dob:r.dob, grade:r.grade, classroomIds:r.classroom_ids||[]}));
+  db.children = rows.children.map(r=>({id:r.id, name:r.name, dob:r.dob, grade:r.grade, track:r.track, photoUrl:r.photo_url, classroomIds:r.classroom_ids||[]}));
+  db.subjectTasks = (rows.subjectTasks||[]).map(r=>({id:r.id, subjectId:r.subject_id, name:r.name, sortOrder:r.sort_order}));
+  db.taskCompletions = (rows.taskCompletions||[]).map(r=>({id:r.id, childId:r.child_id, subjectId:r.subject_id, taskId:r.task_id, teacherId:r.teacher_id, date:r.completion_date, done:r.done}));
   db.schedule = rows.schedule.map(r=>({id:r.id, classroomId:r.classroom_id, day:r.day, period:r.period, subjectId:r.subject_id, teacherId:r.teacher_id}));
   db.scheduleSettingsByClassroom = {};
   rows.scheduleSettingsByClassroom.forEach(r=>{ db.scheduleSettingsByClassroom[r.classroom_id] = {days:r.days, periods:r.periods}; });
@@ -874,7 +908,8 @@ async function fetchDBFromSupabase(){
     session.centerSlug = slugifyWordsForDomain(centerRow?.name || 'markaz'); // مستخدم كدومين للإيميلات المولّدة أوتوماتيك (بعد الـ@) — مفصول بـ hyphen "-" لأن الـ underscore ممنوع في أسماء الدومين
     const tables = ['classrooms','subjects','teachers','parents','children','schedule',
       'schedule_settings_by_classroom','calendar_events','events','complaints','payments',
-      'evaluations','messages','teacher_attendance','teacher_evaluations','teacher_raises'];
+      'evaluations','messages','teacher_attendance','teacher_evaluations','teacher_raises',
+      'subject_tasks','task_completions'];
     const results = await Promise.all(tables.map(t=> supabaseClient.from(t).select('*').eq('center_id', centerId)));
     const appSettingsRes = await supabaseClient.from('app_settings').select('*').eq('center_id', centerId).single();
 
@@ -965,7 +1000,9 @@ function seedData(){
     teacherAttendance: [],
     teacherEvaluations: [],
     settings: { raiseCycleMonths: 4 },
-    teacherRaises: []
+    teacherRaises: [],
+    subjectTasks: [],
+    taskCompletions: []
   };
 }
 
@@ -1044,7 +1081,9 @@ async function pushDBToSupabase(db){
       // ملحوظة: email و claimed_by مقصودين خارج الـ upsert ده عشان منمسحش ربط الحساب الحقيقي بتاع المدرّس/ولي الأمر
       supabaseClient.from('teachers').upsert(db.teachers.map(t=>({id:t.id, name:t.name, phone:t.phone, classroom_ids:t.classroomIds, center_id:centerId}))),
       supabaseClient.from('parents').upsert(db.parents.map(p=>({id:p.id, name:p.name, phone:p.phone, child_ids:p.childIds, center_id:centerId}))),
-      supabaseClient.from('children').upsert(db.children.map(c=>({id:c.id, name:c.name, dob:c.dob||null, grade:c.grade||null, classroom_ids:c.classroomIds, center_id:centerId}))),
+      supabaseClient.from('children').upsert(db.children.map(c=>({id:c.id, name:c.name, dob:c.dob||null, grade:c.grade||null, track:c.track||null, photo_url:c.photoUrl||null, classroom_ids:c.classroomIds, center_id:centerId}))),
+      supabaseClient.from('subject_tasks').upsert((db.subjectTasks||[]).map(t=>({id:t.id, subject_id:t.subjectId, name:t.name, sort_order:t.sortOrder||0, center_id:centerId}))),
+      supabaseClient.from('task_completions').upsert((db.taskCompletions||[]).map(t=>({id:t.id, child_id:t.childId, subject_id:t.subjectId, task_id:t.taskId, teacher_id:t.teacherId, completion_date:t.date, done:t.done, center_id:centerId}))),
       supabaseClient.from('schedule').upsert(db.schedule.map(s=>({id:s.id, classroom_id:s.classroomId, day:s.day, period:s.period, subject_id:s.subjectId, teacher_id:s.teacherId, center_id:centerId}))),
       supabaseClient.from('schedule_settings_by_classroom').upsert(Object.entries(db.scheduleSettingsByClassroom).map(([cid,v])=>({classroom_id:cid, days:v.days, periods:v.periods}))),
       supabaseClient.from('calendar_events').upsert(db.calendarEvents.map(c=>({id:c.id, title:c.title, date:c.date, note:c.note, center_id:centerId}))),
@@ -1725,8 +1764,137 @@ function initTeacherScreen(){
     }).join('');
     teacherActiveChildId = myChildren[0].id;
   }
+  renderTeacherStudentGrid();
   renderTeacherLog();
   showTeacherMenu();
+}
+
+// بيرجع set بالمواد اللي المدرّس ده بيدرّسها للطالب ده فعليًا (حسب الجدول، مش كل مواد المجموعة)
+function subjectsTaughtToChildByTeacher(db, teacher, child){
+  const sharedRooms = (child.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
+  const subjectIds = new Set(
+    db.schedule
+      .filter(s=> s.teacherId===teacher.id && sharedRooms.includes(s.classroomId) && s.subjectId)
+      .map(s=> s.subjectId)
+  );
+  return Array.from(subjectIds);
+}
+
+// نسبة مجهود المعلم اليومية مع الطالب ده = متوسط نسبة إتمام مهام النهارده على كل مادة بيدرّسها له
+function computeChildEffortPercent(db, teacher, child){
+  const subjectIds = subjectsTaughtToChildByTeacher(db, teacher, child);
+  if(subjectIds.length===0) return null;
+  const todayStr = new Date().toISOString().slice(0,10);
+  let totalTasks = 0, doneTasks = 0;
+  subjectIds.forEach(sid=>{
+    const tasks = (db.subjectTasks||[]).filter(t=> t.subjectId===sid);
+    if(tasks.length===0) return; // مفيش مهام معرّفة لهذه المادة لسه — متتحسبش (لا سلبًا ولا إيجابًا)
+    totalTasks += tasks.length;
+    tasks.forEach(t=>{
+      const done = (db.taskCompletions||[]).some(c=> c.childId===child.id && c.subjectId===sid && c.taskId===t.id && c.date===todayStr && c.done);
+      if(done) doneTasks++;
+    });
+  });
+  if(totalTasks===0) return null;
+  return Math.round((doneTasks/totalTasks)*100);
+}
+
+function renderTeacherStudentGrid(){
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const grid = document.getElementById('teacher-student-grid');
+  if(!teacher || !grid) return;
+  const myChildren = db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid)));
+  if(myChildren.length===0){ grid.innerHTML = '<div class="empty">لا يوجد طلاب في مجموعاتك</div>'; return; }
+  grid.innerHTML = myChildren.map(c=>{
+    const effort = computeChildEffortPercent(db, teacher, c);
+    const sharedRooms = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid)).map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
+    const isActive = c.id===teacherActiveChildId;
+    return `<div class="student-card ${isActive?'active':''}" onclick="selectTeacherChild('${c.id}')">
+      <div class="sc-photo">
+        ${c.photoUrl ? `<img src="${c.photoUrl}" alt="">` : '🧑\u200d🎓'}
+        <input type="file" accept="image/*" onclick="event.stopPropagation();" onchange="uploadChildPhoto('${c.id}', this.files[0])">
+      </div>
+      <div class="sc-name">${c.name}</div>
+      <div class="sc-sub">${sharedRooms}</div>
+      <div class="sc-badges">
+        <span class="sc-badge ${effort===null?'pending':'effort'}">${effort===null?'مجهودي: —':'مجهودي '+effort+'%'}</span>
+        <span class="sc-badge pending">مستوى: قريبًا</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectTeacherChild(childId){
+  document.getElementById('teacher-child-select').value = childId;
+  teacherActiveChildId = childId;
+  renderTeacherLog();
+  renderTeacherChat();
+  renderTeacherStudentGrid();
+}
+
+// رفع صورة الطالب لـ Supabase Storage (bucket: student-photos) وتحديث الرابط مباشرة
+async function uploadChildPhoto(childId, file){
+  if(!file) return;
+  try{
+    const ext = (file.name.split('.').pop()||'jpg').toLowerCase();
+    const path = `${childId}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabaseClient.storage.from('student-photos').upload(path, file, { upsert:true });
+    if(upErr) throw upErr;
+    const { data: pub } = supabaseClient.storage.from('student-photos').getPublicUrl(path);
+    const photoUrl = pub.publicUrl;
+    const { error: dbErr } = await supabaseClient.from('children').update({ photo_url: photoUrl }).eq('id', childId);
+    if(dbErr) throw dbErr;
+    const db = loadDB();
+    const child = db.children.find(c=>c.id===childId);
+    if(child) child.photoUrl = photoUrl;
+    dbCache = db;
+    localStorage.setItem(DB_KEY, JSON.stringify(db));
+    renderTeacherStudentGrid();
+    showToast('✅ اتحفظت صورة الطالب');
+  } catch(e){
+    console.error('فشل رفع صورة الطالب', e);
+    showToast('⚠️ فشل رفع الصورة، جرّب تاني');
+  }
+}
+
+function renderTeacherTasksToday(){
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const el = document.getElementById('teacher-tasks-today');
+  if(!el) return;
+  const child = db.children.find(c=>c.id===teacherActiveChildId);
+  if(!teacher || !child){ el.innerHTML = '<div class="empty">اختر طالب الأول</div>'; return; }
+  const subjectIds = subjectsTaughtToChildByTeacher(db, teacher, child);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const blocks = subjectIds.map(sid=>{
+    const subj = db.subjects.find(s=>s.id===sid);
+    const tasks = (db.subjectTasks||[]).filter(t=>t.subjectId===sid).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+    if(tasks.length===0) return `<div style="padding:6px 4px; font-size:13px; color:var(--muted);">${subj?subj.name:''}: لسه مفيش مهام معرّفة لهذه المادة (المدير يقدر يضيفها من تاب "المواد")</div>`;
+    const rows = tasks.map(t=>{
+      const done = (db.taskCompletions||[]).some(c=> c.childId===child.id && c.subjectId===sid && c.taskId===t.id && c.date===todayStr && c.done);
+      return `<div class="task-check-row">
+        <input type="checkbox" ${done?'checked':''} onchange="toggleTaskCompletion('${child.id}','${sid}','${t.id}', this.checked)">
+        <span>${t.name}</span>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:10px;"><div style="font-weight:700; font-size:13px; margin-bottom:4px;">${subj?subj.name:'مادة'}</div>${rows}</div>`;
+  }).join('');
+  el.innerHTML = blocks || '<div class="empty">مفيش مواد مسجلة بجدولك لهذا الطالب</div>';
+}
+
+function toggleTaskCompletion(childId, subjectId, taskId, isDone){
+  const db = loadDB();
+  const todayStr = new Date().toISOString().slice(0,10);
+  const existing = (db.taskCompletions||[]).find(c=> c.childId===childId && c.subjectId===subjectId && c.taskId===taskId && c.date===todayStr);
+  if(existing){
+    existing.done = isDone;
+  } else {
+    db.taskCompletions = db.taskCompletions || [];
+    db.taskCompletions.push({id:uid('tc'), childId, subjectId, taskId, teacherId:session.personId, date:todayStr, done:isDone});
+  }
+  saveDB(db);
+  renderTeacherStudentGrid();
 }
 
 function renderTeacherLog(){
@@ -1737,6 +1905,7 @@ function renderTeacherLog(){
     .sort((a,b)=> new Date(b.eventTime)-new Date(a.eventTime));
   renderTimeline('teacher-timeline', events, true);
   renderTeacherEvals();
+  renderTeacherTasksToday();
 }
 
 function renderTeacherEvals(){
@@ -2630,6 +2799,7 @@ function renderAdminListInner(){
     el.innerHTML = `<div style="display:flex; flex-wrap:wrap;">` + db.subjects.map(s=>`
       <span class="subject-chip" style="background:${s.color};">
         ${s.name} <span style="opacity:.8; font-size:10px;">(${gradeLabel[s.grade]||s.grade})</span>
+        <span onclick="openSubjectTasksModal('${s.id}')" style="cursor:pointer;" title="مهام المادة">🗒️</span>
         <span onclick="openAdminEditModal('subjects','${s.id}')" style="cursor:pointer;">✎</span>
         <span onclick="deleteAdminItem('subjects','${s.id}')" style="cursor:pointer;">✕</span>
       </span>`).join('') + `</div>` || '<div class="empty">لا يوجد مواد</div>';
@@ -3158,6 +3328,50 @@ function quickLinkGuardianForChild(childId){
   document.getElementById('admin-modal-bg').classList.add('show');
 }
 
+let subjectTasksModalSubjectId = null;
+function openSubjectTasksModal(subjectId){
+  subjectTasksModalSubjectId = subjectId;
+  const db = loadDB();
+  const subj = db.subjects.find(s=>s.id===subjectId);
+  document.getElementById('subject-tasks-modal-title').textContent = '🗒️ مهام مادة: ' + (subj?subj.name:'');
+  document.getElementById('subject-task-new-name').value = '';
+  renderSubjectTasksList();
+  document.getElementById('subject-tasks-modal-bg').classList.add('show');
+}
+function renderSubjectTasksList(){
+  const db = loadDB();
+  const tasks = (db.subjectTasks||[]).filter(t=>t.subjectId===subjectTasksModalSubjectId).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+  const el = document.getElementById('subject-tasks-list');
+  el.innerHTML = tasks.length ? tasks.map(t=>`
+    <div class="task-check-row">
+      <span style="flex:1;">${t.name}</span>
+      <span onclick="deleteSubjectTask('${t.id}')" style="cursor:pointer; color:var(--danger);">✕</span>
+    </div>`).join('') : '<div class="empty">لسه مفيش مهام معرّفة لهذه المادة</div>';
+}
+function addSubjectTask(){
+  const input = document.getElementById('subject-task-new-name');
+  const name = input.value.trim();
+  if(!name){ showToast('اكتب اسم المهمة الأول'); return; }
+  const db = loadDB();
+  db.subjectTasks = db.subjectTasks || [];
+  const existingCount = db.subjectTasks.filter(t=>t.subjectId===subjectTasksModalSubjectId).length;
+  db.subjectTasks.push({id:uid('task'), subjectId:subjectTasksModalSubjectId, name, sortOrder:existingCount});
+  saveDB(db);
+  input.value = '';
+  renderSubjectTasksList();
+  showToast('✅ اتضافت المهمة');
+}
+function deleteSubjectTask(taskId){
+  confirmAction('متأكد إنك عايز تمسح المهمة دي؟ أي سجلات إتمام قديمة ليها هتتمسح برضو.', ()=>{
+    const db = loadDB();
+    db.subjectTasks = (db.subjectTasks||[]).filter(t=>t.id!==taskId);
+    db.taskCompletions = (db.taskCompletions||[]).filter(c=>c.taskId!==taskId);
+    saveDB(db);
+    renderSubjectTasksList();
+    showToast('تم حذف المهمة');
+  });
+}
+
 function openAdminAddModal(){
   quickLinkActive = false;
   adminModalMode = 'add'; adminModalEditId = null;
@@ -3563,6 +3777,7 @@ function deleteAdminItem(type, id){
     db.payments = db.payments.filter(p=>p.childId!==id);
     db.evaluations = db.evaluations.filter(e=>e.childId!==id);
     db.messages = db.messages.filter(m=>m.childId!==id);
+    db.taskCompletions = (db.taskCompletions||[]).filter(c=>c.childId!==id);
   }
   else if(type==='teachers'){
     db.teachers = db.teachers.filter(t=>t.id!==id);
@@ -3593,6 +3808,8 @@ function deleteAdminItem(type, id){
     db.subjects = db.subjects.filter(s=>s.id!==id);
     db.schedule = db.schedule.filter(s=>s.subjectId!==id);
     db.evaluations = db.evaluations.filter(e=>e.subjectId!==id);
+    db.subjectTasks = (db.subjectTasks||[]).filter(t=>t.subjectId!==id);
+    db.taskCompletions = (db.taskCompletions||[]).filter(c=>c.subjectId!==id);
   }
   else if(type==='payments'){
     db.payments = db.payments.filter(p=>p.id!==id);
