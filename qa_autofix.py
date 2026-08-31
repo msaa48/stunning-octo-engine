@@ -27,6 +27,7 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 MAX_FIX_ROUNDS = int(os.environ.get("MAX_FIX_ROUNDS", "3"))
 TESTS_FILE = "tests/scenarios.spec.js"
 INDEX_FILE = "index.html"
+CHECKLIST_FILE = "QA_CHECKLIST.md"
 # أقصى فرق حجم مقبول لأي تصحيح جزئي واحد — أي حاجة أكبر من كده تبقى مشبوهة
 # (يعني ممكن يكون بيحاول يعيد كتابة الملف كله بدل تصحيح صغير) ونرفضها
 MAX_PATCH_SIZE_DELTA = 3000
@@ -86,6 +87,17 @@ def maybe_update_tests():
         html = f.read()
     with open(TESTS_FILE, encoding="utf-8") as f:
         current_tests = f.read()
+    try:
+        with open(CHECKLIST_FILE, encoding="utf-8") as f:
+            checklist = f.read()
+    except FileNotFoundError:
+        checklist = ""
+
+    checklist_block = (
+        f"\n3) checklist الـ QA الرسمي للمشروع — دستور ملزم لازم تلتزم بيه بالكامل:\n{checklist}\n"
+        if checklist
+        else ""
+    )
 
     prompt = f"""أنت مهندس QA خبير في Playwright. عندك:
 
@@ -94,12 +106,22 @@ def maybe_update_tests():
 
 2) ملف اختبارات Playwright الحالي بالكامل:
 {current_tests}
-
+{checklist_block}
 المطلوب: راجع لو فيه أي شاشة أو زرار أو فورم جديد في الكود مش متغطي في
 ملف الاختبارات، وأضف اختبار Playwright جديد ليه بنفس أسلوب الاختبارات
 الموجودة (نفس شكل الـ selectors: locator بالـ id، getByRole للأزرار).
-لو الاختبارات الحالية لسه بتغطي كل حاجة موجودة فعليًا، ارجع الملف
-زي ما هو من غير أي تغيير.
+
+⚠️ التزام إلزامي بـ"القاعدة الذهبية" في checklist القسم أعلاه: أي اختبار
+جديد لازم يتحقق من نتيجة منطقية حقيقية بعد الفعل (نجاح متوقع أو رفض
+متوقع)، مش مجرد `toBeVisible()` على عنصر. لو مش قادر تكتب اختبار
+مستوفي الشرط ده لميزة معينة، سيبها من غير اختبار بدل ما تكتب اختبار
+سطحي وهمي. لو checklist موجود، حاول تغطي أعلى سطر ⬜ متاح فيه حسب
+الأولوية (عالية أولاً)، وبعد ما تكتب اختبار حقيقي لسطر معين حدّثه
+لـ [x] جوه نفس رد الـ checklist (لو هترجعه) — لكن دلوقتي رجّع بس ملف
+الاختبارات زي المطلوب تحت.
+
+لو الاختبارات الحالية لسه بتغطي كل حاجة موجودة فعليًا وملتزمة بالقاعدة
+الذهبية، ارجع الملف زي ما هو من غير أي تغيير.
 
 مهم جدًا: ارجع ملف tests/scenarios.spec.js كاملاً بعد أي تعديل (أو
 نفسه لو مفيش تعديل)، بدون أي شرح أو markdown، كود JavaScript خام بس."""
