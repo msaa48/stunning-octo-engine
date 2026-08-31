@@ -1,15 +1,15 @@
 """
 يشتغل جوه GitHub Actions:
-  المرحلة 0: Groq بيراجع index.html واختبارات Playwright الحالية،
+  المرحلة 0: Gemini بيراجع index.html واختبارات Playwright الحالية،
              ويحدّث/يضيف اختبارات لو فيه شاشات أو أزرار جديدة (ملف صغير، آمن).
   المرحلة 1: يشغّل الاختبارات.
-  المرحلة 2: لو فشل، Groq يقترح "تصحيح جزئي" (find/replace دقيق) على index.html
+  المرحلة 2: لو فشل، Gemini يقترح "تصحيح جزئي" (find/replace دقيق) على index.html
              — مش إعادة كتابة الملف كامل، لأن الملف كبير (200+ كيلوبايت)
              وأي موديل LLM له حد أقصى لحجم الرد، فطلب الملف كامل يخرب الملف
              (حصل فعليًا مرة وعمل truncation خرّب الموقع بالكامل — درس متعلّم).
 
 ⚠️ الحدود المتفق عليها مع اليوزر:
-  - Groq يتصرف لوحده في الحالات العادية.
+  - Gemini يتصرف لوحده في الحالات العادية.
   - لو الحلقة فشلت MAX_FIX_ROUNDS مرة، أو حصل استثناء غير متوقع، أو فشل أي
     تحقق أمان (patch مش فريد، أو التغيير في الحجم غير منطقي)، السكريبت
     بيوقف نفسه فورًا من غير ما يكتب/يرفع أي حاجة — عشان تبقى دي نقطة لازم
@@ -23,7 +23,7 @@ import time
 
 import requests
 
-GROQ_API_KEY = os.environ["GROQ_API_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 MAX_FIX_ROUNDS = int(os.environ.get("MAX_FIX_ROUNDS", "3"))
 TESTS_FILE = "tests/scenarios.spec.js"
 INDEX_FILE = "index.html"
@@ -37,24 +37,23 @@ def run(cmd):
     return r.stdout, r.stderr, r.returncode
 
 
-def call_groq(prompt: str, max_tokens: int = 4000) -> str:
+def call_gemini(prompt: str, max_tokens: int = 4000) -> str:
     resp = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        params={"key": GEMINI_API_KEY},
         json={
-            "model": "openai/gpt-oss-120b",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.2,
-            "max_tokens": max_tokens,
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": max_tokens},
         },
         timeout=90,
     )
     resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    data = resp.json()
+    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def strip_code_fence(text: str) -> str:
-    """لو Groq رجّع markdown code fence بالغلط، شيله"""
+    """لو Gemini رجّع markdown code fence بالغلط، شيله"""
     t = text.strip()
     if t.startswith("```"):
         lines = t.split("\n")
@@ -82,7 +81,7 @@ def git_commit_and_push(paths: list, message: str) -> bool:
 
 
 def maybe_update_tests():
-    """مرحلة 0: Groq يراجع الكود والاختبارات ويحدّثها لو محتاجة (ملف اختبارات صغير — آمن)"""
+    """مرحلة 0: Gemini يراجع الكود والاختبارات ويحدّثها لو محتاجة (ملف اختبارات صغير — آمن)"""
     with open(INDEX_FILE, encoding="utf-8") as f:
         html = f.read()
     with open(TESTS_FILE, encoding="utf-8") as f:
@@ -106,9 +105,9 @@ def maybe_update_tests():
 نفسه لو مفيش تعديل)، بدون أي شرح أو markdown، كود JavaScript خام بس."""
 
     try:
-        updated = strip_code_fence(call_groq(prompt, max_tokens=6000))
+        updated = strip_code_fence(call_gemini(prompt, max_tokens=6000))
     except Exception as e:
-        print("⚠️ فشل Groq في مراجعة الاختبارات (مش خطأ قاتل، هنكمل بالاختبارات الحالية):", e)
+        print("⚠️ فشل Gemini في مراجعة الاختبارات (مش خطأ قاتل، هنكمل بالاختبارات الحالية):", e)
         return
 
     if updated.strip() and updated.strip() != current_tests.strip():
@@ -116,19 +115,19 @@ def maybe_update_tests():
             f.write(updated)
         out, err, code = run(f"node --check {TESTS_FILE}")
         if code != 0:
-            print("⚠️ الاختبار الجديد من Groq فيه خطأ syntax، هنرجع للنسخة القديمة:", err)
+            print("⚠️ الاختبار الجديد من Gemini فيه خطأ syntax، هنرجع للنسخة القديمة:", err)
             with open(TESTS_FILE, "w", encoding="utf-8") as f:
                 f.write(current_tests)
             return
-        git_commit_and_push([TESTS_FILE], "تحديث اختبارات Playwright تلقائيًا بواسطة Groq")
-        print("✅ Groq حدّث ملف الاختبارات (تغيير حقيقي)")
+        git_commit_and_push([TESTS_FILE], "تحديث اختبارات Playwright تلقائيًا بواسطة Gemini")
+        print("✅ Gemini حدّث ملف الاختبارات (تغيير حقيقي)")
     else:
         print("ℹ️ الاختبارات الحالية كافية، مفيش تحديث لازم")
 
 
 def get_html_patch(current_html: str, failure_output: str):
     """
-    بيطلب من Groq تصحيح جزئي دقيق (find/replace) بدل إعادة كتابة الملف كامل.
+    بيطلب من Gemini تصحيح جزئي دقيق (find/replace) بدل إعادة كتابة الملف كامل.
     index.html كبير (200+ كيلوبايت) وأي رد من موديل LLM له حد أقصى لحجم
     الاستجابة — طلب الملف كامل يضمن قطع/تلف الملف. الحل: نطلب فقط الجزء
     اللي المفروض يتغيّر.
@@ -154,14 +153,14 @@ def get_html_patch(current_html: str, failure_output: str):
 لو مش قادر تحدد المشكلة من الجزء المتاح، رد بـ: {{"old": "", "new": ""}}"""
 
     try:
-        raw = strip_code_fence(call_groq(prompt, max_tokens=2000))
+        raw = strip_code_fence(call_gemini(prompt, max_tokens=2000))
         data = json.loads(raw)
         old, new = data.get("old", ""), data.get("new", "")
         if not old or not new:
             return None
         return old, new
     except Exception as e:
-        print("⚠️ فشل فهم رد Groq كـ JSON patch:", e)
+        print("⚠️ فشل فهم رد Gemini كـ JSON patch:", e)
         return None
 
 
@@ -196,14 +195,14 @@ def main():
             print("✅ كل الاختبارات عدّت بنجاح.")
             return
 
-        print("❌ في اختبار فشل، هجهز الخطأ لـ Groq (تصحيح جزئي آمن فقط)...")
+        print("❌ في اختبار فشل، هجهز الخطأ لـ Gemini (تصحيح جزئي آمن فقط)...")
         with open(INDEX_FILE, encoding="utf-8") as f:
             current_html = f.read()
         original_len = len(current_html)
 
         patch = get_html_patch(current_html, out + "\n" + err)
         if patch is None:
-            print("🚨 Groq مقدرش يقترح تصحيح جزئي آمن — دي حالة صعبة، محتاجة مراجعة يدوية من Claude.")
+            print("🚨 Gemini مقدرش يقترح تصحيح جزئي آمن — دي حالة صعبة، محتاجة مراجعة يدوية من Claude.")
             raise SystemExit(1)
 
         old, new = patch
@@ -221,7 +220,7 @@ def main():
             f.write(fixed_html)
 
         pushed = git_commit_and_push(
-            [INDEX_FILE], f"Auto-fix جزئي (محاولة {attempt}) بواسطة Groq بناءً على فشل Playwright"
+            [INDEX_FILE], f"Auto-fix جزئي (محاولة {attempt}) بواسطة Gemini بناءً على فشل Playwright"
         )
         if not pushed:
             print("⚠️ إيقاف — مفيش تغيير حقيقي حصل. (نقطة تحتاج مراجعة Claude)")
