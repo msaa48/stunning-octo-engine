@@ -50,7 +50,7 @@ test('تبديل إظهار كلمة المرور في شاشة الدخول', a
   const passwordInput = page.locator('#login-password');
   await expect(passwordInput).toHaveAttribute('type', 'password');
 
-  const eyeToggle = page.locator('.pw-eye');
+  const eyeToggle = page.locator('#email-login-form .pw-eye');
   await expect(eyeToggle).toBeVisible();
   await eyeToggle.click();
 
