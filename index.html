@@ -880,6 +880,8 @@ function rowsToDB(rows){
   db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee)}));
   db.subjects = rows.subjects.map(r=>({id:r.id, name:r.name, color:r.color, grade:r.grade}));
   db.teachers = rows.teachers.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, classroomIds:r.classroom_ids||[]}));
+  db.assistants = rows.assistants.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by,
+    teacherIds: (rows.assistantTeachers||[]).filter(l=>l.assistant_id===r.id).map(l=>l.teacher_id)}));
   db.parents = rows.parents.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, childIds:r.child_ids||[]}));
   db.children = rows.children.map(r=>({id:r.id, name:r.name, dob:r.dob, grade:r.grade, track:r.track, photoUrl:r.photo_url, classroomIds:r.classroom_ids||[]}));
   db.subjectTasks = (rows.subjectTasks||[]).map(r=>({id:r.id, subjectId:r.subject_id, name:r.name, sortOrder:r.sort_order}));
@@ -906,7 +908,7 @@ async function fetchDBFromSupabase(){
   try{
     const { data: centerRow } = await supabaseClient.from('centers').select('name').eq('id', centerId).single();
     session.centerSlug = slugifyWordsForDomain(centerRow?.name || 'markaz'); // مستخدم كدومين للإيميلات المولّدة أوتوماتيك (بعد الـ@) — مفصول بـ hyphen "-" لأن الـ underscore ممنوع في أسماء الدومين
-    const tables = ['classrooms','subjects','teachers','parents','children','schedule',
+    const tables = ['classrooms','subjects','teachers','assistants','assistant_teachers','parents','children','schedule',
       'schedule_settings_by_classroom','calendar_events','events','complaints','payments',
       'evaluations','messages','teacher_attendance','teacher_evaluations','teacher_raises',
       'subject_tasks','task_completions'];
@@ -956,6 +958,7 @@ function seedData(){
       {id:'t2', name:'أ. منى خالد', phone:'01033334444', classroomIds:['c2']},
       {id:'t3', name:'أ. كريم عادل', phone:'01099998888', classroomIds:['c3','c4']}
     ],
+    assistants: [],
     parents: [
       {id:'p1', name:'محمد إبراهيم', phone:'01055556666', email:'m.ibrahim@example.com', childIds:['ch1']},
       {id:'p2', name:'هبة الشريف', phone:'01077778888', email:'heba.s@example.com', childIds:['ch2']},
@@ -1024,6 +1027,23 @@ function saveDB(db){
   pushDBToSupabase(db); // مزامنة في الخلفية — مش بتوقف واجهة المستخدم لحد ما تخلص
 }
 
+// بيوصل جدول الربط many-to-many بين الأسيستنت والمدرّسين بأحدث اختيار في الفورم — بيمسح اللي قديم ويكتب اللي جديد لكل أسيستنت
+async function syncAssistantTeacherLinks(db, centerId){
+  try{
+    for(const a of db.assistants){
+      const { error: delErr } = await supabaseClient.from('assistant_teachers').delete().eq('assistant_id', a.id);
+      if(delErr) throw delErr;
+      if(a.teacherIds && a.teacherIds.length){
+        const rows = a.teacherIds.map(tid=>({assistant_id:a.id, teacher_id:tid, center_id:centerId}));
+        const { error: insErr } = await supabaseClient.from('assistant_teachers').insert(rows);
+        if(insErr) throw insErr;
+      }
+    }
+  } catch(e){
+    console.error('فشل مزامنة روابط الأسيستنت بالمدرّسين', e);
+  }
+}
+
 async function setPersonEmail(table, id, email){
   // بيتكتب لوحده بعيد عن pushDBToSupabase العام، لأن ده بيتخطى عمود الإيميل عمدًا عشان محدش يمسح ربط حساب حد اتعمل بالفعل
   if(!email) return;
@@ -1080,6 +1100,9 @@ async function pushDBToSupabase(db){
       supabaseClient.from('subjects').upsert(db.subjects.map(s=>({id:s.id, name:s.name, color:s.color, grade:s.grade, center_id:centerId}))),
       // ملحوظة: email و claimed_by مقصودين خارج الـ upsert ده عشان منمسحش ربط الحساب الحقيقي بتاع المدرّس/ولي الأمر
       supabaseClient.from('teachers').upsert(db.teachers.map(t=>({id:t.id, name:t.name, phone:t.phone, classroom_ids:t.classroomIds, center_id:centerId}))),
+      // ملحوظة: email و claimed_by مقصودين خارج الـupsert ده برضه لنفس سبب المدرّس/ولي الأمر
+      supabaseClient.from('assistants').upsert(db.assistants.map(a=>({id:a.id, name:a.name, phone:a.phone, center_id:centerId}))),
+      syncAssistantTeacherLinks(db, centerId),
       supabaseClient.from('parents').upsert(db.parents.map(p=>({id:p.id, name:p.name, phone:p.phone, child_ids:p.childIds, center_id:centerId}))),
       supabaseClient.from('children').upsert(db.children.map(c=>({id:c.id, name:c.name, dob:c.dob||null, grade:c.grade||null, track:c.track||null, photo_url:c.photoUrl||null, classroom_ids:c.classroomIds, center_id:centerId}))),
       supabaseClient.from('subject_tasks').upsert((db.subjectTasks||[]).map(t=>({id:t.id, subject_id:t.subjectId, name:t.name, sort_order:t.sortOrder||0, center_id:centerId}))),
@@ -2597,7 +2620,7 @@ function renderAdminStats(){
 }
 
 const ADMIN_TAB_GROUPS = {
-  family: ['children','teachers','parents','links'],
+  family: ['children','teachers','assistants','parents','links'],
   classes: ['classrooms','subjects','schedule'],
   staff: ['teacherAttendance','teacherEvaluations'],
   money: ['payments'],
@@ -2606,6 +2629,7 @@ const ADMIN_TAB_GROUPS = {
 const ADMIN_TAB_META = {
   children:{icon:'🧑‍🎓', label:'الطلاب', color:'linear-gradient(135deg,#4a3d7a,#6553a0)'},
   teachers:{icon:'👩‍🏫', label:'المدرّسين', color:'linear-gradient(135deg,#c2673a,#d98456)'},
+  assistants:{icon:'🧑‍💼', label:'الأسيستنت', color:'linear-gradient(135deg,#7a5c3d,#a3805a)'},
   parents:{icon:'👨‍👩‍👧', label:'أولياء الأمور', color:'linear-gradient(135deg,#1e6b7a,#2c8a9c)'},
   links:{icon:'🔗', label:'روابط الأسر', color:'linear-gradient(135deg,#3d8a5f,#4fa876)'},
   classrooms:{icon:'🏫', label:'المجموعات', color:'linear-gradient(135deg,#c9a45c,#b3893f)'},
@@ -2640,7 +2664,7 @@ function openAdminSection(tab){
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
   document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations') ? 'none' : 'block';
-  const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث'};
+  const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث'};
   document.getElementById('admin-add-btn').textContent = addLabels[tab] || '+ إضافة';
   showScreen('admin-section-screen');
   renderAdminList();
@@ -2748,6 +2772,27 @@ function renderAdminListInner(){
           <button class="badge" onclick="openAdminEditModal('teachers','${t.id}')">تعديل</button>
           <button class="badge" onclick="openTeacherEvalModal('${t.id}')">تقييم أداء</button>
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('teachers','${t.id}')">حذف</button>
+        </div>
+      </div>`;
+    }).join('') || '<div class="empty">لا يوجد نتائج</div>');
+  }
+  else if(adminActiveTab==='assistants'){
+    const items = db.assistants.filter(a=> matchesSearch(a.name));
+    el.innerHTML = searchBoxHtml('دور على اسم أسيستنت...') + (items.map(a=>{
+      const teacherNames = (a.teacherIds||[]).map(id=> db.teachers.find(t=>t.id===id)?.name).filter(Boolean).join('، ') || 'مش مرتبط بمدرّس لسه';
+      return `<div class="list-row">
+        <div class="list-row-main">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#7a5c3d,#a3805a);">${avatarInitial(a.name)}</div>
+          <div class="list-info">
+            <div class="list-name">${a.name}</div>
+            <div class="list-sub">${teacherNames}</div>
+            <div class="list-sub">${a.email||'مفيش إيميل مسجل'}</div>
+            <div class="list-sub">${a.claimedBy?'<span style="color:var(--success); font-weight:700;">مفعّل ✅</span>':'<span style="color:var(--muted); font-weight:700;">لسه مش مفعّل ⏳</span>'}</div>
+          </div>
+        </div>
+        <div class="list-actions" style="flex-wrap:wrap;">
+          <button class="badge" onclick="openAdminEditModal('assistants','${a.id}')">تعديل</button>
+          <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('assistants','${a.id}')">حذف</button>
         </div>
       </div>`;
     }).join('') || '<div class="empty">لا يوجد نتائج</div>');
@@ -3441,6 +3486,24 @@ function renderAdminModalFields(id){
         <input type="checkbox" class="f-teacher-classroom-chk" value="${r.id}" ${item.classroomIds&&item.classroomIds.includes(r.id)?'checked':''}> ${r.name}
       </label>`).join('') || '<div class="empty">مفيش مجموعات لسه</div>'}`;
   }
+  else if(type==='assistants'){
+    const item = id ? db.assistants.find(a=>a.id===id) : {};
+    emailGenerationLocked = !!(item.claimedBy);
+    const emailBlock = item.claimedBy
+      ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">🔒 الإيميل: <b style="color:var(--text);">${item.email||''}</b> — الشخص ده عمل حسابه بيه بالفعل، فمش هيتغيّر لو عدّلت الاسم
+          <button type="button" class="badge" style="margin-inline-start:8px;" onclick="handleTransferOwnership('assistants','${item.id}', document.getElementById('f-name').value.trim() || '${(item.name||'').replace(/'/g,"\\'")}')">🔄 تغيير مالك الحساب</button>
+        </div>`
+      : `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">📧 الإيميل (بيتولّد أوتوماتيك من الاسم): <span id="f-email-preview" style="font-weight:700; color:var(--text);">${item.email || 'هيتولّد أوتوماتيك من الاسم بمجرد ما تكتبه'}</span></div>`;
+    el.innerHTML = `
+      <input type="text" id="f-name" placeholder="اسم الأسيستنت" value="${item.name||''}" oninput="updateGeneratedEmailPreview()">
+      <input type="text" id="f-phone" placeholder="رقم التليفون" value="${item.phone||''}">
+      <input type="hidden" id="f-email" value="${item.email||''}">
+      ${emailBlock}
+      <div class="section-title" style="margin:4px 0;">شغال مع المدرّسين دول</div>
+      ${db.teachers.map(t=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
+        <input type="checkbox" class="f-assistant-teacher-chk" value="${t.id}" ${item.teacherIds&&item.teacherIds.includes(t.id)?'checked':''}> ${t.name}
+      </label>`).join('') || '<div class="empty">مفيش مدرّسين لسه</div>'}`;
+  }
   else if(type==='parents'){
     const item = id ? db.parents.find(p=>p.id===id) : {};
     emailGenerationLocked = !!(item.claimedBy);
@@ -3684,6 +3747,22 @@ function saveAdminModal(){
     }
     setPersonEmail('teachers', teacherId, email); // بيتحفظ لوحده لأن saveDB العام بيتخطى عمود الإيميل عمدًا عشان محدش يمسح ربط حساب حد
   }
+  else if(type==='assistants'){
+    const phone = document.getElementById('f-phone').value.trim();
+    const email = document.getElementById('f-email').value.trim();
+    const teacherIds = Array.from(document.querySelectorAll('.f-assistant-teacher-chk:checked')).map(x=>x.value);
+    if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('صيغة الإيميل مش مظبوطة'); return; }
+    if(adminModalMode==='add' && !email){ showToast('لازم تحط إيميل الأسيستنت عشان يقدر يعمل حسابه'); return; }
+    let assistantId = adminModalEditId;
+    if(adminModalMode==='add'){
+      assistantId = uid('as');
+      db.assistants.push({id:assistantId, name, phone, teacherIds, email});
+    } else {
+      const item = db.assistants.find(a=>a.id===assistantId);
+      item.name=name; item.phone=phone; item.teacherIds=teacherIds; item.email=email;
+    }
+    setPersonEmail('assistants', assistantId, email);
+  }
   else if(type==='parents'){
     const phone = document.getElementById('f-phone').value.trim();
     const email = document.getElementById('f-email').value.trim();
@@ -3765,6 +3844,7 @@ function deleteAdminItem(type, id){
     subjects: 'متأكد إنك عايز تحذف المادة دي؟ ⚠️ هتتمسح معاها كل التقييمات المسجلة في المادة دي، وأي حصص ليها في الجدول.',
     classrooms: 'متأكد إنك عايز تحذف المجموعة دي؟ ⚠️ الطلاب المسجلين فيها هيبقوا "بدون مجموعة"، والمدرّسين المرتبطين بيها هيتشال المجموعة من عندهم، وجدول الحصص بتاعها هيتمسح بالكامل.',
     teachers: 'متأكد إنك عايز تحذف المدرّس ده؟ ⚠️ حسابه وجدوله هيتمسحوا، وهيتشال من أي حصص متسجل عليها، وهيتمسح معاه سجل حضوره وتقييمات أدائه بالكامل.',
+    assistants: 'متأكد إنك عايز تحذف الأسيستنت ده؟ ⚠️ حسابه هيتمسح وهيتفك ربطه بكل المدرّسين اللي شغال معاهم.',
     parents: 'متأكد إنك عايز تحذف ولي الأمر ده؟ ⚠️ حسابه وشكاويه هيتمسحوا، وهيتفك ربطه بأي طلاب.',
     children: 'متأكد إنك عايز تحذف الطالب ده؟ ⚠️ كل سجلاته (الأحداث، المدفوعات، التقييمات، الرسائل) هتتمسح بالكامل.'
   };
@@ -3785,6 +3865,9 @@ function deleteAdminItem(type, id){
     db.schedule.forEach(s=>{ if(s.teacherId===id) s.teacherId=null; });
     db.teacherAttendance = db.teacherAttendance.filter(r=>r.teacherId!==id);
     db.teacherEvaluations = db.teacherEvaluations.filter(e=>e.teacherId!==id);
+  }
+  else if(type==='assistants'){
+    db.assistants = db.assistants.filter(a=>a.id!==id);
   }
   else if(type==='parents'){
     db.parents = db.parents.filter(p=>p.id!==id);
