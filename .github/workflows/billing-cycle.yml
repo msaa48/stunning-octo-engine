@@ -24,3 +24,19 @@ jobs:
             echo "run_billing_cycle call failed"
             exit 1
           fi
+
+      - name: Call expire_subscriptions() via Supabase RPC
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://gqevqyduncfnyyfyxreh.supabase.co/rest/v1/rpc/expire_subscriptions" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZXZxeWR1bmNmbnl5Znl4cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjIzOTgsImV4cCI6MjEwMjg5ODM5OH0.dJwydh3CNyyBnQG6M-Wm6WU37gXwFj2wlhC6p9MWDzY" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZXZxeWR1bmNmbnl5Znl4cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjIzOTgsImV4cCI6MjEwMjg5ODM5OH0.dJwydh3CNyyBnQG6M-Wm6WU37gXwFj2wlhC6p9MWDzY" \
+            -H "Content-Type: application/json")
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "HTTP status: $http_code"
+          echo "Response: $body"
+          if [ "$http_code" -ge 300 ]; then
+            echo "expire_subscriptions call failed"
+            exit 1
+          fi
