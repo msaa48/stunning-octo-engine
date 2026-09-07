@@ -142,6 +142,11 @@
   .topbar.admin{background:linear-gradient(120deg,var(--admin-1),var(--admin-2));}
   .topbar .title{font-weight:700; font-size:16px; font-family:'Cairo',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 auto;}
   .topbar .logout{background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff; padding:6px 13px; border-radius:20px; font-size:12.5px; cursor:pointer; font-family:inherit; font-weight:600; flex:0 0 auto; white-space:nowrap;}
+  .notif-bell{position:relative; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff; width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; flex:0 0 auto; display:flex; align-items:center; justify-content:center;}
+  .notif-badge{position:absolute; top:-4px; left:-4px; background:#e5484d; color:#fff; font-size:10px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:1.5px solid; }
+  .topbar.teacher .notif-badge{border-color:var(--teacher-1);}
+  .topbar.parent .notif-badge{border-color:var(--parent-1);}
+  .topbar.admin .notif-badge{border-color:var(--admin-1);}
 
   /* ===== Cards / common ===== */
   .card{background:var(--card); border-radius:16px; padding:17px; margin-bottom:14px; box-shadow:0 2px 10px var(--shadow-1); border:1px solid var(--border);}
@@ -332,10 +337,28 @@
   @media (prefers-reduced-motion: reduce){
     *{ animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
   }
+
+  /* بانر "الدخول بالنيابة" — بيظهر فوق أي شاشة تحت impersonation نشط */
+  #impersonation-banner{
+    display:none; position:fixed; top:0; left:0; right:0; z-index:9999;
+    background:#fbbf24; color:#3b2a00; font-size:13px; font-weight:700;
+    padding:8px 12px; align-items:center; justify-content:space-between; gap:10px;
+    box-shadow:0 2px 6px rgba(0,0,0,.2);
+  }
+  #impersonation-banner .imp-label{ display:flex; align-items:center; gap:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #impersonation-banner button{
+    background:#3b2a00; color:#fbbf24; border:none; border-radius:8px; padding:6px 10px;
+    font-size:12px; font-weight:700; cursor:pointer; flex-shrink:0;
+  }
+  body.has-imp-banner .topbar{ margin-top:36px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
+<div id="impersonation-banner">
+  <span class="imp-label">👁 <span id="imp-label-text"></span></span>
+  <button onclick="stepBackImpersonation()">🔙 رجوع خطوة</button>
+</div>
 <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" aria-label="تبديل المظهر">
   <span class="icon" id="theme-icon">🌙</span>
 </button>
@@ -407,7 +430,43 @@
       <button type="submit" onclick="handleEmailLogin()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">دخول</button>
     </form>
     <button class="back-link" onclick="showScreen('signup-screen')" style="margin-top:10px;">فعّل حسابك الجديد</button>
+    <button class="back-link" onclick="openForgotPasswordScreen()">نسيت كلمة السر؟</button>
     <button class="back-link" onclick="showScreen('login-screen')">رجوع لاختيار الدور</button>
+  </div>
+</div>
+
+<!-- ============ FORGOT PASSWORD (SEND RESET EMAIL) SCREEN ============ -->
+<div id="forgot-password-screen" class="screen">
+  <div class="pin-box">
+    <h2>استرجاع كلمة السر</h2>
+    <p>اكتب الإيميل بتاعك وهنبعتلك لينك تعمل بيه كلمة سر جديدة</p>
+    <div class="pin-error" id="forgot-password-error"></div>
+    <div class="pin-success" id="forgot-password-success" style="color:#16a34a; font-size:14px; margin-bottom:10px;"></div>
+    <form id="forgot-password-form" onsubmit="return false;" style="width:100%;">
+      <input type="email" id="forgot-password-email" placeholder="الإيميل" autocomplete="username" required
+             style="width:100%; padding:14px; margin-bottom:16px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
+      <button type="submit" id="forgot-password-submit-btn" onclick="handleForgotPassword()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">ابعت لينك الاسترجاع</button>
+    </form>
+    <button class="back-link" onclick="showScreen('pin-screen')" style="margin-top:10px;">رجوع لتسجيل الدخول</button>
+  </div>
+</div>
+
+<!-- ============ RESET PASSWORD (AFTER CLICKING EMAIL LINK) SCREEN ============ -->
+<div id="reset-password-screen" class="screen">
+  <div class="pin-box">
+    <h2>كلمة سر جديدة</h2>
+    <p>اكتب كلمة السر الجديدة بتاعتك</p>
+    <div class="pin-error" id="reset-password-error"></div>
+    <form id="reset-password-form" onsubmit="return false;" style="width:100%;">
+      <div class="pw-wrap" style="margin-bottom:8px;">
+        <input type="password" id="reset-password-new" placeholder="كلمة السر الجديدة" autocomplete="new-password" required minlength="8"
+               oninput="renderResetPasswordChecklist()"
+               style="padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
+        <button type="button" class="pw-eye" onclick="togglePasswordVisibility('reset-password-new', this)">👁️</button>
+      </div>
+      <ul id="reset-password-checklist" style="list-style:none; padding:0; margin:0 0 16px; font-size:12px; display:flex; flex-direction:column; gap:4px;"></ul>
+      <button type="submit" onclick="handleResetPassword()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">حفظ كلمة السر</button>
+    </form>
   </div>
 </div>
 
@@ -455,7 +514,8 @@
 <div id="teacher-screen" class="screen">
   <div class="topbar teacher">
     <div class="title">👩‍🏫 واجهة المدرّس</div>
-    <button class="logout" onclick="logout()">خروج</button>
+    <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-teacher" style="display:none;">0</span></button>
+    <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
     <div class="tab-menu" id="teacher-tab-menu">
@@ -463,10 +523,15 @@
       <button class="tab-card teacher" id="teacher-tab-attendance" onclick="switchTeacherTab('attendance')"><span class="tc-icon">🕒</span><span class="tc-label">حضوري وانصرافي</span></button>
       <button class="tab-card teacher" id="teacher-tab-schedule" onclick="switchTeacherTab('schedule')"><span class="tc-icon">📅</span><span class="tc-label">جدولي الأسبوعي</span></button>
       <button class="tab-card teacher" id="teacher-tab-chat" onclick="switchTeacherTab('chat')"><span class="tc-icon">💬</span><span class="tc-label">شات الأهالي</span></button>
+      <button class="tab-card teacher" id="teacher-tab-payouts" onclick="switchTeacherTab('payouts')"><span class="tc-icon">💰</span><span class="tc-label">مرتبي</span></button>
     </div>
     <button class="tab-back" id="teacher-tab-back" onclick="history.back()" style="display:none;">→ رجوع للقائمة</button>
 
     <div id="teacher-panel-log">
+    <div id="teacher-pending-exceptions-wrap" style="display:none;">
+      <div class="section-title" style="margin-top:0;">🎫 طلبات استثناء من الأسيستنت</div>
+      <div id="teacher-pending-exceptions" class="timeline"></div>
+    </div>
     <div class="section-title" style="margin-top:0;">طلابي</div>
     <div id="teacher-student-grid" class="student-grid"></div>
     <select id="teacher-child-select" style="display:none;" onchange="renderTeacherLog(); renderTeacherChat(); renderTeacherStudentGrid();"></select>
@@ -525,6 +590,25 @@
         <button class="btn primary teacher" onclick="sendTeacherMessage()">إرسال</button>
       </div>
     </div>
+
+    <div id="teacher-panel-payouts" style="display:none;">
+      <div class="section-title" style="margin-top:0;">💰 كشوف مرتبي</div>
+      <div id="teacher-payouts-view"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ASSISTANT SCREEN ============ -->
+<div id="assistant-screen" class="screen">
+  <div class="topbar teacher">
+    <div class="title" id="assistant-title">🧑‍💼 واجهة الأسيستنت</div>
+    <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-assistant" style="display:none;">0</span></button>
+    <button class="logout" onclick="exitOrStepBack()">خروج</button>
+  </div>
+  <div class="container">
+    <select id="assistant-teacher-select" style="display:none; margin-bottom:12px;" onchange="selectAssistantTeacher(this.value)"></select>
+    <div class="section-title" style="margin-top:0;">طلاب المدرّس</div>
+    <div id="assistant-student-grid" class="student-grid"></div>
   </div>
 </div>
 
@@ -532,7 +616,8 @@
 <div id="parent-screen" class="screen">
   <div class="topbar parent">
     <div class="title">👨‍👩‍👧 ولي الأمر</div>
-    <button class="logout" onclick="logout()">خروج</button>
+    <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-parent" style="display:none;">0</span></button>
+    <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
     <div class="tab-menu" id="parent-tab-menu">
@@ -603,7 +688,8 @@
 <div id="admin-screen" class="screen">
   <div class="topbar admin">
     <div class="title">🗂️ لوحة المدير</div>
-    <button class="logout" onclick="logout()">خروج</button>
+    <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-admin" style="display:none;">0</span></button>
+    <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
     <div class="stat-grid" id="admin-stats"></div>
@@ -649,6 +735,11 @@
       <button class="badge" onclick="openCreateCenterModal()">+ مؤسسة جديدة</button>
     </div>
     <div id="sa-centers-list"></div>
+
+    <div class="section-title" id="sa-invoices-title" style="display:none; justify-content:space-between; align-items:center;">
+      <span>🧾 فواتير اشتراك المؤسسات</span>
+    </div>
+    <div id="sa-invoices-list"></div>
 
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
       <span>🗑️ سلة المهملات</span>
@@ -711,7 +802,7 @@
   <div class="topbar admin">
     <button class="back-link" style="color:#fff; font-size:20px; padding:0 6px;" onclick="showScreen('admin-screen')">→</button>
     <div class="title" id="admin-section-title">القسم</div>
-    <button class="logout" onclick="logout()">خروج</button>
+    <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
     <button class="btn primary admin block" id="admin-add-btn" style="margin:14px 0;" onclick="openAdminAddModal()">+ إضافة</button>
@@ -728,6 +819,40 @@
     <div style="display:flex; gap:8px; margin-top:14px;">
       <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('admin-modal-bg')">إلغاء</button>
       <button class="btn primary admin block" onclick="saveAdminModal()">حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: إنشاء كشوف حساب المدرّسين -->
+<div class="modal-bg" id="gen-payouts-modal-bg">
+  <div class="modal">
+    <h3>📅 إنشاء كشوف الشهر</h3>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <label style="font-size:13px; color:var(--muted);">من تاريخ</label>
+      <input type="text" id="gp-period-start" placeholder="YYYY-MM-DD">
+      <label style="font-size:13px; color:var(--muted);">لحد تاريخ</label>
+      <input type="text" id="gp-period-end" placeholder="YYYY-MM-DD">
+      <div style="font-size:12px; color:var(--muted);">💡 مقترح تلقائيًا الشهر اللي فات — عدّلهم لو عايز فترة مخصوصة</div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('gen-payouts-modal-bg')">إلغاء</button>
+      <button class="btn primary admin block" onclick="generateAllTeacherPayouts()">إنشاء لكل المدرّسين</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: تعديل يدوي على كشف حساب -->
+<div class="modal-bg" id="adjust-payout-modal-bg">
+  <div class="modal">
+    <h3>تعديل يدوي على الكشف</h3>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div id="adjust-payout-info" style="font-size:13px; color:var(--muted);"></div>
+      <input type="text" id="ap-amount" placeholder="قيمة التعديل (+ أو -، بالجنيه)">
+      <input type="text" id="ap-reason" placeholder="سبب التعديل (اختياري)">
+    </div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('adjust-payout-modal-bg')">إلغاء</button>
+      <button class="btn primary admin block" onclick="saveAdjustPayout()">حفظ</button>
     </div>
   </div>
 </div>
@@ -845,6 +970,16 @@
   </div>
 </div>
 
+<div class="modal-bg" id="notif-modal-bg">
+  <div class="modal">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0; font-size:16px;">🔔 الإشعارات</h3>
+      <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeModal('notif-modal-bg')">✕</button>
+    </div>
+    <div id="notif-list" style="max-height:60vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+  </div>
+</div>
+
 <script>
 /* ========================= THEME (dark mode) ========================= */
 const THEME_KEY = 'center_demo_theme';
@@ -877,9 +1012,9 @@ let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخ
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
   const db = seedData(); // نبدأ بشكل افتراضي كامل، وبعدين نستبدل كل جزء بيانات حقيقية جاية من Supabase
-  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee)}));
+  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee), paymentModes:r.payment_modes||['monthly'], sessionFee:Number(r.session_fee||0)}));
   db.subjects = rows.subjects.map(r=>({id:r.id, name:r.name, color:r.color, grade:r.grade}));
-  db.teachers = rows.teachers.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, classroomIds:r.classroom_ids||[]}));
+  db.teachers = rows.teachers.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, classroomIds:r.classroom_ids||[], paymentType:r.payment_type||'salary', percentageRate:r.percentage_rate!=null?Number(r.percentage_rate):null, baseSalary:r.base_salary!=null?Number(r.base_salary):null}));
   db.assistants = rows.assistants.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by,
     teacherIds: (rows.assistantTeachers||[]).filter(l=>l.assistant_id===r.id).map(l=>l.teacher_id)}));
   db.parents = rows.parents.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, childIds:r.child_ids||[]}));
@@ -893,12 +1028,22 @@ function rowsToDB(rows){
   db.events = rows.events.map(r=>({...r.payload, id:r.id}));
   db.complaints = rows.complaints.map(r=>({...r.payload, id:r.id}));
   db.payments = rows.payments.map(r=>({...r.payload, id:r.id}));
+  db.enrollments = (rows.enrollments||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode}));
+  db.subscriptions = (rows.subscriptions||[]).map(r=>({id:r.id, enrollmentId:r.enrollment_id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode, periodStart:r.period_start, periodEnd:r.period_end, amount:Number(r.amount), status:r.status}));
+  // attendance/attendance_exceptions للقراءة والعرض بس — الكتابة بتتم مباشرة على Supabase (مش عن طريق pushDBToSupabase) عشان الـtrigger يشتغل صح لحظيًا
+  db.attendance = (rows.attendance||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, sessionDate:r.session_date, teacherId:r.teacher_id, exceptionId:r.exception_id}));
+  db.attendanceExceptions = (rows.attendanceExceptions||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, requestedBy:r.requested_by, grantedByRole:r.granted_by_role, grantedBy:r.granted_by, status:r.status, reason:r.reason, flaggedUnjustified:r.flagged_unjustified, flaggedNote:r.flagged_note, consumed:r.consumed, createdAt:r.created_at}));
   db.evaluations = rows.evaluations.map(r=>({...r.payload, id:r.id}));
   db.messages = rows.messages.map(r=>({...r.payload, id:r.id}));
   db.teacherAttendance = rows.teacherAttendance.map(r=>({...r.payload, id:r.id}));
   db.teacherEvaluations = rows.teacherEvaluations.map(r=>({...r.payload, id:r.id}));
   db.teacherRaises = rows.teacherRaises.map(r=>({...r.payload, id:r.id}));
-  db.settings = rows.appSettings ? {raiseCycleMonths: rows.appSettings.raise_cycle_months} : {raiseCycleMonths:4};
+  db.teacherPayouts = (rows.teacherPayouts||[]).map(r=>({id:r.id, teacherId:r.teacher_id, periodStart:r.period_start, periodEnd:r.period_end, sessionCount:r.session_count, computedAmount:Number(r.computed_amount), manualAdjustment:Number(r.manual_adjustment), adjustmentReason:r.adjustment_reason, adjustedBy:r.adjusted_by, finalAmount:Number(r.final_amount), status:r.status, createdAt:r.created_at}));
+  db.settings = rows.appSettings ? {raiseCycleMonths: rows.appSettings.raise_cycle_months, teacherPayoutBasis: rows.appSettings.teacher_payout_basis||'sessions'} : {raiseCycleMonths:4, teacherPayoutBasis:'sessions'};
+  // الأدمن بيقدر (حسب RLS) يشوف كل إشعارات مركزه، لكن الجرس المفروض يعرض بس إشعاراته الشخصية هو —
+  // فبنفلتر هنا على recipient_id === authId بغض النظر عن الدور، مش بس نعتمد على RLS
+  db.notifications = (rows.notifications||[]).filter(r=>r.recipient_id===session.authId)
+    .map(r=>({id:r.id, recipientId:r.recipient_id, type:r.type, title:r.title, body:r.body, childId:r.child_id, classroomId:r.classroom_id, exceptionId:r.exception_id, isRead:r.is_read, createdAt:r.created_at}));
   return db;
 }
 
@@ -908,21 +1053,30 @@ async function fetchDBFromSupabase(){
   try{
     const { data: centerRow } = await supabaseClient.from('centers').select('name').eq('id', centerId).single();
     session.centerSlug = slugifyWordsForDomain(centerRow?.name || 'markaz'); // مستخدم كدومين للإيميلات المولّدة أوتوماتيك (بعد الـ@) — مفصول بـ hyphen "-" لأن الـ underscore ممنوع في أسماء الدومين
-    const tables = ['classrooms','subjects','teachers','assistants','assistant_teachers','parents','children','schedule',
+    const isAdmin = session.role==='ADMIN';
+    const tables = ['classrooms','subjects','assistants','assistant_teachers','parents','children','schedule',
       'schedule_settings_by_classroom','calendar_events','events','complaints','payments',
       'evaluations','messages','teacher_attendance','teacher_evaluations','teacher_raises',
-      'subject_tasks','task_completions'];
-    const results = await Promise.all(tables.map(t=> supabaseClient.from(t).select('*').eq('center_id', centerId)));
+      'subject_tasks','task_completions','enrollments','subscriptions','attendance','attendance_exceptions','teacher_payouts',
+      'notifications'];
+    // جدول المدرّسين فيه أعمدة حساسة (الراتب والنسبة) — الأدمن بس يقرأ الجدول الأصلي، وأي حد تاني (مدرّس تاني، ولي أمر) يقرأ من شباك آمن بيخفي الراتب/النسبة تمامًا
+    const teachersQuery = isAdmin
+      ? supabaseClient.from('teachers').select('*').eq('center_id', centerId)
+      : supabaseClient.from('teachers_public').select('*').eq('center_id', centerId);
+    const results = await Promise.all([teachersQuery, ...tables.map(t=> supabaseClient.from(t).select('*').eq('center_id', centerId))]);
+    const teachersResult = results[0];
+    const restResults = results.slice(1);
     const appSettingsRes = await supabaseClient.from('app_settings').select('*').eq('center_id', centerId).single();
 
-    const failed = results.find(r=>r.error);
+    const failed = [teachersResult, ...restResults].find(r=>r.error);
     if(failed) throw failed.error;
 
     const rows = {};
     tables.forEach((t,i)=>{
       const key = t.replace(/_([a-z])/g, (_,c)=>c.toUpperCase()); // snake_case -> camelCase
-      rows[key] = results[i].data || [];
+      rows[key] = restResults[i].data || [];
     });
+    rows.teachers = teachersResult.data || [];
     rows.appSettings = appSettingsRes.data || null;
 
 
@@ -948,15 +1102,15 @@ function seedData(){
     ],
     // كل مجموعة = مجموعة طلاب بيحضروا مع مدرّس واحد في مادة واحدة (زي "مجموعة رياضيات - ثالثة إعدادي - أ. أحمد")
     classrooms: [
-      {id:'c1', name:'مجموعة رياضيات — ثالثة إعدادي', grade:'PREP3', monthlyFee:350},
-      {id:'c2', name:'مجموعة إنجليزي — أولى ثانوي', grade:'SEC1', monthlyFee:400},
-      {id:'c3', name:'مجموعة فيزياء — ثانية ثانوي', grade:'SEC2', monthlyFee:450},
-      {id:'c4', name:'مجموعة كيمياء — ثانية ثانوي', grade:'SEC2', monthlyFee:400}
+      {id:'c1', name:'مجموعة رياضيات — ثالثة إعدادي', grade:'PREP3', monthlyFee:350, paymentModes:['monthly'], sessionFee:0},
+      {id:'c2', name:'مجموعة إنجليزي — أولى ثانوي', grade:'SEC1', monthlyFee:400, paymentModes:['monthly'], sessionFee:0},
+      {id:'c3', name:'مجموعة فيزياء — ثانية ثانوي', grade:'SEC2', monthlyFee:450, paymentModes:['monthly','session'], sessionFee:60},
+      {id:'c4', name:'مجموعة كيمياء — ثانية ثانوي', grade:'SEC2', monthlyFee:400, paymentModes:['monthly'], sessionFee:0}
     ],
     teachers: [
-      {id:'t1', name:'أ. أحمد الشريف', phone:'01011112222', classroomIds:['c1']},
-      {id:'t2', name:'أ. منى خالد', phone:'01033334444', classroomIds:['c2']},
-      {id:'t3', name:'أ. كريم عادل', phone:'01099998888', classroomIds:['c3','c4']}
+      {id:'t1', name:'أ. أحمد الشريف', phone:'01011112222', classroomIds:['c1'], paymentType:'salary', baseSalary:3000, percentageRate:null},
+      {id:'t2', name:'أ. منى خالد', phone:'01033334444', classroomIds:['c2'], paymentType:'salary', baseSalary:2500, percentageRate:null},
+      {id:'t3', name:'أ. كريم عادل', phone:'01099998888', classroomIds:['c3','c4'], paymentType:'percentage', percentageRate:15, baseSalary:null}
     ],
     assistants: [],
     parents: [
@@ -1002,10 +1156,21 @@ function seedData(){
     messages: [],
     teacherAttendance: [],
     teacherEvaluations: [],
-    settings: { raiseCycleMonths: 4 },
+    settings: { raiseCycleMonths: 4, teacherPayoutBasis: 'sessions' },
+    teacherPayouts: [],
     teacherRaises: [],
     subjectTasks: [],
-    taskCompletions: []
+    taskCompletions: [],
+    enrollments: [
+      {id:'en1', childId:'ch1', classroomId:'c1', paymentMode:'monthly'},
+      {id:'en2', childId:'ch2', classroomId:'c2', paymentMode:'monthly'},
+      {id:'en3', childId:'ch3', classroomId:'c3', paymentMode:'monthly'},
+      {id:'en4', childId:'ch3', classroomId:'c4', paymentMode:'monthly'}
+    ],
+    subscriptions: [],
+    attendance: [],
+    attendanceExceptions: [],
+    notifications: []
   };
 }
 
@@ -1096,10 +1261,13 @@ async function pushDBToSupabase(db){
   if(!centerId) return; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
   try{
     await Promise.all([
-      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, center_id:centerId}))),
+      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, center_id:centerId}))),
+      supabaseClient.from('enrollments').upsert((db.enrollments||[]).map(e=>({id:e.id, child_id:e.childId, classroom_id:e.classroomId, payment_mode:e.paymentMode, center_id:centerId}))),
+      supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, center_id:centerId}))),
       supabaseClient.from('subjects').upsert(db.subjects.map(s=>({id:s.id, name:s.name, color:s.color, grade:s.grade, center_id:centerId}))),
       // ملحوظة: email و claimed_by مقصودين خارج الـ upsert ده عشان منمسحش ربط الحساب الحقيقي بتاع المدرّس/ولي الأمر
-      supabaseClient.from('teachers').upsert(db.teachers.map(t=>({id:t.id, name:t.name, phone:t.phone, classroom_ids:t.classroomIds, center_id:centerId}))),
+      // ملحوظة أمان: بيانات المدرّسين (فيها راتب/نسبة) بتتبعت بس لو اللي بيحفظ هو الأدمن — مفيش داعي إن مدرّس أو حد تاني يبعت الجدول ده أصلًا حتى لو الحماية على الداتابيز بترفض أي تعديل فعلي
+      ...(session.role==='ADMIN' ? [supabaseClient.from('teachers').upsert(db.teachers.map(t=>({id:t.id, name:t.name, phone:t.phone, classroom_ids:t.classroomIds, center_id:centerId, payment_type:t.paymentType||'salary', percentage_rate:t.percentageRate!=null?t.percentageRate:null, base_salary:t.baseSalary!=null?t.baseSalary:null})))] : []),
       // ملحوظة: email و claimed_by مقصودين خارج الـupsert ده برضه لنفس سبب المدرّس/ولي الأمر
       supabaseClient.from('assistants').upsert(db.assistants.map(a=>({id:a.id, name:a.name, phone:a.phone, center_id:centerId}))),
       syncAssistantTeacherLinks(db, centerId),
@@ -1118,7 +1286,7 @@ async function pushDBToSupabase(db){
       supabaseClient.from('teacher_attendance').upsert(db.teacherAttendance.map(a=>({id:a.id, teacher_id:a.teacherId||null, payload:a, center_id:centerId}))),
       supabaseClient.from('teacher_evaluations').upsert(db.teacherEvaluations.map(e=>({id:e.id, teacher_id:e.teacherId||null, payload:e, center_id:centerId}))),
       supabaseClient.from('teacher_raises').upsert(db.teacherRaises.map(r=>({id:r.id, teacher_id:r.teacherId||null, payload:r, center_id:centerId}))),
-      supabaseClient.from('app_settings').upsert({center_id:centerId, raise_cycle_months:db.settings.raiseCycleMonths})
+      supabaseClient.from('app_settings').upsert({center_id:centerId, raise_cycle_months:db.settings.raiseCycleMonths, teacher_payout_basis:db.settings.teacherPayoutBasis||'sessions'})
     ]);
   } catch(e){
     console.error('فشل مزامنة البيانات مع Supabase — النسخة المحلية محفوظة، هيتعاد المحاولة عند أول حفظ تاني', e);
@@ -1128,6 +1296,10 @@ async function pushDBToSupabase(db){
 
 function uid(prefix){
   return prefix + '_' + Date.now() + '_' + Math.floor(Math.random()*10000);
+}
+async function getAuthUserId(){
+  const { data:{ session: s } } = await supabaseClient.auth.getSession();
+  return s && s.user ? s.user.id : null;
 }
 
 /* ========================= SESSION STATE ========================= */
@@ -1146,7 +1318,23 @@ const SUPABASE_URL = 'https://gqevqyduncfnyyfyxreh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZXZxeWR1bmNmbnl5Znl4cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjIzOTgsImV4cCI6MjEwMjg5ODM5OH0.dJwydh3CNyyBnQG6M-Wm6WU37gXwFj2wlhC6p9MWDzY';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let session = { role:null, personId:null, centerId:null, isSuperAdmin:false, isOwner:false, permissions:{}, centerSlug:'markaz' };
+// لينك "استرجاع كلمة السر" اللي بييجي في الإيميل بيرجّع اليوزر هنا مع type=recovery
+// في الرابط — لو حصل كده لازم نوديه لشاشة "كلمة سر جديدة" مباشرة، مش لشاشة
+// الدور العادية (initAuth) رغم إنه فعليًا بقى عنده session صالحة.
+let isPasswordRecoveryFlow = /type=recovery/.test(window.location.hash) || /type=recovery/.test(window.location.search);
+supabaseClient.auth.onAuthStateChange(function(event, _s){
+  if(event === 'PASSWORD_RECOVERY'){
+    isPasswordRecoveryFlow = true;
+    showScreen('reset-password-screen');
+  }
+});
+
+let session = { role:null, personId:null, centerId:null, isSuperAdmin:false, isOwner:false, permissions:{}, centerSlug:'markaz', authId:null, viewingLabel:null };
+// مكدس "الدخول بالنيابة" — كل عنصر هو نسخة كاملة من الـsession قبل الدخول للمستوى الجديد،
+// عشان الرجوع يبقى خطوة-خطوة صحيح. session.authId (الهوية الحقيقية) بيفضل ثابت طول الوقت،
+// وأي كتابة (حضور/استثناء/إلخ) بتتسجل بيه دايمًا لأن الـauth الحقيقي في Supabase مايتغيرش خالص —
+// الميزة كلها فرونت اند بحت لأن RLS بيسمح لـis_super_admin() وللأدمن بكل بيانات مركزه أصلاً.
+let impersonationStack = [];
 let pendingRole = null;
 let pendingPersonId = null;
 let parentPollTimer = null;
@@ -1277,7 +1465,7 @@ function checkAgeGradeMismatch(dobStr, grade){
  * الشاشة — عشان مايفضلش فيه session شغالة في الخلفية لو المستخدم
  * دوس "قدام" تاني أو رجع فتح التطبيق.
  */
-const PUBLIC_SCREENS = ['login-screen', 'pin-screen', 'signup-screen'];
+const PUBLIC_SCREENS = ['login-screen', 'pin-screen', 'signup-screen', 'forgot-password-screen', 'reset-password-screen'];
 let navHistory = [];
 let isPoppingState = false; // true وقت إننا بنستجيب لـ popstate، عشان مانعملش pushState تاني بالغلط
 
@@ -1511,6 +1699,82 @@ async function handleSignup(){
   document.getElementById('login-password').focus();
 }
 
+/* ========================= نسيت كلمة السر ========================= */
+function openForgotPasswordScreen(){
+  document.getElementById('forgot-password-error').textContent = '';
+  document.getElementById('forgot-password-success').textContent = '';
+  document.getElementById('forgot-password-email').value = document.getElementById('login-email')?.value.trim() || '';
+  showScreen('forgot-password-screen');
+}
+
+async function handleForgotPassword(){
+  const email = document.getElementById('forgot-password-email').value.trim();
+  const errorEl = document.getElementById('forgot-password-error');
+  const successEl = document.getElementById('forgot-password-success');
+  const btn = document.getElementById('forgot-password-submit-btn');
+  errorEl.textContent = '';
+  successEl.textContent = '';
+  if(!email){ errorEl.textContent = 'اكتب الإيميل الأول'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'بيتبعت...';
+  try{
+    // redirectTo لازم يكون نفس رابط الصفحة الحالية عشان بعد ما اليوزر يدوس على اللينك
+    // في إيميله، Supabase يرجّعه لنفس التطبيق ده (مش صفحة تانية) مع توكن الاسترجاع في الرابط
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+    if(error){
+      errorEl.textContent = 'خطأ من السيرفر: ' + error.message;
+    } else {
+      // بنفس رسالة النجاح بغض النظر هل الإيميل مسجل ولا لأ، عشان محدش يقدر
+      // يستخدم الشاشة دي يتأكد إيه الإيميلات المسجلة في النظام من عدمه
+      successEl.textContent = '✅ لو الإيميل ده مسجل عندنا، هتوصلك رسالة فيها لينك تعمل بيه كلمة سر جديدة. افتحها من على نفس الجهاز/المتصفح ده.';
+    }
+  } catch(networkErr){
+    errorEl.textContent = '⚠️ تعذّر الاتصال بالسيرفر: ' + networkErr.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'ابعت لينك الاسترجاع';
+  }
+}
+
+function renderResetPasswordChecklist(){
+  const password = document.getElementById('reset-password-new').value;
+  const rules = checkPasswordRules(password);
+  const labels = { len:'8 خانات على الأقل', letter:'حرف إنجليزي واحد على الأقل (a-z/A-Z)', digit:'رقم واحد على الأقل', nospace:'من غير مسافات فارغة' };
+  const listEl = document.getElementById('reset-password-checklist');
+  listEl.innerHTML = Object.keys(labels).map(key => {
+    const ok = rules[key];
+    return `<li style="color:${ok ? 'var(--admin-1,#2563eb)' : 'var(--sub,#9ca3af)'}">${ok ? '✓' : '○'} ${labels[key]}</li>`;
+  }).join('');
+  return rules;
+}
+
+async function handleResetPassword(){
+  const password = document.getElementById('reset-password-new').value;
+  const errorEl = document.getElementById('reset-password-error');
+  errorEl.textContent = '';
+
+  const rules = renderResetPasswordChecklist();
+  if(!rules.len || !rules.letter || !rules.digit || !rules.nospace){
+    errorEl.textContent = 'كلمة السر لازم تكون 8 خانات على الأقل، فيها حرف ورقم، من غير مسافات فارغة';
+    return;
+  }
+
+  try{
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    if(error){
+      errorEl.textContent = 'خطأ من السيرفر: ' + error.message;
+      return;
+    }
+    showToast('✅ اتغيّرت كلمة السر بنجاح — سجّل دخولك بيها');
+    await supabaseClient.auth.signOut();
+    showScreen('login-screen');
+  } catch(networkErr){
+    errorEl.textContent = '⚠️ تعذّر الاتصال بالسيرفر: ' + networkErr.message;
+  }
+}
+
 async function handleEmailLogin(){
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
@@ -1550,6 +1814,7 @@ async function handleEmailLogin(){
   session.isSuperAdmin = profile.is_super_admin;
   session.isOwner = profile.is_owner;
   session.permissions = profile.permissions || {};
+  session.authId = data.user.id;
 
   if(profile.is_super_admin){
     enterRoleScreen('SUPER_ADMIN');
@@ -1560,6 +1825,11 @@ async function handleEmailLogin(){
 }
 
 async function initAuth(){
+  if(isPasswordRecoveryFlow){
+    // مستني اليوزر يحط كلمة سر جديدة في reset-password-screen — منسيبش
+    // الفلو العادي يوديه لشاشة الدور بمجرد ما يلاقي session صالحة
+    return;
+  }
   const { data: { session: supaSession } } = await supabaseClient.auth.getSession();
   if(supaSession){
     // مهم لزرار الرجوع: لو فيه session محفوظة من قبل (فتحنا التطبيق وإحنا
@@ -1585,6 +1855,7 @@ async function initAuth(){
       session.isSuperAdmin = profile.is_super_admin;
   session.isOwner = profile.is_owner;
   session.permissions = profile.permissions || {};
+  session.authId = supaSession.user.id;
       if(profile.is_super_admin){
         enterRoleScreen('SUPER_ADMIN');
         return;
@@ -1599,8 +1870,10 @@ async function initAuth(){
 
 async function logout(){
   await supabaseClient.auth.signOut();
-  session = {role:null, personId:null, centerId:null, isSuperAdmin:false, isOwner:false, permissions:{}, centerSlug:'markaz'};
+  session = {role:null, personId:null, centerId:null, isSuperAdmin:false, isOwner:false, permissions:{}, centerSlug:'markaz', authId:null, viewingLabel:null};
+  impersonationStack = [];
   dbCache = null;
+  updateImpersonationBanner();
   // تصفير مكدس التنقل بالكامل عشان زرار الرجوع مايرجعش لشاشات كانت
   // محتاجة session بعد الخروج اليدوي (حتى لو الـ session فعليًا خلصت،
   // ده بيمنع أي وميض/عرض بيانات قديمة من dbCache قبل ما توليه لصفحة الدخول)
@@ -1620,6 +1893,129 @@ function enterRoleScreen(role){
   else if(role==='PARENT'){ initParentScreen(); showScreen('parent-screen'); }
   else if(role==='ADMIN'){ initAdminScreen(); showScreen('admin-screen'); }
   else if(role==='SUPER_ADMIN'){ initSuperAdminScreen(); showScreen('super-admin-screen'); }
+  else if(role==='ASSISTANT'){ initAssistantScreen(); showScreen('assistant-screen'); }
+  updateNotifBadge();
+  updateImpersonationBanner();
+}
+
+/* ========================= الدخول بالنيابة (Impersonation) ========================= */
+// opts: {role, personId, centerId, label} — بيدخل مستوى جديد ويحتفظ بالمستوى الحالي في المكدس
+async function startImpersonation(opts){
+  impersonationStack.push({...session});
+  const centerChanged = session.centerId !== opts.centerId;
+  session = {
+    ...session,
+    role: opts.role,
+    personId: opts.personId != null ? opts.personId : null,
+    centerId: opts.centerId,
+    viewingLabel: opts.label
+  };
+  if(centerChanged){
+    dbCache = null;
+    await fetchDBFromSupabase();
+  }
+  enterRoleScreen(session.role);
+}
+
+// بيرجع مستوى واحد بالظبط من المكدس (مش logout حقيقي) — لو المكدس فاضي، مفيش حاجة تتعمل هنا
+async function stepBackImpersonation(){
+  if(!impersonationStack.length) return;
+  const prev = impersonationStack.pop();
+  const centerChanged = session.centerId !== prev.centerId;
+  session = prev;
+  if(centerChanged){
+    dbCache = null;
+    await fetchDBFromSupabase();
+  }
+  enterRoleScreen(session.role);
+}
+
+// بيتنادى بدل logout() من زراير "خروج" في الشاشات القابلة للدخول بالنيابة (مدرّس/أسيستنت/ولي أمر/أدمن):
+// لو إحنا فعليًا جوه مستوى مشاهدة، بيرجع خطوة واحدة بس؛ لو إحنا في أعلى مستوى (مفيش impersonation نشط)، بيعمل logout حقيقي.
+async function exitOrStepBack(){
+  if(impersonationStack.length) await stepBackImpersonation();
+  else await logout();
+}
+
+function updateImpersonationBanner(){
+  const banner = document.getElementById('impersonation-banner');
+  const labelEl = document.getElementById('imp-label-text');
+  if(!banner || !labelEl) return;
+  if(impersonationStack.length && session.viewingLabel){
+    labelEl.textContent = 'بتشوف كـ' + session.viewingLabel;
+    banner.style.display = 'flex';
+    document.body.classList.add('has-imp-banner');
+  } else {
+    banner.style.display = 'none';
+    document.body.classList.remove('has-imp-banner');
+  }
+}
+
+function escAttr(s){ return String(s==null?'':s).replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+/* ========================= الإشعارات ========================= */
+function updateNotifBadge(){
+  const db = loadDB();
+  const unread = (db.notifications||[]).filter(n=>!n.isRead).length;
+  ['teacher','assistant','parent','admin'].forEach(role=>{
+    const el = document.getElementById('notif-badge-'+role);
+    if(!el) return;
+    if(unread>0){ el.textContent = unread>99?'99+':String(unread); el.style.display='flex'; }
+    else{ el.style.display='none'; }
+  });
+}
+
+function openNotifModal(){
+  renderNotifModal();
+  document.getElementById('notif-modal-bg').classList.add('show');
+}
+
+const NOTIF_TYPE_ICON = {
+  renewal_reminder: '⏰', exception_request: '🎫', exception_resolved: '✅',
+  billing_overdue: '⚠️', billing_suspended: '🚫'
+};
+
+function renderNotifModal(){
+  const db = loadDB();
+  const list = (db.notifications||[]).slice().sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
+  const listEl = document.getElementById('notif-list');
+  if(list.length===0){
+    listEl.innerHTML = '<p style="text-align:center; color:var(--sub,#9ca3af); padding:20px 0;">مفيش إشعارات دلوقتي</p>';
+    return;
+  }
+  listEl.innerHTML = list.map(n=>{
+    const icon = NOTIF_TYPE_ICON[n.type] || '🔔';
+    const unreadStyle = n.isRead ? '' : 'border-inline-start:3px solid var(--danger,#e5484d);';
+    return `<div class="card" style="margin-bottom:0; padding:12px 14px; cursor:pointer; ${unreadStyle}" onclick="markNotifRead('${n.id}')">
+      <div style="display:flex; gap:8px; align-items:flex-start;">
+        <span style="font-size:18px;">${icon}</span>
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; font-size:13.5px;">${n.title||''}</div>
+          <div style="font-size:12.5px; color:var(--sub,#6b7280); margin-top:2px;">${n.body||''}</div>
+          <div style="font-size:11px; color:var(--sub,#9ca3af); margin-top:4px;">${formatNotifTime(n.createdAt)}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function formatNotifTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ar-EG', {day:'numeric', month:'short'}) + ' — ' + d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+}
+
+async function markNotifRead(notifId){
+  const db = loadDB();
+  const n = (db.notifications||[]).find(x=>x.id===notifId);
+  if(!n || n.isRead) return; // اتعلّم مقروء بالفعل، مفيش داعي نبعت update تاني
+  const { error } = await supabaseClient.from('notifications').update({ is_read: true }).eq('id', notifId);
+  if(error){ showToast('تعذّر تحديث الإشعار'); return; }
+  n.isRead = true;
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
+  renderNotifModal();
+  updateNotifBadge();
 }
 
 function showToast(msg){
@@ -1648,19 +2044,23 @@ function switchTeacherTab(tab){
   pushOrReplaceTabState('teacher-screen', tab);
   document.getElementById('teacher-tab-menu').style.display = 'none';
   document.getElementById('teacher-tab-back').style.display = 'flex';
-  ['log','attendance','schedule','chat'].forEach(t=>{
+  ['log','attendance','schedule','chat','payouts'].forEach(t=>{
     document.getElementById('teacher-tab-'+t).classList.toggle('active', t===tab);
     document.getElementById('teacher-panel-'+t).style.display = t===tab ? 'block':'none';
   });
   if(tab==='attendance') renderTeacherAttendance();
   if(tab==='schedule') renderTeacherSchedule();
   if(tab==='chat') renderTeacherChat();
+  if(tab==='payouts'){
+    renderTeacherPayouts();
+    fetchDBFromSupabase().then(()=> { renderTeacherPayouts(); updateNotifBadge(); });
+  }
 }
 
 function showTeacherMenu(){
   document.getElementById('teacher-tab-menu').style.display = 'grid';
   document.getElementById('teacher-tab-back').style.display = 'none';
-  ['log','attendance','schedule','chat'].forEach(t=>{
+  ['log','attendance','schedule','chat','payouts'].forEach(t=>{
     document.getElementById('teacher-panel-'+t).style.display = 'none';
   });
 }
@@ -1673,15 +2073,22 @@ function isLateCheckIn(iso){
   return d.getHours() > TEACHER_LATE_HOUR || (d.getHours()===TEACHER_LATE_HOUR && d.getMinutes() > TEACHER_LATE_MIN);
 }
 
-function logTeacherAttendance(type){
+async function logTeacherAttendance(type){
   const db = loadDB();
   const teacherId = session.personId;
   const todays = db.teacherAttendance.filter(r=> r.teacherId===teacherId && isToday(r.time));
-  const doLog = ()=>{
-    const rec = {id: uid('tatt'), teacherId, type, time: new Date().toISOString()};
+  const doLog = async ()=>{
+    const timeIso = new Date().toISOString();
+    // إدخال مباشر (insert) بدل الحفظ العام (saveDB/pushDBToSupabase) — عشان المدرّس
+    // معندوش صلاحية على أغلب الجداول التانية اللي الحفظ العام بيحاول يبعتها، وكان بيفشل صامت
+    const { data, error } = await supabaseClient.from('teacher_attendance').insert({
+      teacher_id: teacherId, payload: {type, time: timeIso}, center_id: session.centerId
+    }).select().single();
+    if(error){ showToast('تعذّر تسجيل ' + (type==='CHECK_IN'?'حضورك':'انصرافك') + ': ' + (error.message||'حصل خطأ غير متوقع')); return; }
     const db2 = loadDB();
-    db2.teacherAttendance.push(rec);
-    saveDB(db2);
+    db2.teacherAttendance.push({id:data.id, teacherId, type, time:timeIso});
+    dbCache = db2;
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(db2)); }catch(e){}
     renderTeacherAttendance();
     showToast(type==='CHECK_IN' ? 'تم تسجيل حضورك ✓' : 'تم تسجيل انصرافك ✓');
   };
@@ -1735,6 +2142,29 @@ function renderTeacherAttendance(){
     </div>`).join('');
 }
 
+function renderTeacherPayouts(){
+  const db = loadDB();
+  const teacherId = session.personId;
+  const el = document.getElementById('teacher-payouts-view');
+  if(!el) return;
+  const list = (db.teacherPayouts||[])
+    .filter(p=> p.teacherId===teacherId && (p.status==='approved' || p.status==='paid'))
+    .sort((a,b)=> b.periodStart.localeCompare(a.periodStart));
+  if(list.length===0){ el.innerHTML = '<div class="empty">لسه مفيش كشوف حساب معتمدة ليك</div>'; return; }
+  const statusLabel = {approved:'معتمد', paid:'مدفوع'};
+  el.innerHTML = list.map(p=>{
+    const badgeStyle = p.status==='paid' ? 'background:#dcfce7; color:var(--success);' : 'background:#fef3c7; color:#93610f;';
+    return `<div class="card" style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:700;">${p.periodStart} → ${p.periodEnd}</div>
+        <span class="badge" style="${badgeStyle}">${statusLabel[p.status]}</span>
+      </div>
+      <div style="font-size:13px; color:var(--muted); margin-top:4px;">${p.sessionCount} حصة${p.manualAdjustment ? ' · تعديل: '+(p.manualAdjustment>0?'+':'')+p.manualAdjustment : ''}</div>
+      <div style="font-size:22px; font-weight:800; margin-top:6px;">${p.finalAmount.toFixed(2)} جنيه</div>
+    </div>`;
+  }).join('');
+}
+
 function renderTeacherChat(){
   const db = loadDB();
   const list = db.messages.filter(m=>m.childId===teacherActiveChildId).sort((a,b)=> new Date(a.time)-new Date(b.time));
@@ -1746,15 +2176,21 @@ function renderTeacherChat(){
       <div class="tl-time">${timeStr(m.time)}</div>
     </div>`).join('') : '<div class="empty">مفيش رسائل لسه مع ولي أمر الطالب ده</div>';
 }
-function sendTeacherMessage(){
+async function sendTeacherMessage(){
   if(!teacherActiveChildId){ showToast('اختر طالب الأول'); return; }
   const input = document.getElementById('teacher-chat-input');
   const text = input.value.trim();
   if(!text) return;
   const db = loadDB();
   const teacher = db.teachers.find(t=>t.id===session.personId);
-  db.messages.push({id:uid('msg'), childId:teacherActiveChildId, sender:'TEACHER', senderName: teacher?teacher.name:'المدرّس', text, time:new Date().toISOString()});
-  saveDB(db);
+  const msg = {childId:teacherActiveChildId, sender:'TEACHER', senderName: teacher?teacher.name:'المدرّس', text, time:new Date().toISOString()};
+  const { data, error } = await supabaseClient.from('messages').insert({
+    child_id: teacherActiveChildId, sender_role: 'teacher', payload: msg, center_id: session.centerId
+  }).select().single();
+  if(error){ showToast('تعذّر إرسال الرسالة'); return; }
+  db.messages.push({...msg, id:data.id});
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   input.value = '';
   renderTeacherChat();
 }
@@ -1788,8 +2224,51 @@ function initTeacherScreen(){
     teacherActiveChildId = myChildren[0].id;
   }
   renderTeacherStudentGrid();
+  renderTeacherPendingExceptions();
   renderTeacherLog();
   showTeacherMenu();
+}
+
+// طلبات الاستثناء اللي الأسيستنت بعتها ولسه pending، لطلاب مجموعات المدرّس ده بس
+function renderTeacherPendingExceptions(){
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const wrap = document.getElementById('teacher-pending-exceptions-wrap');
+  const el = document.getElementById('teacher-pending-exceptions');
+  if(!teacher || !wrap || !el) return;
+  const pending = (db.attendanceExceptions||[]).filter(x=> x.status==='pending' && teacher.classroomIds.includes(x.classroomId));
+  if(pending.length===0){ wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  el.innerHTML = pending.map(x=>{
+    const child = db.children.find(c=>c.id===x.childId);
+    const room = db.classrooms.find(r=>r.id===x.classroomId);
+    return `<div class="timeline-item">
+      <div><b>${child?child.name:''}</b> — ${room?room.name:''}</div>
+      <div style="font-size:12px; color:var(--muted);">السبب: ${x.reason||''}</div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <button class="badge admin" onclick="resolveAssistantException('${x.id}','approved')">✅ موافقة</button>
+        <button class="badge" style="color:var(--danger);" onclick="resolveAssistantException('${x.id}','rejected')">✕ رفض</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// المدرّس بيوافق/يرفض طلب استثناء بعته الأسيستنت — الموافقة بتسجّله كاستثناء "teacher"
+// عشان حد الحصتين يتفرض من نفس المنطق، وبعدها بتحاول تسجل الحضور تلقائي
+async function resolveAssistantException(exceptionId, decision){
+  const authId = await getAuthUserId();
+  const updates = decision==='approved'
+    ? { status:'approved', granted_by_role:'teacher', granted_by:authId }
+    : { status:'rejected', granted_by_role:'teacher', granted_by:authId };
+  const { data, error } = await supabaseClient.from('attendance_exceptions').update(updates).eq('id', exceptionId).select().single();
+  if(error){ showToast('تعذّر تنفيذ القرار: ' + (error.message||'حصل خطأ غير متوقع')); return; }
+  if(decision==='approved'){
+    showToast('تمت الموافقة ✓ — بنسجل الحضور دلوقتي...');
+    await recordSessionAttendance(data.child_id, data.classroom_id);
+  } else {
+    showToast('تم رفض الطلب');
+  }
+  renderTeacherPendingExceptions();
 }
 
 // بيرجع set بالمواد اللي المدرّس ده بيدرّسها للطالب ده فعليًا (حسب الجدول، مش كل مواد المجموعة)
@@ -1829,10 +2308,22 @@ function renderTeacherStudentGrid(){
   if(!teacher || !grid) return;
   const myChildren = db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid)));
   if(myChildren.length===0){ grid.innerHTML = '<div class="empty">لا يوجد طلاب في مجموعاتك</div>'; return; }
+  const todayStr = new Date().toISOString().slice(0,10);
   grid.innerHTML = myChildren.map(c=>{
     const effort = computeChildEffortPercent(db, teacher, c);
-    const sharedRooms = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid)).map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
+    const sharedRoomIds = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
+    const sharedRooms = sharedRoomIds.map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
     const isActive = c.id===teacherActiveChildId;
+    const attendanceRows = sharedRoomIds.map(cid=>{
+      const room = db.classrooms.find(r=>r.id===cid);
+      const already = (db.attendance||[]).some(a=> a.childId===c.id && a.classroomId===cid && a.sessionDate===todayStr);
+      return `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:4px;" onclick="event.stopPropagation();">
+        <span style="font-size:11px; color:var(--muted);">${room?room.name:''}</span>
+        ${already
+          ? `<span class="sc-badge resolved" style="font-size:11px;">✅ اتسجل حضوره النهارده</span>`
+          : `<button class="badge admin" style="font-size:11px; padding:3px 8px;" onclick="recordSessionAttendance('${c.id}','${cid}')">تسجيل حضور</button>`}
+      </div>`;
+    }).join('');
     return `<div class="student-card ${isActive?'active':''}" onclick="selectTeacherChild('${c.id}')">
       <div class="sc-photo">
         ${c.photoUrl ? `<img src="${c.photoUrl}" alt="">` : '🧑\u200d🎓'}
@@ -1844,8 +2335,165 @@ function renderTeacherStudentGrid(){
         <span class="sc-badge ${effort===null?'pending':'effort'}">${effort===null?'مجهودي: —':'مجهودي '+effort+'%'}</span>
         <span class="sc-badge pending">مستوى: قريبًا</span>
       </div>
+      <div style="border-top:1px solid var(--border); margin-top:8px; padding-top:6px;" onclick="event.stopPropagation();">${attendanceRows}</div>
     </div>`;
   }).join('');
+}
+
+// بيحاول يسجّل حضور الطالب في الحصة النهاردة. الحماية الحقيقية (منع لغير الدافع)
+// جوه قاعدة البيانات نفسها (trigger)، مش هنا — الكود ده بس بيبعت المحاولة ويتعامل مع الرفض
+async function recordSessionAttendance(childId, classroomId){
+  const db = loadDB();
+  const authId = await getAuthUserId();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const { data, error } = await supabaseClient.from('attendance').insert({
+    child_id: childId, classroom_id: classroomId, session_date: todayStr,
+    teacher_id: teacher?teacher.id:null, recorded_by: authId
+  }).select().single();
+  if(error){
+    // الرفض متوقع لو الطالب مش دافع ومالوش استثناء ساري — نديله فرصة يمنح استثناء فورًا
+    const child = db.children.find(c=>c.id===childId);
+    confirmAction(`⚠️ الطالب "${child?child.name:''}" مش دافع اشتراك ساري ومالوش استثناء متاح.\n\nتحب تمنحه استثناء حضور للحصة دي؟ (بحد أقصى حصتين لكل طالب، وبعدها القرار يبقى للمدير)`, ()=>{
+      grantTeacherException(childId, classroomId);
+    });
+    return;
+  }
+  // نجاح — نحدّث الكاش المحلي فورًا عشان الشاشة تتحدث من غير ما ننتظر مزامنة كاملة
+  db.attendance = db.attendance || [];
+  db.attendance.push({id:data.id, childId, classroomId, sessionDate:todayStr, teacherId:teacher?teacher.id:null, exceptionId:data.exception_id||null});
+  dbCache = db;
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  showToast('تم تسجيل حضور الطالب ✓');
+  renderTeacherStudentGrid();
+}
+
+// المدرّس بيمنح استثناء فوري (معتمد على طول) — الحد الأقصى بيتفرض من قاعدة البيانات نفسها
+async function grantTeacherException(childId, classroomId){
+  const reason = prompt('اكتب سبب الاستثناء (هيتسجل في سجل المراجعة):');
+  if(reason===null) return; // المستخدم رجع من غير ما يكتب سبب
+  if(!reason.trim()){ showToast('لازم تكتب سبب عشان يتسجل الاستثناء'); return; }
+  const authId = await getAuthUserId();
+  const { data, error } = await supabaseClient.from('attendance_exceptions').insert({
+    child_id: childId, classroom_id: classroomId, requested_by: authId,
+    granted_by_role: 'teacher', granted_by: authId, status: 'approved', reason: reason.trim()
+  }).select().single();
+  if(error){
+    showToast('تعذّر منح الاستثناء: ' + (error.message||'حصل خطأ غير متوقع'));
+    return;
+  }
+  showToast('تم منح الاستثناء ✓ — بنسجل الحضور دلوقتي...');
+  await recordSessionAttendance(childId, classroomId);
+}
+
+// ============ ASSISTANT SCREEN ============
+// الأسيستنت مرتبط بمدرّس واحد أو أكتر (many-to-many عبر assistant_teachers)، وبيشوف
+// طلاب مدرّس واحد بس في المرة الواحدة (منتقى من قائمة select) — بيانات كل مدرّس منفصلة
+let assistantActiveTeacherId = null;
+function initAssistantScreen(){
+  const db = loadDB();
+  const assistant = (db.assistants||[]).find(a=>a.id===session.personId);
+  document.getElementById('assistant-title').textContent = '🧑\u200d💼 ' + (assistant?assistant.name:'الأسيستنت');
+  const sel = document.getElementById('assistant-teacher-select');
+  const teacherIds = assistant ? (assistant.teacherIds||[]) : [];
+  const teachers = teacherIds.map(id=> db.teachers.find(t=>t.id===id)).filter(Boolean);
+  if(teachers.length===0){
+    sel.style.display = 'none';
+    assistantActiveTeacherId = null;
+  } else if(teachers.length===1){
+    sel.style.display = 'none';
+    assistantActiveTeacherId = teachers[0].id;
+  } else {
+    sel.style.display = 'block';
+    sel.innerHTML = teachers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    assistantActiveTeacherId = teachers[0].id;
+    sel.value = assistantActiveTeacherId;
+  }
+  renderAssistantStudentGrid();
+}
+
+function selectAssistantTeacher(teacherId){
+  assistantActiveTeacherId = teacherId;
+  renderAssistantStudentGrid();
+}
+
+function renderAssistantStudentGrid(){
+  const db = loadDB();
+  const grid = document.getElementById('assistant-student-grid');
+  if(!grid) return;
+  const teacher = db.teachers.find(t=>t.id===assistantActiveTeacherId);
+  if(!teacher){ grid.innerHTML = '<div class="empty">مش مرتبط بأي مدرّس لسه — كلّم الأدمن يربطك بمدرّس</div>'; return; }
+  const myChildren = db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid)));
+  if(myChildren.length===0){ grid.innerHTML = '<div class="empty">لا يوجد طلاب في مجموعات المدرّس ده</div>'; return; }
+  const todayStr = new Date().toISOString().slice(0,10);
+  grid.innerHTML = myChildren.map(c=>{
+    const sharedRoomIds = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
+    const sharedRooms = sharedRoomIds.map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
+    const rows = sharedRoomIds.map(cid=>{
+      const room = db.classrooms.find(r=>r.id===cid);
+      const already = (db.attendance||[]).some(a=> a.childId===c.id && a.classroomId===cid && a.sessionDate===todayStr);
+      const enrollment = (db.enrollments||[]).find(e=> e.childId===c.id && e.classroomId===cid);
+      return `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap;">
+        <span style="font-size:11px; color:var(--muted);">${room?room.name:''}</span>
+        <span style="display:flex; gap:4px;">
+          ${already
+            ? `<span class="sc-badge resolved" style="font-size:11px;">✅ اتسجل حضوره</span>`
+            : `<button class="badge admin" style="font-size:11px; padding:3px 8px;" onclick="recordAssistantAttendance('${c.id}','${cid}')">تسجيل حضور</button>`}
+          ${enrollment ? `<button class="badge" style="font-size:11px; padding:3px 8px;" onclick="openRegisterSubscriptionModal('${c.id}','${cid}')">تسجيل دفعة</button>` : ''}
+        </span>
+      </div>`;
+    }).join('');
+    return `<div class="student-card">
+      <div class="sc-photo">${c.photoUrl ? `<img src="${c.photoUrl}" alt="">` : '🧑\u200d🎓'}</div>
+      <div class="sc-name">${c.name}</div>
+      <div class="sc-sub">${sharedRooms}</div>
+      <div style="border-top:1px solid var(--border); margin-top:8px; padding-top:6px;">${rows}</div>
+    </div>`;
+  }).join('');
+}
+
+// بيحاول يسجّل حضور الطالب زي المدرّس بالظبط — لو اترفض (مش دافع ومالوش استثناء)
+// الأسيستنت ميقدرش يمنح استثناء بنفسه، بس يبعت طلب للمدرّس يوافق عليه
+async function recordAssistantAttendance(childId, classroomId){
+  const db = loadDB();
+  const authId = await getAuthUserId();
+  const teacher = db.teachers.find(t=>t.id===assistantActiveTeacherId);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const { data, error } = await supabaseClient.from('attendance').insert({
+    child_id: childId, classroom_id: classroomId, session_date: todayStr,
+    teacher_id: teacher?teacher.id:null, recorded_by: authId
+  }).select().single();
+  if(error){
+    const child = db.children.find(c=>c.id===childId);
+    confirmAction(`⚠️ الطالب "${child?child.name:''}" مش دافع اشتراك ساري ومالوش استثناء متاح.\n\nتحب تبعت طلب استثناء للمدرّس؟ (هو اللي يوافق قبل الحصة، مش هيتسجل الحضور دلوقتي)`, ()=>{
+      requestAssistantException(childId, classroomId);
+    });
+    return;
+  }
+  db.attendance = db.attendance || [];
+  db.attendance.push({id:data.id, childId, classroomId, sessionDate:todayStr, teacherId:teacher?teacher.id:null, exceptionId:data.exception_id||null});
+  dbCache = db;
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  showToast('تم تسجيل حضور الطالب ✓');
+  renderAssistantStudentGrid();
+}
+
+// الأسيستنت بيبدأ طلب الاستثناء بس، الطلب بيفضل pending لحد ما المدرّس يوافق/يرفض
+// من شاشته (نظام الإشعارات بيبلّغ المدرّس تلقائيًا عن طريق trigger في الداتابيز)
+async function requestAssistantException(childId, classroomId){
+  const reason = prompt('اكتب سبب طلب الاستثناء (هيتسجل في سجل المراجعة):');
+  if(reason===null) return;
+  if(!reason.trim()){ showToast('لازم تكتب سبب عشان يتبعت الطلب'); return; }
+  const authId = await getAuthUserId();
+  const { error } = await supabaseClient.from('attendance_exceptions').insert({
+    child_id: childId, classroom_id: classroomId, requested_by: authId,
+    status: 'pending', reason: reason.trim()
+  });
+  if(error){
+    showToast('تعذّر إرسال الطلب: ' + (error.message||'حصل خطأ غير متوقع'));
+    return;
+  }
+  showToast('✓ اتبعت الطلب للمدرّس، لو وافق قبل الحصة هيتسجل الحضور تلقائي');
 }
 
 function selectTeacherChild(childId){
@@ -1906,17 +2554,23 @@ function renderTeacherTasksToday(){
   el.innerHTML = blocks || '<div class="empty">مفيش مواد مسجلة بجدولك لهذا الطالب</div>';
 }
 
-function toggleTaskCompletion(childId, subjectId, taskId, isDone){
+async function toggleTaskCompletion(childId, subjectId, taskId, isDone){
   const db = loadDB();
   const todayStr = new Date().toISOString().slice(0,10);
+  const { data, error } = await supabaseClient.from('task_completions').upsert({
+    child_id: childId, subject_id: subjectId, task_id: taskId, teacher_id: session.personId,
+    completion_date: todayStr, done: isDone, center_id: session.centerId
+  }, { onConflict: 'child_id,subject_id,task_id,completion_date' }).select().single();
+  if(error){ showToast('تعذّر حفظ الحالة'); renderTeacherStudentGrid(); return; }
   const existing = (db.taskCompletions||[]).find(c=> c.childId===childId && c.subjectId===subjectId && c.taskId===taskId && c.date===todayStr);
   if(existing){
     existing.done = isDone;
   } else {
     db.taskCompletions = db.taskCompletions || [];
-    db.taskCompletions.push({id:uid('tc'), childId, subjectId, taskId, teacherId:session.personId, date:todayStr, done:isDone});
+    db.taskCompletions.push({id:data.id, childId, subjectId, taskId, teacherId:session.personId, date:todayStr, done:isDone});
   }
-  saveDB(db);
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   renderTeacherStudentGrid();
 }
 
@@ -1959,20 +2613,26 @@ function renderTeacherEvals(){
 }
 
 function deleteEvaluation(evalId){
-  confirmAction('متأكد إنك عايز تمسح التقييم ده؟', ()=>{
+  confirmAction('متأكد إنك عايز تمسح التقييم ده؟', async ()=>{
+    const { error } = await supabaseClient.from('evaluations').delete().eq('id', evalId);
+    if(error){ showToast('تعذّر حذف التقييم'); return; }
     const db = loadDB();
     db.evaluations = db.evaluations.filter(e=>e.id!==evalId);
-    saveDB(db);
+    dbCache = db;
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
     renderTeacherEvals();
     showToast('تم حذف التقييم');
   });
 }
 
 function deleteEvent(eventId){
-  confirmAction('متأكد إنك عايز تمسح الحدث ده؟', ()=>{
+  confirmAction('متأكد إنك عايز تمسح الحدث ده؟', async ()=>{
+    const { error } = await supabaseClient.from('events').delete().eq('id', eventId);
+    if(error){ showToast('تعذّر حذف الحدث'); return; }
     const db = loadDB();
     db.events = db.events.filter(e=>e.id!==eventId);
-    saveDB(db);
+    dbCache = db;
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
     renderTeacherLog();
     showToast('تم حذف الحدث');
   });
@@ -2002,20 +2662,27 @@ function renderTimeline(elId, events, allowDelete){
   }).join('');
 }
 
-function logEvent(type, em, label, metadata, note){
+async function logEvent(type, em, label, metadata, note){
   if(!teacherActiveChildId){ showToast('اختر طالب الأول'); return; }
   const db = loadDB();
-  const newEvent = {
-    id: uid('ev'),
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const child = db.children.find(c=>c.id===teacherActiveChildId);
+  const classroomId = (child?.classroomIds||[]).find(cid => (teacher?.classroomIds||[]).includes(cid));
+  const eventTime = new Date().toISOString();
+  const payload = {
     childId: teacherActiveChildId,
     eventType: type,
-    eventTime: new Date().toISOString(),
+    eventTime,
     metadata: metadata || {},
     note: note || ''
   };
-
-  db.events.push(newEvent);
-  saveDB(db);
+  const { data, error } = await supabaseClient.from('events').insert({
+    child_id: teacherActiveChildId, classroom_id: classroomId||null, payload, center_id: session.centerId
+  }).select().single();
+  if(error){ showToast('تعذّر تسجيل الحدث'); return; }
+  db.events.push({...payload, id:data.id});
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   showToast(label + ' ✓ تم التسجيل');
   renderTeacherLog();
 }
@@ -2120,7 +2787,7 @@ function openEvalBox(editId){
   document.querySelector('#eval-modal-bg h3').textContent = existing ? '📊 تعديل تقييم مادة دراسية' : '📊 تقييم مادة دراسية';
   document.getElementById('eval-modal-bg').classList.add('show');
 }
-function saveEval(){
+async function saveEval(){
   if(!teacherActiveChildId){ showToast('اختر طالب الأول'); return; }
   const subjectId = document.getElementById('eval-subject').value;
   if(!subjectId){ showToast('أضف مواد دراسية الأول من واجهة المدير'); return; }
@@ -2129,22 +2796,32 @@ function saveEval(){
   const db = loadDB();
   if(evalEditId){
     const item = db.evaluations.find(e=>e.id===evalEditId);
-    if(item){ item.subjectId=subjectId; item.rating=rating; item.note=note; }
-    saveDB(db);
+    if(!item){ evalEditId = null; return; }
+    const updatedPayload = {childId:item.childId, subjectId, rating, note, teacherId:item.teacherId, date:item.date};
+    const { error } = await supabaseClient.from('evaluations').update({subject_id: subjectId, payload: updatedPayload}).eq('id', evalEditId);
+    if(error){ showToast('تعذّر تعديل التقييم'); return; }
+    item.subjectId=subjectId; item.rating=rating; item.note=note;
+    dbCache = db;
+    try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
     closeModal('eval-modal-bg');
     showToast('تم تعديل التقييم ✓');
     renderTeacherEvals();
     evalEditId = null;
     return;
   }
-  db.evaluations.push({
-    id: uid('ev2'),
+  const payload = {
     childId: teacherActiveChildId,
     subjectId, rating, note,
     teacherId: session.personId,
     date: new Date().toISOString()
-  });
-  saveDB(db);
+  };
+  const { data, error } = await supabaseClient.from('evaluations').insert({
+    child_id: teacherActiveChildId, subject_id: subjectId, payload, center_id: session.centerId
+  }).select().single();
+  if(error){ showToast('تعذّر حفظ التقييم'); return; }
+  db.evaluations.push({...payload, id:data.id});
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   closeModal('eval-modal-bg');
   showToast('تم حفظ التقييم ✓');
   renderTeacherEvals();
@@ -2254,15 +2931,21 @@ function renderParentChat(){
       <div class="tl-time">${timeStr(m.time)}</div>
     </div>`).join('') : '<div class="empty">ابدأ المحادثة مع مدرّس ابنك</div>';
 }
-function sendParentMessage(){
+async function sendParentMessage(){
   const input = document.getElementById('parent-chat-input');
   const text = input.value.trim();
   if(!text) return;
   const db = loadDB();
   const childId = document.getElementById('parent-child-select').value;
   const parent = db.parents.find(p=>p.id===session.personId);
-  db.messages.push({id:uid('msg'), childId, sender:'PARENT', senderName: parent?parent.name:'ولي الأمر', text, time:new Date().toISOString()});
-  saveDB(db);
+  const msg = {childId, sender:'PARENT', senderName: parent?parent.name:'ولي الأمر', text, time:new Date().toISOString()};
+  const { data, error } = await supabaseClient.from('messages').insert({
+    child_id: childId, sender_role: 'parent', payload: msg, center_id: session.centerId
+  }).select().single();
+  if(error){ showToast('تعذّر إرسال الرسالة'); return; }
+  db.messages.push({...msg, id:data.id});
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   input.value = '';
   renderParentChat();
 }
@@ -2270,19 +2953,20 @@ function sendParentMessage(){
 function renderParentPayments(){
   const db = loadDB();
   const childId = document.getElementById('parent-child-select').value;
-  const currentMonth = new Date().toISOString().slice(0,7);
-  const list = db.payments.filter(p=>p.childId===childId).sort((a,b)=> b.month.localeCompare(a.month));
+  const today = new Date().toISOString().slice(0,10);
+  const enrollments = (db.enrollments||[]).filter(e=>e.childId===childId);
   const el = document.getElementById('parent-payments-view');
-  if(list.length===0){ el.innerHTML = '<div class="empty">لا يوجد سجلات دفع لسه</div>'; return; }
-  el.innerHTML = list.map(p=>{
-    const isOverdue = p.status!=='PAID' && p.month < currentMonth;
-    const statusLabel = p.status==='PAID' ? 'تم الدفع' : (isOverdue ? 'متأخرة ⚠️' : 'لسه ماتدفعش');
-    const badgeClass = p.status==='PAID' ? 'resolved' : (isOverdue ? '' : 'pending');
-    const badgeStyle = isOverdue ? 'background:#fee2e2; color:var(--danger);' : '';
-    const room = p.classroomId ? db.classrooms.find(r=>r.id===p.classroomId) : null;
+  if(enrollments.length===0){ el.innerHTML = '<div class="empty">الطالب مش مسجّل في أي مجموعة لسه</div>'; return; }
+  el.innerHTML = enrollments.map(e=>{
+    const room = db.classrooms.find(r=>r.id===e.classroomId);
+    const sub = getLatestSubscription(db, childId, e.classroomId);
+    let statusLabel, badgeClass, badgeStyle;
+    if(!sub){ statusLabel='لسه مفيش دفعة'; badgeClass=''; badgeStyle='background:#fef3c7; color:#93610f;'; }
+    else if(sub.status==='active' && sub.periodEnd>=today){ statusLabel='سارية لحد '+sub.periodEnd; badgeClass='resolved'; badgeStyle=''; }
+    else { statusLabel='منتهية'; badgeClass=''; badgeStyle='background:#fee2e2; color:var(--danger);'; }
     return `<div class="tl-item">
       <div class="tl-em">💳</div>
-      <div class="tl-body"><div class="tl-title">${p.month}${room?' — '+room.name:''}</div><div class="tl-note">${p.amount} جنيه</div></div>
+      <div class="tl-body"><div class="tl-title">${room?room.name:'—'}</div><div class="tl-note">${e.paymentMode==='session'?'بالحصة':'شهري'}${sub?' · '+sub.amount+' جنيه':''}</div></div>
       <span class="badge ${badgeClass}" style="${badgeStyle}">${statusLabel}</span>
     </div>`;
   }).join('');
@@ -2323,18 +3007,23 @@ function renderParentLog(){
   renderTimeline('parent-timeline', events);
 }
 
-function submitComplaint(){
+async function submitComplaint(){
   const text = document.getElementById('complaint-text').value.trim();
   if(!text){ showToast('اكتب الشكوى الأول'); return; }
   const db = loadDB();
-  db.complaints.push({
-    id: uid('cx'),
+  const payload = {
     parentId: session.personId,
     message: text,
     submittedAt: new Date().toISOString(),
     status: 'PENDING'
-  });
-  saveDB(db);
+  };
+  const { data, error } = await supabaseClient.from('complaints').insert({
+    parent_id: session.personId, payload, center_id: session.centerId
+  }).select().single();
+  if(error){ showToast('تعذّر إرسال الشكوى'); return; }
+  db.complaints.push({...payload, id:data.id});
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   document.getElementById('complaint-text').value = '';
   showToast('تم إرسال الشكوى ✓');
   renderParentComplaints();
@@ -2363,6 +3052,7 @@ let adminActiveTab = 'children';
 /* ========================= SUPER ADMIN (مالك المنصة) ========================= */
 let saCentersCache = [];
 let saTeamCache = [];
+let saInvoicesCache = [];
 let saShowTrash = false;
 
 async function initSuperAdminScreen(){
@@ -2370,7 +3060,8 @@ async function initSuperAdminScreen(){
   if(error){ showToast('فشل تحميل قائمة المؤسسات'); return; }
   saCentersCache = centers || [];
 
-  const { data: invoices } = await supabaseClient.from('center_invoices').select('center_id, status, amount');
+  const { data: invoices } = await supabaseClient.from('center_invoices').select('*').order('period_end', {ascending:false});
+  saInvoicesCache = invoices || [];
   const overdueByCenterCount = {};
   (invoices||[]).forEach(inv=>{ if(inv.status==='overdue') overdueByCenterCount[inv.center_id] = (overdueByCenterCount[inv.center_id]||0)+1; });
 
@@ -2398,6 +3089,7 @@ async function initSuperAdminScreen(){
         </div>
       </div>
       <div class="list-actions" style="flex-wrap:wrap;">
+        <button class="badge" onclick="startImpersonation({role:'ADMIN', personId:null, centerId:'${c.id}', label:'مؤسسة: ${escAttr(c.name)}'})">👁 دخول كأدمن</button>
         ${c.subscription_status==='suspended'
           ? `<button class="badge" onclick="setCenterStatus('${c.id}','active')">تفعيل</button>`
           : `<button class="badge" style="color:var(--danger);" onclick="setCenterStatus('${c.id}','suspended')">إيقاف</button>`}
@@ -2405,6 +3097,12 @@ async function initSuperAdminScreen(){
       </div>
     </div>
   `).join('') || '<div class="empty">لسه مفيش مؤسسات</div>';
+
+  // فواتير اشتراك المؤسسات — بتظهر بس للمالك أو لعضو معاه صلاحية manage_billing
+  const canManageBilling = session.isOwner || session.permissions.manage_billing;
+  document.getElementById('sa-invoices-title').style.display = canManageBilling ? 'flex' : 'none';
+  if(canManageBilling) renderInvoicesList();
+  else document.getElementById('sa-invoices-list').innerHTML = '';
 
   // فريق إدارة المنصة — بيظهر بس للمالك أو لعضو معاه صلاحية manage_team
   const canManageTeam = session.isOwner || session.permissions.manage_team;
@@ -2554,6 +3252,44 @@ async function setCenterStatus(centerId, status){
   initSuperAdminScreen();
 }
 
+function renderInvoicesList(){
+  const statusLabel = {pending:'مستحقة', overdue:'متأخرة', paid:'مدفوعة'};
+  const statusColor = {pending:'#d97706', overdue:'#dc2626', paid:'#16a34a'};
+  const centerName = id => (saCentersCache.find(c=>c.id===id)||{}).name || 'مؤسسة غير معروفة';
+  document.getElementById('sa-invoices-list').innerHTML = saInvoicesCache.map(inv=>`
+    <div class="list-row">
+      <div class="list-row-main">
+        <div class="list-avatar" style="background:${statusColor[inv.status]||'#6b7280'};">🧾</div>
+        <div class="list-info">
+          <div class="list-name">${centerName(inv.center_id)}</div>
+          <div class="list-sub" style="color:${statusColor[inv.status]||'inherit'};">
+            ${statusLabel[inv.status]||inv.status} · ${inv.amount} جنيه · ${new Date(inv.period_start).toLocaleDateString('ar-EG')} → ${new Date(inv.period_end).toLocaleDateString('ar-EG')}
+          </div>
+        </div>
+      </div>
+      <div class="list-actions">
+        ${inv.status!=='paid'
+          ? `<button class="badge admin" onclick="markInvoicePaid('${inv.id}','${inv.center_id}')">✅ علّم كمدفوعة</button>`
+          : `<span class="badge">اتدفعت${inv.paid_at ? ' ' + new Date(inv.paid_at).toLocaleDateString('ar-EG') : ''}</span>`}
+      </div>
+    </div>
+  `).join('') || '<div class="empty">لسه مفيش فواتير</div>';
+}
+
+async function markInvoicePaid(invoiceId, centerId){
+  confirmAction('تأكيد إن الفاتورة دي اتدفعت؟ ده هيفعّل المؤسسة تلقائيًا لو كانت موقوفة بسببها', async ()=>{
+    const { error } = await supabaseClient.from('center_invoices').update({ status:'paid', paid_at: new Date().toISOString() }).eq('id', invoiceId);
+    if(error){ showToast('فشل تسجيل الدفع'); return; }
+
+    const center = saCentersCache.find(c=>c.id===centerId);
+    if(center && (center.subscription_status==='suspended' || center.subscription_status==='past_due')){
+      await supabaseClient.from('centers').update({ subscription_status:'active' }).eq('id', centerId);
+    }
+    showToast('اتسجلت الفاتورة كمدفوعة ✓');
+    initSuperAdminScreen();
+  });
+}
+
 
 function initAdminScreen(){
   renderAdminStats(); renderAdminOverdueBanner(); renderAdminNoGuardianBanner();
@@ -2622,8 +3358,8 @@ function renderAdminStats(){
 const ADMIN_TAB_GROUPS = {
   family: ['children','teachers','assistants','parents','links'],
   classes: ['classrooms','subjects','schedule'],
-  staff: ['teacherAttendance','teacherEvaluations'],
-  money: ['payments'],
+  staff: ['teacherAttendance','teacherEvaluations','teacherPayouts'],
+  money: ['payments','attendanceExceptions'],
   other: ['calendar','complaints']
 };
 const ADMIN_TAB_META = {
@@ -2637,7 +3373,9 @@ const ADMIN_TAB_META = {
   schedule:{icon:'🗓️', label:'الجدول الأسبوعي', color:'linear-gradient(135deg,#c0433a,#a3352c)'},
   teacherAttendance:{icon:'🕒', label:'حضور وانصراف المدرّسين', color:'linear-gradient(135deg,#2c8a9c,#1e6b7a)'},
   teacherEvaluations:{icon:'⭐', label:'تقييم أداء المدرّسين', color:'linear-gradient(135deg,#c9a45c,#93610f)'},
+  teacherPayouts:{icon:'💰', label:'مرتبات المدرّسين', color:'linear-gradient(135deg,#1e7a4a,#134d2f)'},
   payments:{icon:'💳', label:'المدفوعات', color:'linear-gradient(135deg,#3d8a5f,#1e6b3d)'},
+  attendanceExceptions:{icon:'🎫', label:'استثناءات الحضور', color:'linear-gradient(135deg,#c0433a,#93610f)'},
   calendar:{icon:'📅', label:'تقويم السنتر', color:'linear-gradient(135deg,#a0527a,#8a3d66)'},
   complaints:{icon:'💬', label:'الشكاوى', color:'linear-gradient(135deg,#c0433a,#a3352c)'}
 };
@@ -2663,11 +3401,18 @@ function openAdminSection(tab){
   adminSearchQuery = '';
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
-  document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations') ? 'none' : 'block';
-  const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث'};
+  document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions') ? 'none' : 'block';
+  const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
   document.getElementById('admin-add-btn').textContent = addLabels[tab] || '+ إضافة';
+  document.getElementById('admin-add-btn').onclick = (tab==='teacherPayouts') ? openGeneratePayoutsModal : openAdminAddModal;
   showScreen('admin-section-screen');
-  renderAdminList();
+  if(tab==='teacherPayouts'){
+    // أرقام مالية — لازم تكون فريش دايمًا حتى لو مفيش تعديل اتعمل من نفس الجهاز
+    renderAdminList();
+    fetchDBFromSupabase().then(()=> { renderAdminList(); updateNotifBadge(); });
+  } else {
+    renderAdminList();
+  }
 }
 
 // بيتنده من بانر "طلاب من غير ولي أمر" في الشاشة الرئيسية — بيوديك لتاب الطلاب مفلتر عليهم مباشرة
@@ -2769,12 +3514,49 @@ function renderAdminListInner(){
           </div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap;">
+          ${t.claimedBy ? `<button class="badge" onclick="startImpersonation({role:'TEACHER', personId:'${t.id}', centerId: session.centerId, label:'${escAttr(t.name)}'})">👁 عرض كشاشته</button>` : ''}
           <button class="badge" onclick="openAdminEditModal('teachers','${t.id}')">تعديل</button>
           <button class="badge" onclick="openTeacherEvalModal('${t.id}')">تقييم أداء</button>
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('teachers','${t.id}')">حذف</button>
         </div>
       </div>`;
     }).join('') || '<div class="empty">لا يوجد نتائج</div>');
+  }
+  else if(adminActiveTab==='teacherPayouts'){
+    const basisLabel = (db.settings.teacherPayoutBasis==='collections') ? 'نسبة من المبالغ المحصّلة فعليًا' : 'نسبة من (الحصص × سعر الحصة)';
+    const basisRow = `<div class="list-row" style="cursor:pointer;" onclick="changeTeacherPayoutBasis()">
+      <div class="list-row-main">
+        <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">⚙️</div>
+        <div class="list-info"><div class="list-name">أساس حساب النسبة</div><div class="list-sub">${basisLabel} — اضغط للتغيير</div></div>
+      </div>
+    </div>`;
+    const payouts = [...(db.teacherPayouts||[])].sort((a,b)=> b.periodStart.localeCompare(a.periodStart));
+    const statusLabel = {draft:'مسودة', approved:'معتمد', paid:'مدفوع'};
+    const items = payouts.filter(p=>{
+      const t = db.teachers.find(x=>x.id===p.teacherId);
+      return t && matchesSearch(t.name);
+    });
+    el.innerHTML = basisRow + searchBoxHtml('دور باسم مدرّس...') + (items.map(p=>{
+      const t = db.teachers.find(x=>x.id===p.teacherId);
+      const st = p.status||'draft';
+      const badgeStyle = st==='paid' ? 'background:#dcfce7; color:var(--success);' : (st==='approved' ? 'background:#fef3c7; color:#93610f;' : '');
+      return `<div class="list-row">
+        <div class="list-row-main">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#1e7a4a,#134d2f);">${avatarInitial(t?t.name:'؟')}</div>
+          <div class="list-info">
+            <div class="list-name">${t?t.name:'مدرّس محذوف'} <span class="badge" style="${badgeStyle}">${statusLabel[st]||st}</span></div>
+            <div class="list-sub">${p.periodStart} → ${p.periodEnd} · ${p.sessionCount} حصة</div>
+            <div class="list-sub">المبلغ المحسوب: ${p.computedAmount.toFixed(2)} جنيه ${p.manualAdjustment ? '· تعديل يدوي: '+(p.manualAdjustment>0?'+':'')+p.manualAdjustment : ''}</div>
+            <div class="list-sub" style="font-weight:700;">الصافي: ${p.finalAmount.toFixed(2)} جنيه</div>
+          </div>
+        </div>
+        <div class="list-actions" style="flex-wrap:wrap;">
+          ${st==='draft' ? `<button class="badge" onclick="openAdjustPayoutModal('${p.id}')">تعديل يدوي</button>
+          <button class="badge admin" onclick="approvePayout('${p.id}')">✅ اعتماد</button>` : ''}
+          ${st==='approved' ? `<button class="badge admin" onclick="markPayoutPaid('${p.id}')">💵 تعليم كمدفوع</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') || '<div class="empty">مفيش كشوف حساب لسه — اضغط "📅 إنشاء كشوف الشهر" فوق</div>');
   }
   else if(adminActiveTab==='assistants'){
     const items = db.assistants.filter(a=> matchesSearch(a.name));
@@ -2791,6 +3573,7 @@ function renderAdminListInner(){
           </div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap;">
+          ${a.claimedBy ? `<button class="badge" onclick="startImpersonation({role:'ASSISTANT', personId:'${a.id}', centerId: session.centerId, label:'${escAttr(a.name)}'})">👁 عرض كشاشته</button>` : ''}
           <button class="badge" onclick="openAdminEditModal('assistants','${a.id}')">تعديل</button>
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('assistants','${a.id}')">حذف</button>
         </div>
@@ -2811,7 +3594,8 @@ function renderAdminListInner(){
             <div class="list-sub">${p.claimedBy?'<span style="color:var(--success); font-weight:700;">مفعّل ✅</span>':'<span style="color:var(--muted); font-weight:700;">لسه مش مفعّل ⏳</span>'}</div>
           </div>
         </div>
-        <div class="list-actions">
+        <div class="list-actions" style="flex-wrap:wrap;">
+          ${p.claimedBy ? `<button class="badge" onclick="startImpersonation({role:'PARENT', personId:'${p.id}', centerId: session.centerId, label:'${escAttr(p.name)}'})">👁 عرض كشاشته</button>` : ''}
           <button class="badge" onclick="openAdminEditModal('parents','${p.id}')">تعديل</button>
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('parents','${p.id}')">حذف</button>
         </div>
@@ -2905,45 +3689,67 @@ function renderAdminListInner(){
       }).join('') || '<div class="empty">لا يوجد مدرّسين</div>'}
     `;
   }
-  else if(adminActiveTab==='payments'){
-    const currentMonth = new Date().toISOString().slice(0,7);
-    const list = [...db.payments].sort((a,b)=> b.month.localeCompare(a.month));
-    let totalPaid=0, totalPending=0, overdueCount=0;
-    list.forEach(p=>{
-      const amt = parseFloat(p.amount)||0;
-      if(p.status==='PAID') totalPaid += amt;
-      else{ totalPending += amt; if(p.month < currentMonth) overdueCount++; }
-    });
-    let html = `<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;">
-      <div class="card" style="text-align:center; padding:12px 6px;"><div style="font-size:18px; font-weight:800; color:var(--success);">${totalPaid}</div><div style="font-size:11px; color:var(--muted);">محصّل (جنيه)</div></div>
-      <div class="card" style="text-align:center; padding:12px 6px;"><div style="font-size:18px; font-weight:800; color:#f59e0b;">${totalPending}</div><div style="font-size:11px; color:var(--muted);">معلق (جنيه)</div></div>
-      <div class="card" style="text-align:center; padding:12px 6px;"><div style="font-size:18px; font-weight:800; color:var(--danger);">${overdueCount}</div><div style="font-size:11px; color:var(--muted);">دفعة متأخرة</div></div>
-    </div>
-    <button class="badge admin" style="cursor:pointer; background:#e0f2fe; margin-bottom:14px; display:inline-block;" onclick="generateMonthlyPayments()">⚡ توليد فواتير شهر ${currentMonth} تلقائيًا لكل الطلاب</button>`;
-    html += searchBoxHtml('دور باسم طالب...');
-    const filtered = list.filter(p=>{
-      const child = db.children.find(c=>c.id===p.childId);
+  else if(adminActiveTab==='attendanceExceptions'){
+    const list = [...(db.attendanceExceptions||[])].sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+    let html = searchBoxHtml('دور باسم طالب...');
+    const filtered = list.filter(ex=>{
+      const child = db.children.find(c=>c.id===ex.childId);
       return matchesSearch(child?child.name:'');
     });
-    html += filtered.map(p=>{
-      const child = db.children.find(c=>c.id===p.childId);
-      const room = p.classroomId ? db.classrooms.find(r=>r.id===p.classroomId) : null;
-      const isOverdue = p.status!=='PAID' && p.month < currentMonth;
-      const statusLabel = p.status==='PAID' ? 'تم الدفع' : (isOverdue ? 'متأخرة ⚠️' : 'لسه ماتدفعش');
-      const badgeClass = p.status==='PAID' ? 'resolved' : (isOverdue ? '' : 'pending');
-      const badgeStyle = isOverdue ? 'background:#fee2e2; color:var(--danger);' : '';
+    html += filtered.map(ex=>{
+      const child = db.children.find(c=>c.id===ex.childId);
+      const room = db.classrooms.find(r=>r.id===ex.classroomId);
+      const roleLabel = ex.grantedByRole==='admin' ? 'المدير' : 'المدرّس';
+      const statusBadge = ex.flaggedUnjustified ? `<span class="badge" style="background:#fee2e2; color:var(--danger);">غير مبرر ⚠️</span>` : (ex.consumed ? `<span class="badge resolved">مُستخدم</span>` : `<span class="badge pending">لسه متاح</span>`);
+      return `<div class="list-row">
+        <div class="list-row-main">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#c0433a,#93610f);">🎫</div>
+          <div class="list-info"><div class="list-name">${child?child.name:'—'} · ${room?room.name:''}</div><div class="list-sub">منحه: ${roleLabel} · ${ex.reason||'بدون سبب مكتوب'}</div></div>
+        </div>
+        <div class="list-actions" style="flex-wrap:wrap;">
+          ${statusBadge}
+          ${(!ex.flaggedUnjustified) ? `<button class="badge" style="color:var(--danger);" onclick="flagExceptionUnjustified('${ex.id}')">علّم كغير مبرر</button>` : ''}
+        </div>
+      </div>`;
+    }).join('') || '<div class="empty">لا يوجد استثناءات مسجلة لسه</div>';
+    el.innerHTML = html;
+    return;
+  }
+  else if(adminActiveTab==='payments'){
+    const today = new Date().toISOString().slice(0,10);
+    const enrollments = db.enrollments || [];
+    let activeCount=0, expiredCount=0, noneCount=0;
+    const rows = enrollments.map(e=>{
+      const child = db.children.find(c=>c.id===e.childId);
+      const room = db.classrooms.find(r=>r.id===e.classroomId);
+      const sub = getLatestSubscription(db, e.childId, e.classroomId);
+      let statusInfo;
+      if(!sub) statusInfo = {key:'none', label:'لسه مفيش دفعة', cls:''};
+      else if(sub.status==='active' && sub.periodEnd >= today) statusInfo = {key:'active', label:'سارية لحد '+sub.periodEnd, cls:'resolved'};
+      else statusInfo = {key:'expired', label:'منتهية من '+sub.periodEnd, cls:''};
+      if(statusInfo.key==='active') activeCount++; else if(statusInfo.key==='expired') expiredCount++; else noneCount++;
+      return {child, room, e, sub, statusInfo};
+    }).filter(r=>r.child && r.room);
+    let html = `<div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;">
+      <div class="card" style="text-align:center; padding:12px 6px;"><div style="font-size:18px; font-weight:800; color:var(--success);">${activeCount}</div><div style="font-size:11px; color:var(--muted);">اشتراك ساري</div></div>
+      <div class="card" style="text-align:center; padding:12px 6px;"><div style="font-size:18px; font-weight:800; color:var(--danger);">${expiredCount}</div><div style="font-size:11px; color:var(--muted);">اشتراك منتهي</div></div>
+      <div class="card" style="text-align:center; padding:12px 6px;"><div style="font-size:18px; font-weight:800; color:#f59e0b;">${noneCount}</div><div style="font-size:11px; color:var(--muted);">لسه ماشتركش</div></div>
+    </div>`;
+    html += searchBoxHtml('دور باسم طالب...');
+    const filtered = rows.filter(r=> matchesSearch(r.child.name));
+    html += filtered.sort((a,b)=> a.statusInfo.key==='none'?-1:1).map(r=>{
+      const modeLabel = r.e.paymentMode==='session' ? 'بالحصة' : 'شهري';
+      const badgeStyle = r.statusInfo.key==='expired' ? 'background:#fee2e2; color:var(--danger);' : (r.statusInfo.key==='none' ? 'background:#fef3c7; color:#93610f;' : '');
       return `<div class="list-row">
         <div class="list-row-main">
           <div class="list-avatar" style="background:linear-gradient(135deg,#6553a0,#4a3d7a);">💳</div>
-          <div class="list-info"><div class="list-name">${child?child.name:'—'}${room?' · '+room.name:''}</div><div class="list-sub">${p.month} · ${p.amount} جنيه</div></div>
+          <div class="list-info"><div class="list-name">${r.child.name} · ${r.room.name}</div><div class="list-sub">${modeLabel} · <span class="badge ${r.statusInfo.cls}" style="${badgeStyle}">${r.statusInfo.label}</span></div></div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap;">
-          <span class="badge ${badgeClass}" style="cursor:pointer; ${badgeStyle}" onclick="togglePaymentStatus('${p.id}')">${statusLabel}</span>
-          <button class="badge" onclick="openAdminEditModal('payments','${p.id}')">تعديل</button>
-          <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('payments','${p.id}')">حذف</button>
+          <button class="badge admin" onclick="openRegisterSubscriptionModal('${r.child.id}','${r.room.id}')">تسجيل دفعة</button>
         </div>
       </div>`;
-    }).join('') || '<div class="empty">لا يوجد سجلات — جرّب "توليد فواتير" فوق</div>';
+    }).join('') || '<div class="empty">لا يوجد طلاب مسجلين في أي مجموعة لسه</div>';
     el.innerHTML = html;
     return;
   }
@@ -3295,6 +4101,93 @@ function unsetPrimaryGuardian(childId){
   renderAdminList();
 }
 
+// بترجع أحدث اشتراك (بتاريخ نهاية أكبر) لطالب في مجموعة معينة، أو null لو مفيش خالص
+function getLatestSubscription(db, childId, classroomId){
+  const subs = (db.subscriptions||[]).filter(s=> s.childId===childId && s.classroomId===classroomId);
+  if(!subs.length) return null;
+  return subs.sort((a,b)=> (b.periodEnd||'').localeCompare(a.periodEnd||''))[0];
+}
+
+let subscriptionModalContext = null; // {childId, classroomId}
+function openRegisterSubscriptionModal(childId, classroomId){
+  const db = loadDB();
+  const child = db.children.find(c=>c.id===childId);
+  const room = db.classrooms.find(r=>r.id===classroomId);
+  const enrollment = (db.enrollments||[]).find(e=> e.childId===childId && e.classroomId===classroomId);
+  if(!child || !room || !enrollment) return;
+  subscriptionModalContext = {childId, classroomId};
+  const today = new Date().toISOString().slice(0,10);
+  const isSession = enrollment.paymentMode==='session';
+  const defaultAmount = isSession ? (room.sessionFee||0) : (room.monthlyFee||0);
+  const el = document.getElementById('admin-modal-fields');
+  document.getElementById('admin-modal-title').textContent = `تسجيل دفعة — ${child.name} (${room.name})`;
+  el.innerHTML = `
+    <div style="font-size:13px; color:var(--muted);">طريقة الدفع لهذا الطالب في المجموعة دي: <b>${isSession?'بالحصة':'شهري'}</b></div>
+    <input type="text" id="f-sub-start" placeholder="تاريخ بداية ${isSession?'الحصة':'الاشتراك'} (YYYY-MM-DD)" value="${today}">
+    ${isSession ? '' : `<div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 هيغطي شهر كامل من التاريخ ده</div>`}
+    <input type="text" id="f-sub-amount" placeholder="المبلغ بالجنيه" value="${defaultAmount}">
+  `;
+  adminModalMode = 'subscription-add'; adminModalEditId = null;
+  document.getElementById('admin-modal-bg').classList.add('show');
+}
+async function saveNewSubscription(){
+  const db = loadDB();
+  if(!subscriptionModalContext) return;
+  const { childId, classroomId } = subscriptionModalContext;
+  const enrollment = (db.enrollments||[]).find(e=> e.childId===childId && e.classroomId===classroomId);
+  if(!enrollment){ showToast('الطالب مش مسجّل في المجموعة دي'); return; }
+  const startRaw = document.getElementById('f-sub-start').value.trim();
+  const amountRaw = document.getElementById('f-sub-amount').value.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(startRaw)){ showToast('صيغة التاريخ لازم تكون YYYY-MM-DD'); return; }
+  if(!/^\d+(\.\d+)?$/.test(amountRaw) || parseFloat(amountRaw)<=0){ showToast('المبلغ لازم يكون رقم أكبر من صفر'); return; }
+  const isSession = enrollment.paymentMode==='session';
+  let periodEnd;
+  if(isSession){
+    periodEnd = startRaw; // الدفعة بالحصة بتغطي يوم الحصة نفسه بس
+  } else {
+    const d = new Date(startRaw+'T00:00:00');
+    d.setMonth(d.getMonth()+1);
+    periodEnd = d.toISOString().slice(0,10);
+  }
+  // إدخال مباشر (insert) بدل الحفظ العام (saveDB/pushDBToSupabase) — عشان بلوك upsert
+  // الشامل لكل الاشتراكات القديمة مايتصدمش مع صلاحيات الأسيستنت (INSERT بس، من غير UPDATE)
+  const { data, error } = await supabaseClient.from('subscriptions').insert({
+    enrollment_id: enrollment.id, child_id: childId, classroom_id: classroomId,
+    payment_mode: enrollment.paymentMode, period_start: startRaw, period_end: periodEnd,
+    amount: parseFloat(amountRaw), status: 'active', center_id: session.centerId
+  }).select().single();
+  if(error){ showToast('تعذّر تسجيل الدفعة: ' + (error.message||'حصل خطأ غير متوقع')); return; }
+  db.subscriptions = db.subscriptions || [];
+  db.subscriptions.push({
+    id: data.id, enrollmentId: enrollment.id, childId, classroomId,
+    paymentMode: enrollment.paymentMode, periodStart: startRaw, periodEnd,
+    amount: parseFloat(amountRaw), status: 'active'
+  });
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
+  closeModal('admin-modal-bg');
+  subscriptionModalContext = null;
+  showToast('تم تسجيل الدفعة ✓ — الطالب يقدر يحضر لحد ' + periodEnd);
+  renderAdminList();
+}
+
+async function flagExceptionUnjustified(exceptionId){
+  const note = prompt('اكتب سبب اعتبار الاستثناء ده غير مبرر (هيتسجل في سجل مراجعة المدرّس):');
+  if(note===null) return;
+  if(!note.trim()){ showToast('لازم تكتب سبب المراجعة'); return; }
+  const { error } = await supabaseClient.from('attendance_exceptions').update({
+    flagged_unjustified: true, flagged_note: note.trim()
+  }).eq('id', exceptionId);
+  if(error){ showToast('تعذّر حفظ المراجعة: ' + (error.message||'خطأ غير متوقع')); return; }
+  const db = loadDB();
+  const ex = (db.attendanceExceptions||[]).find(e=>e.id===exceptionId);
+  if(ex){ ex.flaggedUnjustified = true; ex.flaggedNote = note.trim(); }
+  dbCache = db;
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  showToast('تم تعليم الاستثناء كغير مبرر ✓ — هيتاخد في الاعتبار وقت حساب مرتب المدرّس');
+  renderAdminList();
+}
+
 function generateMonthlyPayments(){
   const db = loadDB();
   const currentMonth = new Date().toISOString().slice(0,7);
@@ -3417,6 +4310,12 @@ function deleteSubjectTask(taskId){
   });
 }
 
+function togglePaymentTypeFields(){
+  const type = document.querySelector('input[name="f-payment-type"]:checked').value;
+  document.getElementById('f-payment-salary-wrap').style.display = type==='salary' ? 'block' : 'none';
+  document.getElementById('f-payment-percentage-wrap').style.display = type==='percentage' ? 'block' : 'none';
+}
+
 function openAdminAddModal(){
   quickLinkActive = false;
   adminModalMode = 'add'; adminModalEditId = null;
@@ -3465,6 +4364,10 @@ function renderAdminModalFields(id){
     // القايمة الأول مرة هنا، وبعد كده renderChildClassroomChecks() بترسمها
     // تاني كل ما المرحلة تتغيّر — مفلترة على المرحلة المختارة بس
     el._enrolledIds = enrolledIds;
+    const existingEnrollments = {};
+    (db.enrollments||[]).filter(e=>e.childId===id).forEach(e=>{ existingEnrollments[e.classroomId] = e.paymentMode; });
+    const classroomChecksWrap = document.getElementById('f-classroom-checks');
+    if(classroomChecksWrap) classroomChecksWrap._existingEnrollments = existingEnrollments;
     renderChildClassroomChecks();
     renderAgeGradeWarning();
   }
@@ -3484,7 +4387,20 @@ function renderAdminModalFields(id){
       <div class="section-title" style="margin:4px 0;">المجموعات</div>
       ${db.classrooms.map(r=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
         <input type="checkbox" class="f-teacher-classroom-chk" value="${r.id}" ${item.classroomIds&&item.classroomIds.includes(r.id)?'checked':''}> ${r.name}
-      </label>`).join('') || '<div class="empty">مفيش مجموعات لسه</div>'}`;
+      </label>`).join('') || '<div class="empty">مفيش مجموعات لسه</div>'}
+      <div class="section-title" style="margin:4px 0;">نظام المرتب</div>
+      <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
+        <input type="radio" name="f-payment-type" value="salary" ${(!item.paymentType||item.paymentType==='salary')?'checked':''} onchange="togglePaymentTypeFields()"> راتب ثابت
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
+        <input type="radio" name="f-payment-type" value="percentage" ${item.paymentType==='percentage'?'checked':''} onchange="togglePaymentTypeFields()"> نسبة
+      </label>
+      <div id="f-payment-salary-wrap" style="display:${(!item.paymentType||item.paymentType==='salary')?'block':'none'};">
+        <input type="text" id="f-base-salary" placeholder="الراتب الثابت الشهري (جنيه)" value="${item.baseSalary||''}">
+      </div>
+      <div id="f-payment-percentage-wrap" style="display:${item.paymentType==='percentage'?'block':'none'};">
+        <input type="text" id="f-percentage-rate" placeholder="النسبة % (مثلاً 15)" value="${item.percentageRate||''}">
+      </div>`;
   }
   else if(type==='assistants'){
     const item = id ? db.assistants.find(a=>a.id===id) : {};
@@ -3534,7 +4450,18 @@ function renderAdminModalFields(id){
         <option value="SEC2" ${item.grade==='SEC2'?'selected':''}>تانية ثانوي</option>
         <option value="SEC3" ${item.grade==='SEC3'?'selected':''}>تالتة ثانوي</option>
       </select>
-      <input type="text" id="f-classroom-fee" placeholder="اشتراك المجموعة الشهري (جنيه)" value="${item.monthlyFee||''}">`;
+      <input type="text" id="f-classroom-fee" placeholder="اشتراك المجموعة الشهري (جنيه)" value="${item.monthlyFee||''}">
+      <div class="section-title" style="margin:4px 0;">طريقة الدفع المسموحة في المجموعة دي</div>
+      <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
+        <input type="checkbox" id="f-classroom-pm-monthly" ${!item.paymentModes||item.paymentModes.includes('monthly')?'checked':''}> اشتراك شهري
+      </label>
+      <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
+        <input type="checkbox" id="f-classroom-pm-session" ${item.paymentModes&&item.paymentModes.includes('session')?'checked':''} onchange="document.getElementById('f-classroom-session-fee-wrap').style.display=this.checked?'block':'none';"> بالحصة
+      </label>
+      <div id="f-classroom-session-fee-wrap" style="display:${item.paymentModes&&item.paymentModes.includes('session')?'block':'none'};">
+        <input type="text" id="f-classroom-session-fee" placeholder="سعر الحصة الواحدة (جنيه)" value="${item.sessionFee||''}">
+      </div>
+      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 لازم تسيب طريقة واحدة على الأقل مفعّلة</div>`;
   }
   else if(type==='subjects'){
     const item = id ? db.subjects.find(s=>s.id===id) : {};
@@ -3668,9 +4595,21 @@ function renderChildClassroomChecks(){
   }
   const matching = db.classrooms.filter(r=> r.grade===grade);
   const mismatchedEnrolled = db.classrooms.filter(r=> enrolledIds.includes(r.id) && r.grade!==grade);
-  let html = matching.map(r=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
-        <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${enrolledIds.includes(r.id)?'checked':''}> ${r.name} <span style="color:var(--muted); font-size:12px;">(${r.monthlyFee||0} جنيه/شهر)</span>
-      </label>`).join('') || '<div class="empty">مفيش مجموعات لمرحلة "'+(GRADE_LABELS[grade]||grade)+'" لسه — أضف واحدة من تاب "المجموعات"</div>';
+  const existingEnrollments = wrap._existingEnrollments || {};
+  let html = matching.map(r=>{
+    const modes = r.paymentModes || ['monthly'];
+    const isChecked = enrolledIds.includes(r.id);
+    const currentMode = existingEnrollments[r.id] || 'monthly';
+    const modeSelector = modes.length>1
+      ? `<select class="f-classroom-pm-select" data-classroom="${r.id}" style="margin-inline-start:8px; font-size:12px; padding:2px 6px;" ${isChecked?'':'disabled'}>
+           <option value="monthly" ${currentMode==='monthly'?'selected':''}>شهري (${r.monthlyFee||0} ج)</option>
+           <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
+         </select>`
+      : `<span style="color:var(--muted); font-size:12px;">(${modes[0]==='session' ? (r.sessionFee||0)+' ج/حصة' : (r.monthlyFee||0)+' ج/شهر'})</span>`;
+    return `<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
+        <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const s=this.parentElement.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked;"> ${r.name} ${modeSelector}
+      </label>`;
+  }).join('') || '<div class="empty">مفيش مجموعات لمرحلة "'+(GRADE_LABELS[grade]||grade)+'" لسه — أضف واحدة من تاب "المجموعات"</div>';
   if(mismatchedEnrolled.length){
     html += `<div style="font-size:12px; color:var(--danger); margin-top:6px;">⚠️ الطالب متسجّل أصلاً في مجموعة/مجموعات من مرحلة تانية غير اللي اخترتها: ${mismatchedEnrolled.map(r=>r.name).join('، ')} — دوس حفظ عشان يتشالوا تلقائيًا، أو راجع المرحلة المختارة لو دي غلطة</div>`;
   }
@@ -3694,6 +4633,7 @@ function renderAgeGradeWarning(){
 
 function saveAdminModal(){
   if(adminModalMode==='schedule'){ saveScheduleCell(); return; }
+  if(adminModalMode==='subscription-add'){ saveNewSubscription(); return; }
   const db = loadDB();
   const type = adminActiveTab;
   if(type==='payments'){ saveAdminPayment(db); return; }
@@ -3716,16 +4656,34 @@ function saveAdminModal(){
       if(!confirm(msg + '\n\nمتأكد إنك عايز تحفظ برغم كده؟')) return;
     }
     const classroomIds = Array.from(document.querySelectorAll('.f-classroom-chk:checked')).map(x=>x.value);
+    const paymentModeByClassroom = {};
+    document.querySelectorAll('.f-classroom-pm-select').forEach(sel=>{ paymentModeByClassroom[sel.dataset.classroom] = sel.value; });
     const primaryRadio = document.querySelector('input[name="f-primary-parent"]:checked');
+    let childId;
     if(adminModalMode==='add'){
-      db.children.push({id:uid('ch'), name, dob, grade, classroomIds});
+      childId = uid('ch');
+      db.children.push({id:childId, name, dob, grade, classroomIds});
     } else {
-      const item = db.children.find(c=>c.id===adminModalEditId);
+      childId = adminModalEditId;
+      const item = db.children.find(c=>c.id===childId);
       item.name=name; item.dob=dob; item.grade=grade; item.classroomIds=classroomIds;
-      const linkedParents = db.parents.filter(p=> p.childIds.includes(adminModalEditId));
+      const linkedParents = db.parents.filter(p=> p.childIds.includes(childId));
       if(primaryRadio) item.primaryParentId = primaryRadio.value;
       else if(linkedParents.length===1) item.primaryParentId = linkedParents[0].id;
     }
+    // مزامنة enrollments مع المجموعات المختارة: نضيف اللي جديد، نحدّث طريقة الدفع لو اتغيّرت، ونشيل اللي اتشال تسجيله
+    db.enrollments = db.enrollments || [];
+    db.enrollments = db.enrollments.filter(e=> e.childId!==childId || classroomIds.includes(e.classroomId));
+    classroomIds.forEach(cid=>{
+      const classroom = db.classrooms.find(r=>r.id===cid);
+      const defaultMode = (classroom && classroom.paymentModes && classroom.paymentModes.length===1) ? classroom.paymentModes[0] : 'monthly';
+      const mode = paymentModeByClassroom[cid] || defaultMode;
+      const existing = db.enrollments.find(e=> e.childId===childId && e.classroomId===cid);
+      if(existing) existing.paymentMode = mode;
+      else db.enrollments.push({id:uid('en'), childId, classroomId:cid, paymentMode:mode});
+    });
+    // شيل الاشتراكات المرتبطة بمجموعة اتشال تسجيل الطالب فيها
+    db.subscriptions = (db.subscriptions||[]).filter(s=> s.childId!==childId || classroomIds.includes(s.classroomId));
   }
   else if(type==='teachers'){
     const phone = document.getElementById('f-phone').value.trim();
@@ -3733,14 +4691,24 @@ function saveAdminModal(){
     const classroomIds = Array.from(document.querySelectorAll('.f-teacher-classroom-chk:checked')).map(x=>x.value);
     if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('صيغة الإيميل مش مظبوطة'); return; }
     if(adminModalMode==='add' && !email){ showToast('لازم تحط إيميل المدرّس عشان يقدر يعمل حسابه'); return; }
+    const paymentType = document.querySelector('input[name="f-payment-type"]:checked').value;
+    let baseSalary = null, percentageRate = null;
+    if(paymentType==='salary'){
+      baseSalary = parseFloat(document.getElementById('f-base-salary').value);
+      if(isNaN(baseSalary) || baseSalary<0){ showToast('اكتب الراتب الثابت بشكل صحيح'); return; }
+    } else {
+      percentageRate = parseFloat(document.getElementById('f-percentage-rate').value);
+      if(isNaN(percentageRate) || percentageRate<=0 || percentageRate>100){ showToast('اكتب نسبة صحيحة من 1 لـ100'); return; }
+    }
     let teacherId = adminModalEditId;
     if(adminModalMode==='add'){
       teacherId = uid('t');
-      db.teachers.push({id:teacherId, name, phone, classroomIds, email});
+      db.teachers.push({id:teacherId, name, phone, classroomIds, email, paymentType, baseSalary, percentageRate});
     } else {
       const item = db.teachers.find(t=>t.id===teacherId);
       const removedClassrooms = (item.classroomIds||[]).filter(cid=> !classroomIds.includes(cid));
       item.name=name; item.phone=phone; item.classroomIds=classroomIds; item.email=email;
+      item.paymentType=paymentType; item.baseSalary=baseSalary; item.percentageRate=percentageRate;
       if(removedClassrooms.length){
         db.schedule.forEach(s=>{ if(s.teacherId===teacherId && removedClassrooms.includes(s.classroomId)) s.teacherId=null; });
       }
@@ -3800,13 +4768,23 @@ function saveAdminModal(){
     const feeRaw = document.getElementById('f-classroom-fee').value.trim();
     if(feeRaw && (!/^\d+(\.\d+)?$/.test(feeRaw))){ showToast('اشتراك المجموعة لازم يكون رقم موجب'); return; }
     const monthlyFee = parseFloat(feeRaw) || 0;
+    const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
+    const wantsSession = document.getElementById('f-classroom-pm-session').checked;
+    if(!wantsMonthly && !wantsSession){ showToast('لازم تختار طريقة دفع واحدة على الأقل'); return; }
+    const paymentModes = [...(wantsMonthly?['monthly']:[]), ...(wantsSession?['session']:[])];
+    let sessionFee = 0;
+    if(wantsSession){
+      const sfRaw = document.getElementById('f-classroom-session-fee').value.trim();
+      if(!/^\d+(\.\d+)?$/.test(sfRaw) || parseFloat(sfRaw)<=0){ showToast('سعر الحصة لازم يكون رقم أكبر من صفر'); return; }
+      sessionFee = parseFloat(sfRaw);
+    }
     if(adminModalMode==='add'){
       const newId = uid('c');
-      db.classrooms.push({id:newId, name, grade, monthlyFee});
+      db.classrooms.push({id:newId, name, grade, monthlyFee, paymentModes, sessionFee});
       db.scheduleSettingsByClassroom[newId] = {days:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'], periods:[1,2,3,4]};
     } else {
       const item = db.classrooms.find(r=>r.id===adminModalEditId);
-      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee;
+      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee;
     }
   }
   else if(type==='subjects'){
@@ -3858,6 +4836,8 @@ function deleteAdminItem(type, id){
     db.evaluations = db.evaluations.filter(e=>e.childId!==id);
     db.messages = db.messages.filter(m=>m.childId!==id);
     db.taskCompletions = (db.taskCompletions||[]).filter(c=>c.childId!==id);
+    db.enrollments = (db.enrollments||[]).filter(e=>e.childId!==id);
+    db.subscriptions = (db.subscriptions||[]).filter(s=>s.childId!==id);
   }
   else if(type==='teachers'){
     db.teachers = db.teachers.filter(t=>t.id!==id);
@@ -3886,6 +4866,8 @@ function deleteAdminItem(type, id){
     db.children.forEach(c=>{ if(c.classroomIds) c.classroomIds = c.classroomIds.filter(cid=>cid!==id); });
     db.schedule = db.schedule.filter(s=>s.classroomId!==id);
     delete db.scheduleSettingsByClassroom[id];
+    db.enrollments = (db.enrollments||[]).filter(e=>e.classroomId!==id);
+    db.subscriptions = (db.subscriptions||[]).filter(s=>s.classroomId!==id);
   }
   else if(type==='subjects'){
     db.subjects = db.subjects.filter(s=>s.id!==id);
@@ -4042,6 +5024,107 @@ function changeRaiseCycle(){
   saveDB(db);
   showToast('تم تحديث دورة العلاوة لـ' + n + ' شهور');
   renderAdminList();
+}
+
+// ============ مرتبات المدرّسين (كشوف الحساب) ============
+function changeTeacherPayoutBasis(){
+  const db = loadDB();
+  const current = db.settings.teacherPayoutBasis || 'sessions';
+  const choice = confirm('اضغط "موافق" لحساب النسبة من (عدد الحصص × سعر الحصة)، أو "إلغاء" لحسابها من المبالغ المحصّلة فعليًا.\n\nالإعداد الحالي: ' + (current==='collections'?'مبالغ محصّلة فعليًا':'حصص × سعر الحصة'));
+  db.settings.teacherPayoutBasis = choice ? 'sessions' : 'collections';
+  saveDB(db);
+  showToast('تم تحديث أساس حساب النسبة');
+  renderAdminList();
+}
+
+// بيقترح الفترة = الشهر اللي فات (من أول الشهر لآخره)، ممكن الأدمن يعدّلها قبل الإنشاء
+function openGeneratePayoutsModal(){
+  const now = new Date();
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth()-1, 1);
+  const fmt = d => d.toISOString().slice(0,10);
+  document.getElementById('gp-period-start').value = fmt(lastMonthStart);
+  document.getElementById('gp-period-end').value = fmt(lastMonthEnd);
+  document.getElementById('gen-payouts-modal-bg').classList.add('show');
+}
+
+async function generateAllTeacherPayouts(){
+  const periodStart = document.getElementById('gp-period-start').value.trim();
+  const periodEnd = document.getElementById('gp-period-end').value.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)){ showToast('صيغة التاريخ لازم تكون YYYY-MM-DD'); return; }
+  if(periodEnd < periodStart){ showToast('تاريخ النهاية لازم يكون بعد تاريخ البداية'); return; }
+  const db = loadDB();
+  let successCount = 0;
+  const skippedNames = []; // كشف موجود بالفعل لنفس الفترة لنفس المدرّس
+  const failedNames = [];  // أي خطأ تاني غير التكرار (مشكلة اتصال، صلاحيات، إلخ)
+  for(const t of db.teachers){
+    try{
+      const { error } = await supabaseClient.rpc('generate_teacher_payout', { p_teacher_id: t.id, p_period_start: periodStart, p_period_end: periodEnd });
+      if(error){
+        if(error.code === '23505') skippedNames.push(t.name);
+        else { failedNames.push(t.name); console.error('فشل إنشاء كشف حساب ' + t.name, error); }
+      } else successCount++;
+    } catch(e){ failedNames.push(t.name); console.error(e); }
+  }
+  closeModal('gen-payouts-modal-bg');
+  let msg = `تم إنشاء ${successCount} كشف حساب`;
+  if(skippedNames.length) msg += ` — عندهم كشف بالفعل لنفس الفترة: ${skippedNames.join('، ')}`;
+  if(failedNames.length) msg += ` — ⚠️ حصل خطأ مع: ${failedNames.join('، ')}`;
+  showToast(msg);
+  await fetchDBFromSupabase();
+  renderAdminList();
+}
+
+let adjustPayoutTargetId = null;
+function openAdjustPayoutModal(payoutId){
+  adjustPayoutTargetId = payoutId;
+  const db = loadDB();
+  const p = db.teacherPayouts.find(x=>x.id===payoutId);
+  const t = p ? db.teachers.find(x=>x.id===p.teacherId) : null;
+  document.getElementById('adjust-payout-info').textContent = t ? `${t.name} · ${p.periodStart} → ${p.periodEnd} · المبلغ المحسوب حاليًا: ${p.computedAmount.toFixed(2)} جنيه` : '';
+  document.getElementById('ap-amount').value = p ? (p.manualAdjustment||0) : 0;
+  document.getElementById('ap-reason').value = p ? (p.adjustmentReason||'') : '';
+  document.getElementById('adjust-payout-modal-bg').classList.add('show');
+}
+
+async function saveAdjustPayout(){
+  const amountStr = document.getElementById('ap-amount').value.trim();
+  const reason = document.getElementById('ap-reason').value.trim();
+  const amount = parseFloat(amountStr);
+  if(amountStr && isNaN(amount)){ showToast('اكتب رقم صحيح للتعديل'); return; }
+  try{
+    const { error } = await supabaseClient.from('teacher_payouts').update({
+      manual_adjustment: amount || 0,
+      adjustment_reason: reason || null
+    }).eq('id', adjustPayoutTargetId);
+    if(error){ showToast('حصل خطأ في حفظ التعديل'); console.error(error); return; }
+    closeModal('adjust-payout-modal-bg');
+    showToast('تم حفظ التعديل');
+    await fetchDBFromSupabase();
+    renderAdminList();
+  } catch(e){ console.error(e); showToast('حصل خطأ في حفظ التعديل'); }
+}
+
+async function approvePayout(payoutId){
+  if(!confirm('اعتماد الكشف ده؟ هيظهر للمدرّس في شاشته بعد كده.')) return;
+  try{
+    const { error } = await supabaseClient.from('teacher_payouts').update({ status:'approved' }).eq('id', payoutId);
+    if(error){ showToast('حصل خطأ في الاعتماد'); console.error(error); return; }
+    showToast('تم اعتماد الكشف');
+    await fetchDBFromSupabase();
+    renderAdminList();
+  } catch(e){ console.error(e); showToast('حصل خطأ في الاعتماد'); }
+}
+
+async function markPayoutPaid(payoutId){
+  if(!confirm('تعليم الكشف ده كمدفوع؟')) return;
+  try{
+    const { error } = await supabaseClient.from('teacher_payouts').update({ status:'paid' }).eq('id', payoutId);
+    if(error){ showToast('حصل خطأ في التعليم كمدفوع'); console.error(error); return; }
+    showToast('تم تعليم الكشف كمدفوع');
+    await fetchDBFromSupabase();
+    renderAdminList();
+  } catch(e){ console.error(e); showToast('حصل خطأ في التعليم كمدفوع'); }
 }
 
 
