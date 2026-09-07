@@ -1,0 +1,15 @@
+name: TestSprite
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  testsprite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: TestSprite/testsprite-action@v1
+        with:
+          api-key: ${{ secrets.TESTSPRITE_API_KEY }}
+          project: "babead2a-8c28-4b59-a80a-3c7468e319e9"
