@@ -1781,7 +1781,10 @@ async function handleResetPassword(){
   }
 }
 
+let __handleEmailLoginCallCount = 0; // تشخيص مؤقت
 async function handleEmailLogin(){
+  __handleEmailLoginCallCount++;
+  console.log('HANDLE_EMAIL_LOGIN_CALL #' + __handleEmailLoginCallCount + ' at ' + Date.now());
   isManualLoginInProgress = true;
   try{
   window.__loginDiag = { entered:true, authDone:false, profileDone:false, beforeFetch:false, afterFetch:false, path:null };
