@@ -61,6 +61,11 @@ test('تبديل إظهار كلمة المرور في شاشة الدخول', a
 /* ================= الدخول بالنيابة (Impersonation) — أضيفت 8 سبتمبر ================= */
 
 test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر الرجوع شغال', async ({ page }) => {
+  const consoleLogs = [];
+  page.on('console', msg => {
+    const text = msg.text();
+    if(text.includes('HANDLE_EMAIL_LOGIN_CALL')) consoleLogs.push(text);
+  });
   const tLoginStart = Date.now();
   await login(page, 'admin', 'admin@masar-centers.demo', 'Admin@12345');
   await expect(page.locator('#login-screen')).not.toHaveClass(/active/, { timeout: 10000 });
@@ -76,6 +81,7 @@ test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر ال
     waitedMs += 250;
   }
   console.log('WAIT_LOOP:', JSON.stringify({ waitedMs, loginState }));
+  console.log('LOGIN_CALLS:', JSON.stringify(consoleLogs));
 
   const diag = await page.evaluate(() => {
     let evalError = null;
