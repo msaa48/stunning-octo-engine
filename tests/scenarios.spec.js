@@ -66,6 +66,17 @@ test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر ال
   await expect(page.locator('#login-screen')).not.toHaveClass(/active/, { timeout: 10000 });
   const tLoginDone = Date.now();
 
+  // ننتظر لحد ما handleEmailLogin تخلص فعليًا (afterFetch=true) أو نوصل لحد أقصى 8 ثواني تشخيصية
+  let waitedMs = 0;
+  let loginState = null;
+  while(waitedMs < 8000){
+    loginState = await page.evaluate(() => window.__loginDiag || null);
+    if(loginState && (loginState.afterFetch || loginState.path)) break;
+    await page.waitForTimeout(250);
+    waitedMs += 250;
+  }
+  console.log('WAIT_LOOP:', JSON.stringify({ waitedMs, loginState }));
+
   const diag = await page.evaluate(() => {
     let evalError = null;
     try { openAdminSection('teachers'); }
@@ -83,7 +94,10 @@ test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر ال
       fetchDiag: window.__fetchDiag || null,
       loginDiag: window.__loginDiag || null,
       buildMarker: window.APP_BUILD_MARKER || null,
-      unexpectedError: (window.__loginDiag && window.__loginDiag.unexpectedError) || null
+      unexpectedError: (window.__loginDiag && window.__loginDiag.unexpectedError) || null,
+      currentUrl: window.location.href,
+      readyState: document.readyState,
+      perfNavEntries: (performance.getEntriesByType && performance.getEntriesByType('navigation').length) || 0
     };
   });
   console.log('DIAG:', JSON.stringify(diag, null, 2));
