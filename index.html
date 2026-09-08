@@ -1326,6 +1326,7 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // في الرابط — لو حصل كده لازم نوديه لشاشة "كلمة سر جديدة" مباشرة، مش لشاشة
 // الدور العادية (initAuth) رغم إنه فعليًا بقى عنده session صالحة.
 let isPasswordRecoveryFlow = /type=recovery/.test(window.location.hash) || /type=recovery/.test(window.location.search);
+let isManualLoginInProgress = false; // بيتفعّل من بداية handleEmailLogin لحد ما يخلص، عشان initAuth() (اللي بتشتغل تلقائي عند تحميل الصفحة) متتصادمش معاه وتعمل enterRoleScreen مرتين بالتوازي على نفس session
 supabaseClient.auth.onAuthStateChange(function(event, _s){
   if(event === 'PASSWORD_RECOVERY'){
     isPasswordRecoveryFlow = true;
@@ -1780,6 +1781,9 @@ async function handleResetPassword(){
 }
 
 async function handleEmailLogin(){
+  isManualLoginInProgress = true;
+  try{
+  window.__loginDiag = { entered:true, authDone:false, profileDone:false, beforeFetch:false, afterFetch:false, path:null };
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   const errorEl = document.getElementById('pin-error');
@@ -1792,11 +1796,14 @@ async function handleEmailLogin(){
     // فشل الاتصال بالسيرفر نفسه (غالبًا الملف اتفتح file:// مباشرة، أو مفيش نت)
     errorEl.textContent = '⚠️ تعذّر الاتصال بالسيرفر: ' + networkErr.message + ' — جرّب تفتح الملف من رابط https (Netlify/Vercel) مش من الجهاز مباشرة';
     console.error('Supabase network error:', networkErr);
+    window.__loginDiag.path = 'network_error';
     return;
   }
+  window.__loginDiag.authDone = true;
   if(error){
     errorEl.textContent = 'خطأ من السيرفر: ' + error.message;
     console.error('Supabase auth error:', error);
+    window.__loginDiag.path = 'auth_error: ' + error.message;
     return;
   }
 
@@ -1805,10 +1812,12 @@ async function handleEmailLogin(){
     .select('role, person_id, center_id, is_super_admin, is_owner, permissions, full_name')
     .eq('id', data.user.id)
     .single();
+  window.__loginDiag.profileDone = true;
 
   if(profileError || !profile){
     errorEl.textContent = 'حصل خطأ في تحميل بيانات الحساب';
     await supabaseClient.auth.signOut();
+    window.__loginDiag.path = 'profile_error: ' + (profileError ? profileError.message : 'no profile');
     return;
   }
 
@@ -1822,11 +1831,18 @@ async function handleEmailLogin(){
 
   if(profile.is_super_admin){
     session.role = 'SUPER_ADMIN'; // مهم: عمود role في profiles ممكن يكون null للمالك — لازم نثبته هنا عشان impersonation stack (push/pop) يشتغل صح لما نرجع خطوة
+    window.__loginDiag.path = 'super_admin_branch';
     enterRoleScreen('SUPER_ADMIN');
     return;
   }
+  window.__loginDiag.beforeFetch = true;
+  window.__loginDiag.path = 'normal_branch_role_' + profile.role;
   await fetchDBFromSupabase();
+  window.__loginDiag.afterFetch = true;
   enterRoleScreen(profile.role);
+  } finally {
+    isManualLoginInProgress = false;
+  }
 }
 
 async function initAuth(){
@@ -1836,6 +1852,13 @@ async function initAuth(){
     return;
   }
   const { data: { session: supaSession } } = await supabaseClient.auth.getSession();
+  if(isManualLoginInProgress){
+    // handleEmailLogin بقى شغال (أو خلص) وهو المسؤول عن استكمال الدخول —
+    // لو استمرينا هنا كمان هيحصل تعارض: enterRoleScreen/fetchDBFromSupabase
+    // هيتنفذوا مرتين بالتوازي على نفس session، وده بالظبط اللي كان بيسبب
+    // ظهور شاشة الأدمن قبل ما بيانات Supabase (claimedBy وغيرها) تخلص تحميل
+    return;
+  }
   if(supaSession){
     // مهم لزرار الرجوع: لو فيه session محفوظة من قبل (فتحنا التطبيق وإحنا
     // لسه داخلين)، احنا هنقفز على طول لشاشة الدور (admin/teacher/parent)
