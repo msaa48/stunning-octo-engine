@@ -1007,6 +1007,7 @@ function toggleTheme(){
 
 /* ========================= DATA LAYER (Supabase-backed, cache in memory + localStorage fallback) ========================= */
 const DB_KEY = 'center_demo_db_v1';
+window.APP_BUILD_MARKER = 'BUILD_CHECK_' + '20260909_run4'; // تشخيص مؤقت — هيتشال بعد حل الباج
 let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخول — loadDB() بيرجعه على طول من غير ما ينده على الشبكة تاني
 window.__fetchDiag = { calls: 0, lastError: null, lastSource: null, started: null }; // تشخيص مؤقت — هيتشال بعد حل الباج
 
