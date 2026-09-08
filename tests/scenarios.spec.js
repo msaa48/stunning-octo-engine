@@ -80,7 +80,9 @@ test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر ال
       panelHtmlSnippet: panel ? panel.innerHTML.slice(0,300) : null,
       teachersCount: (typeof loadDB === 'function') ? loadDB().teachers.length : 'loadDB not found',
       teachersClaimed: (typeof loadDB === 'function') ? loadDB().teachers.map(t=>({id:t.id,claimedBy: t.claimedBy===undefined ? '__UNDEFINED__' : t.claimedBy})) : null,
-      fetchDiag: window.__fetchDiag || null
+      fetchDiag: window.__fetchDiag || null,
+      loginDiag: window.__loginDiag || null,
+      buildMarker: window.APP_BUILD_MARKER || null
     };
   });
   console.log('DIAG:', JSON.stringify(diag, null, 2));
