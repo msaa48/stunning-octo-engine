@@ -1008,6 +1008,7 @@ function toggleTheme(){
 /* ========================= DATA LAYER (Supabase-backed, cache in memory + localStorage fallback) ========================= */
 const DB_KEY = 'center_demo_db_v1';
 let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخول — loadDB() بيرجعه على طول من غير ما ينده على الشبكة تاني
+window.__fetchDiag = { calls: 0, lastError: null, lastSource: null }; // تشخيص مؤقت — هيتشال بعد حل الباج
 
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
@@ -1082,11 +1083,13 @@ async function fetchDBFromSupabase(){
 
     dbCache = rowsToDB(rows);
     localStorage.setItem(DB_KEY, JSON.stringify(dbCache)); // نسخة احتياطية محلية لو النت قطع بعد كده
+    window.__fetchDiag.calls++; window.__fetchDiag.lastError = null; window.__fetchDiag.lastSource = 'supabase';
   } catch(e){
     console.error('فشل تحميل البيانات من Supabase، هنشتغل بآخر نسخة محفوظة محليًا', e);
     showToast('⚠️ تعذّر الاتصال بقاعدة البيانات — شغّال بآخر نسخة محفوظة على الجهاز');
     const raw = localStorage.getItem(DB_KEY);
     dbCache = raw ? JSON.parse(raw) : seedData();
+    window.__fetchDiag.calls++; window.__fetchDiag.lastError = (e && e.message) ? e.message : String(e); window.__fetchDiag.lastSource = raw ? 'localStorage' : 'seedData';
   }
 }
 
