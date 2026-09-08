@@ -1817,6 +1817,7 @@ async function handleEmailLogin(){
   session.authId = data.user.id;
 
   if(profile.is_super_admin){
+    session.role = 'SUPER_ADMIN'; // مهم: عمود role في profiles ممكن يكون null للمالك — لازم نثبته هنا عشان impersonation stack (push/pop) يشتغل صح لما نرجع خطوة
     enterRoleScreen('SUPER_ADMIN');
     return;
   }
@@ -1857,6 +1858,7 @@ async function initAuth(){
   session.permissions = profile.permissions || {};
   session.authId = supaSession.user.id;
       if(profile.is_super_admin){
+        session.role = 'SUPER_ADMIN'; // نفس تثبيت handleEmailLogin — role في profiles ممكن يكون null للمالك
         enterRoleScreen('SUPER_ADMIN');
         return;
       }
