@@ -1008,7 +1008,7 @@ function toggleTheme(){
 /* ========================= DATA LAYER (Supabase-backed, cache in memory + localStorage fallback) ========================= */
 const DB_KEY = 'center_demo_db_v1';
 let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخول — loadDB() بيرجعه على طول من غير ما ينده على الشبكة تاني
-window.__fetchDiag = { calls: 0, lastError: null, lastSource: null }; // تشخيص مؤقت — هيتشال بعد حل الباج
+window.__fetchDiag = { calls: 0, lastError: null, lastSource: null, started: null }; // تشخيص مؤقت — هيتشال بعد حل الباج
 
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
@@ -1049,6 +1049,7 @@ function rowsToDB(rows){
 }
 
 async function fetchDBFromSupabase(){
+  window.__fetchDiag.started = Date.now();
   const centerId = session.centerId;
   if(!centerId){ dbCache = seedData(); return; } // Super Admin (لسه ملوش شاشة خاصة) — ديمو مؤقت لحد ما نبني لوحته
   try{
