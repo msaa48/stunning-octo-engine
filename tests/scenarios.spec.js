@@ -64,7 +64,23 @@ test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر ال
   await login(page, 'admin', 'admin@masar-centers.demo', 'Admin@12345');
   await expect(page.locator('#login-screen')).not.toHaveClass(/active/, { timeout: 10000 });
 
-  await page.evaluate(() => openAdminSection('teachers'));
+  const diag = await page.evaluate(() => {
+    let evalError = null;
+    try { openAdminSection('teachers'); }
+    catch(e){ evalError = (e && e.stack) ? e.stack : String(e); }
+    const activeScreen = document.querySelector('.screen.active');
+    const panel = document.getElementById('admin-list-panel');
+    return {
+      evalError,
+      activeScreenId: activeScreen ? activeScreen.id : null,
+      typeofFn: typeof window.openAdminSection,
+      panelHtmlLen: panel ? panel.innerHTML.length : null,
+      panelHtmlSnippet: panel ? panel.innerHTML.slice(0,300) : null,
+      teachersCount: (typeof loadDB === 'function') ? loadDB().teachers.length : 'loadDB not found',
+      teachersClaimed: (typeof loadDB === 'function') ? loadDB().teachers.map(t=>({id:t.id,claimedBy:t.claimedBy})) : null
+    };
+  });
+  console.log('DIAG:', JSON.stringify(diag, null, 2));
   await page.waitForTimeout(500);
 
   const viewAsBtn = page.getByText('👁 عرض كشاشته').first();
