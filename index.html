@@ -1841,6 +1841,10 @@ async function handleEmailLogin(){
   await fetchDBFromSupabase();
   window.__loginDiag.afterFetch = true;
   enterRoleScreen(profile.role);
+  } catch(unexpectedErr){
+    window.__loginDiag = window.__loginDiag || {};
+    window.__loginDiag.unexpectedError = (unexpectedErr && unexpectedErr.stack) ? unexpectedErr.stack : String(unexpectedErr);
+    console.error('handleEmailLogin: استثناء غير متوقع', unexpectedErr);
   } finally {
     isManualLoginInProgress = false;
   }
