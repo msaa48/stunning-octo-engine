@@ -9,7 +9,7 @@ const ROLE_CARD = {
 };
 
 async function login(page, role, email, password) {
-  await page.goto(URL);
+  await page.goto(URL + (URL.includes('?') ? '&' : '?') + 'nocache=' + Date.now());
   await page.getByText(ROLE_CARD[role], { exact: true }).click();
   await page.locator('#login-email').fill(email);
   await page.locator('#login-password').fill(password);
@@ -61,8 +61,10 @@ test('تبديل إظهار كلمة المرور في شاشة الدخول', a
 /* ================= الدخول بالنيابة (Impersonation) — أضيفت 8 سبتمبر ================= */
 
 test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر الرجوع شغال', async ({ page }) => {
+  const tLoginStart = Date.now();
   await login(page, 'admin', 'admin@masar-centers.demo', 'Admin@12345');
   await expect(page.locator('#login-screen')).not.toHaveClass(/active/, { timeout: 10000 });
+  const tLoginDone = Date.now();
 
   const diag = await page.evaluate(() => {
     let evalError = null;
@@ -82,6 +84,7 @@ test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر ال
     };
   });
   console.log('DIAG:', JSON.stringify(diag, null, 2));
+  console.log('TIMING:', JSON.stringify({ tLoginStart, tLoginDone, gapMs: tLoginDone - tLoginStart, nowAtEval: Date.now() }));
   await page.waitForTimeout(500);
 
   const viewAsBtn = page.getByText('👁 عرض كشاشته').first();
