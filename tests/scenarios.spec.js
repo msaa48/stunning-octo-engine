@@ -57,3 +57,56 @@ test('تبديل إظهار كلمة المرور في شاشة الدخول', a
 
   await expect(passwordInput).toHaveAttribute('type', 'text');
 });
+
+/* ================= الدخول بالنيابة (Impersonation) — أضيفت 8 سبتمبر ================= */
+
+test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر الرجوع شغال', async ({ page }) => {
+  await login(page, 'admin', 'admin@masar-centers.demo', 'Admin@12345');
+  await expect(page.locator('#login-screen')).not.toHaveClass(/active/, { timeout: 10000 });
+
+  await page.evaluate(() => openAdminSection('teachers'));
+  await page.waitForTimeout(500);
+
+  const viewAsBtn = page.getByText('👁 عرض كشاشته').first();
+  await expect(viewAsBtn).toBeVisible({ timeout: 10000 });
+  await viewAsBtn.click();
+
+  // البانر الأصفر لازم يظهر فوق شاشة المدرّس
+  await expect(page.locator('#impersonation-banner')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#teacher-screen')).toHaveClass(/active/);
+
+  // الرجوع خطوة واحدة لازم يرجّع للوحة الأدمن، والبانر يختفي
+  await page.getByText('🔙 رجوع خطوة').click();
+  await expect(page.locator('#admin-screen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('#impersonation-banner')).toBeHidden();
+});
+
+test('Super Admin يدخل كأدمن مؤسسة ثم يرجع خطوة واحدة', async ({ page }) => {
+  await login(page, 'admin', 'owner@masar-centers.demo', 'Owner@12345');
+  await expect(page.locator('#super-admin-screen')).toHaveClass(/active/, { timeout: 10000 });
+
+  const viewAsAdminBtn = page.getByText('👁 دخول كأدمن').first();
+  await expect(viewAsAdminBtn).toBeVisible({ timeout: 10000 });
+  await viewAsAdminBtn.click();
+
+  await expect(page.locator('#impersonation-banner')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator('#admin-screen')).toHaveClass(/active/);
+
+  await page.getByText('🔙 رجوع خطوة').click();
+  await expect(page.locator('#super-admin-screen')).toHaveClass(/active/, { timeout: 10000 });
+  await expect(page.locator('#impersonation-banner')).toBeHidden();
+});
+
+test('زر الخروج الحقيقي (بدون impersonation) يرجع لشاشة الدخول', async ({ page }) => {
+  await login(page, 'admin', 'admin@masar-centers.demo', 'Admin@12345');
+  await expect(page.locator('#admin-screen')).toHaveClass(/active/, { timeout: 10000 });
+  await page.getByRole('button', { name: 'خروج' }).click();
+  await expect(page.locator('#login-screen')).toHaveClass(/active/, { timeout: 10000 });
+});
+
+/* ================= حسابات إضافية (مدرّس ثانٍ + أسيستنت) ================= */
+
+test('تسجيل دخول مدرّس ثانٍ', async ({ page }) => {
+  await login(page, 'teacher', 'teacher2@masar-centers.demo', 'Teacher2@2025');
+  await expect(page.locator('#teacher-screen')).toHaveClass(/active/, { timeout: 10000 });
+});
