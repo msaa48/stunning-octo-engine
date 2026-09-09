@@ -64,14 +64,18 @@ test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر ال
   await login(page, 'admin', 'admin@masar-centers.demo', 'Admin@12345');
   await expect(page.locator('#login-screen')).not.toHaveClass(/active/, { timeout: 10000 });
 
-  // fetchDBFromSupabase() بتحمّل أكتر من 20 جدول من Supabase — ممكن تاخد
-  // لحد 10-15 ثانية حسب سرعة الشبكة، فمحتاجين نستنى فترة كافية قبل ما
-  // نفتح قسم المدرّسين ونتأكد إن claimedBy وصلت فعلاً
-  await page.waitForTimeout(1000);
+  // fetchDBFromSupabase() بتحمّل أكتر من 20 جدول من Supabase وممكن تاخد
+  // وقت متغير، فبدل انتظار ثابت بننتظر فعليًا لحد ما بيانات المدرّسين
+  // (claimedBy تحديدًا) توصل فعلاً قبل ما نفتح تاب المدرّسين
+  await page.waitForFunction(() => {
+    if (typeof loadDB !== 'function') return false;
+    const teachers = loadDB().teachers;
+    return teachers && teachers.length > 0 && teachers.some(t => t.claimedBy !== undefined && t.claimedBy !== null);
+  }, { timeout: 25000 });
   await page.evaluate(() => { openAdminSection('teachers'); });
 
   const viewAsBtn = page.getByText('👁 عرض كشاشته').first();
-  await expect(viewAsBtn).toBeVisible({ timeout: 20000 });
+  await expect(viewAsBtn).toBeVisible({ timeout: 5000 });
   await viewAsBtn.click();
 
   // البانر الأصفر لازم يظهر فوق شاشة المدرّس
