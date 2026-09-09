@@ -9,7 +9,7 @@ const ROLE_CARD = {
 };
 
 async function login(page, role, email, password) {
-  await page.goto(URL + (URL.includes('?') ? '&' : '?') + 'nocache=' + Date.now());
+  await page.goto(URL);
   await page.getByText(ROLE_CARD[role], { exact: true }).click();
   await page.locator('#login-email').fill(email);
   await page.locator('#login-password').fill(password);
@@ -61,57 +61,17 @@ test('تبديل إظهار كلمة المرور في شاشة الدخول', a
 /* ================= الدخول بالنيابة (Impersonation) — أضيفت 8 سبتمبر ================= */
 
 test('الأدمن يشوف شاشة مدرّس بالنيابة وبانر الرجوع شغال', async ({ page }) => {
-  const consoleLogs = [];
-  page.on('console', msg => {
-    const text = msg.text();
-    if(text.includes('HANDLE_EMAIL_LOGIN_CALL')) consoleLogs.push(text);
-  });
-  const tLoginStart = Date.now();
   await login(page, 'admin', 'admin@masar-centers.demo', 'Admin@12345');
   await expect(page.locator('#login-screen')).not.toHaveClass(/active/, { timeout: 10000 });
-  const tLoginDone = Date.now();
 
-  // ننتظر لحد ما handleEmailLogin تخلص فعليًا (afterFetch=true) أو نوصل لحد أقصى 8 ثواني تشخيصية
-  let waitedMs = 0;
-  let loginState = null;
-  while(waitedMs < 8000){
-    loginState = await page.evaluate(() => window.__loginDiag || null);
-    if(loginState && (loginState.afterFetch || loginState.path)) break;
-    await page.waitForTimeout(250);
-    waitedMs += 250;
-  }
-  console.log('WAIT_LOOP:', JSON.stringify({ waitedMs, loginState }));
-  console.log('LOGIN_CALLS:', JSON.stringify(consoleLogs));
-
-  const diag = await page.evaluate(() => {
-    let evalError = null;
-    try { openAdminSection('teachers'); }
-    catch(e){ evalError = (e && e.stack) ? e.stack : String(e); }
-    const activeScreen = document.querySelector('.screen.active');
-    const panel = document.getElementById('admin-list-panel');
-    return {
-      evalError,
-      activeScreenId: activeScreen ? activeScreen.id : null,
-      typeofFn: typeof window.openAdminSection,
-      panelHtmlLen: panel ? panel.innerHTML.length : null,
-      panelHtmlSnippet: panel ? panel.innerHTML.slice(0,300) : null,
-      teachersCount: (typeof loadDB === 'function') ? loadDB().teachers.length : 'loadDB not found',
-      teachersClaimed: (typeof loadDB === 'function') ? loadDB().teachers.map(t=>({id:t.id,claimedBy: t.claimedBy===undefined ? '__UNDEFINED__' : t.claimedBy})) : null,
-      fetchDiag: window.__fetchDiag || null,
-      loginDiag: window.__loginDiag || null,
-      buildMarker: window.APP_BUILD_MARKER || null,
-      unexpectedError: (window.__loginDiag && window.__loginDiag.unexpectedError) || null,
-      currentUrl: window.location.href,
-      readyState: document.readyState,
-      perfNavEntries: (performance.getEntriesByType && performance.getEntriesByType('navigation').length) || 0
-    };
-  });
-  console.log('DIAG:', JSON.stringify(diag, null, 2));
-  console.log('TIMING:', JSON.stringify({ tLoginStart, tLoginDone, gapMs: tLoginDone - tLoginStart, nowAtEval: Date.now() }));
-  await page.waitForTimeout(500);
+  // fetchDBFromSupabase() بتحمّل أكتر من 20 جدول من Supabase — ممكن تاخد
+  // لحد 10-15 ثانية حسب سرعة الشبكة، فمحتاجين نستنى فترة كافية قبل ما
+  // نفتح قسم المدرّسين ونتأكد إن claimedBy وصلت فعلاً
+  await page.waitForTimeout(1000);
+  await page.evaluate(() => { openAdminSection('teachers'); });
 
   const viewAsBtn = page.getByText('👁 عرض كشاشته').first();
-  await expect(viewAsBtn).toBeVisible({ timeout: 10000 });
+  await expect(viewAsBtn).toBeVisible({ timeout: 20000 });
   await viewAsBtn.click();
 
   // البانر الأصفر لازم يظهر فوق شاشة المدرّس
