@@ -1007,9 +1007,7 @@ function toggleTheme(){
 
 /* ========================= DATA LAYER (Supabase-backed, cache in memory + localStorage fallback) ========================= */
 const DB_KEY = 'center_demo_db_v1';
-window.APP_BUILD_MARKER = 'BUILD_CHECK_' + '20260909_run4'; // تشخيص مؤقت — هيتشال بعد حل الباج
 let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخول — loadDB() بيرجعه على طول من غير ما ينده على الشبكة تاني
-window.__fetchDiag = { calls: 0, lastError: null, lastSource: null, started: null }; // تشخيص مؤقت — هيتشال بعد حل الباج
 
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
@@ -1050,7 +1048,6 @@ function rowsToDB(rows){
 }
 
 async function fetchDBFromSupabase(){
-  window.__fetchDiag.started = Date.now();
   const centerId = session.centerId;
   if(!centerId){ dbCache = seedData(); return; } // Super Admin (لسه ملوش شاشة خاصة) — ديمو مؤقت لحد ما نبني لوحته
   try{
@@ -1066,10 +1063,14 @@ async function fetchDBFromSupabase(){
     const teachersQuery = isAdmin
       ? supabaseClient.from('teachers').select('*').eq('center_id', centerId)
       : supabaseClient.from('teachers_public').select('*').eq('center_id', centerId);
-    const results = await Promise.all([teachersQuery, ...tables.map(t=> supabaseClient.from(t).select('*').eq('center_id', centerId))]);
+    const results = await Promise.all([
+      teachersQuery,
+      ...tables.map(t=> supabaseClient.from(t).select('*').eq('center_id', centerId)),
+      supabaseClient.from('app_settings').select('*').eq('center_id', centerId).single()
+    ]);
     const teachersResult = results[0];
-    const restResults = results.slice(1);
-    const appSettingsRes = await supabaseClient.from('app_settings').select('*').eq('center_id', centerId).single();
+    const restResults = results.slice(1, 1 + tables.length);
+    const appSettingsRes = results[results.length - 1];
 
     const failed = [teachersResult, ...restResults].find(r=>r.error);
     if(failed) throw failed.error;
@@ -1085,13 +1086,11 @@ async function fetchDBFromSupabase(){
 
     dbCache = rowsToDB(rows);
     localStorage.setItem(DB_KEY, JSON.stringify(dbCache)); // نسخة احتياطية محلية لو النت قطع بعد كده
-    window.__fetchDiag.calls++; window.__fetchDiag.lastError = null; window.__fetchDiag.lastSource = 'supabase';
   } catch(e){
     console.error('فشل تحميل البيانات من Supabase، هنشتغل بآخر نسخة محفوظة محليًا', e);
     showToast('⚠️ تعذّر الاتصال بقاعدة البيانات — شغّال بآخر نسخة محفوظة على الجهاز');
     const raw = localStorage.getItem(DB_KEY);
     dbCache = raw ? JSON.parse(raw) : seedData();
-    window.__fetchDiag.calls++; window.__fetchDiag.lastError = (e && e.message) ? e.message : String(e); window.__fetchDiag.lastSource = raw ? 'localStorage' : 'seedData';
   }
 }
 
@@ -1781,13 +1780,9 @@ async function handleResetPassword(){
   }
 }
 
-let __handleEmailLoginCallCount = 0; // تشخيص مؤقت
 async function handleEmailLogin(){
-  __handleEmailLoginCallCount++;
-  console.log('HANDLE_EMAIL_LOGIN_CALL #' + __handleEmailLoginCallCount + ' at ' + Date.now());
   isManualLoginInProgress = true;
   try{
-  window.__loginDiag = { entered:true, authDone:false, profileDone:false, beforeFetch:false, afterFetch:false, path:null };
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   const errorEl = document.getElementById('pin-error');
@@ -1800,14 +1795,11 @@ async function handleEmailLogin(){
     // فشل الاتصال بالسيرفر نفسه (غالبًا الملف اتفتح file:// مباشرة، أو مفيش نت)
     errorEl.textContent = '⚠️ تعذّر الاتصال بالسيرفر: ' + networkErr.message + ' — جرّب تفتح الملف من رابط https (Netlify/Vercel) مش من الجهاز مباشرة';
     console.error('Supabase network error:', networkErr);
-    window.__loginDiag.path = 'network_error';
     return;
   }
-  window.__loginDiag.authDone = true;
   if(error){
     errorEl.textContent = 'خطأ من السيرفر: ' + error.message;
     console.error('Supabase auth error:', error);
-    window.__loginDiag.path = 'auth_error: ' + error.message;
     return;
   }
 
@@ -1816,12 +1808,10 @@ async function handleEmailLogin(){
     .select('role, person_id, center_id, is_super_admin, is_owner, permissions, full_name')
     .eq('id', data.user.id)
     .single();
-  window.__loginDiag.profileDone = true;
 
   if(profileError || !profile){
     errorEl.textContent = 'حصل خطأ في تحميل بيانات الحساب';
     await supabaseClient.auth.signOut();
-    window.__loginDiag.path = 'profile_error: ' + (profileError ? profileError.message : 'no profile');
     return;
   }
 
@@ -1835,19 +1825,11 @@ async function handleEmailLogin(){
 
   if(profile.is_super_admin){
     session.role = 'SUPER_ADMIN'; // مهم: عمود role في profiles ممكن يكون null للمالك — لازم نثبته هنا عشان impersonation stack (push/pop) يشتغل صح لما نرجع خطوة
-    window.__loginDiag.path = 'super_admin_branch';
     enterRoleScreen('SUPER_ADMIN');
     return;
   }
-  window.__loginDiag.beforeFetch = true;
-  window.__loginDiag.path = 'normal_branch_role_' + profile.role;
   await fetchDBFromSupabase();
-  window.__loginDiag.afterFetch = true;
   enterRoleScreen(profile.role);
-  } catch(unexpectedErr){
-    window.__loginDiag = window.__loginDiag || {};
-    window.__loginDiag.unexpectedError = (unexpectedErr && unexpectedErr.stack) ? unexpectedErr.stack : String(unexpectedErr);
-    console.error('handleEmailLogin: استثناء غير متوقع', unexpectedErr);
   } finally {
     isManualLoginInProgress = false;
   }
@@ -1861,10 +1843,9 @@ async function initAuth(){
   }
   const { data: { session: supaSession } } = await supabaseClient.auth.getSession();
   if(isManualLoginInProgress){
-    // handleEmailLogin بقى شغال (أو خلص) وهو المسؤول عن استكمال الدخول —
-    // لو استمرينا هنا كمان هيحصل تعارض: enterRoleScreen/fetchDBFromSupabase
-    // هيتنفذوا مرتين بالتوازي على نفس session، وده بالظبط اللي كان بيسبب
-    // ظهور شاشة الأدمن قبل ما بيانات Supabase (claimedBy وغيرها) تخلص تحميل
+    // handleEmailLogin شغال بالفعل وهو المسؤول عن استكمال الدخول —
+    // ده حماية وقائية تمنع أي تعارض مستقبلي لو initAuth() (اللي بتشتغل
+    // تلقائي عند تحميل الصفحة) اشتغلت بالتوازي مع تسجيل دخول يدوي
     return;
   }
   if(supaSession){
