@@ -104,6 +104,8 @@
   .role-card.teacher::before{background:linear-gradient(var(--teacher-1),var(--teacher-2));}
   .role-card.parent::before{background:linear-gradient(var(--parent-1),var(--parent-2));}
   .role-card.admin::before{background:linear-gradient(var(--admin-1),var(--admin-2));}
+  .role-card.assistant::before{background:linear-gradient(#f59e0b,#d97706);}
+  .role-card.student::before{background:linear-gradient(#10b981,#059669);}
   .role-card > .emoji{
     font-size:24px; width:52px; height:52px; margin:16px 0 16px 16px; flex-shrink:0;
     border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff;
@@ -111,6 +113,8 @@
   .role-card.teacher .emoji{background:linear-gradient(135deg,var(--teacher-1),var(--teacher-2));}
   .role-card.parent .emoji{background:linear-gradient(135deg,var(--parent-1),var(--parent-2));}
   .role-card.admin .emoji{background:linear-gradient(135deg,var(--admin-1),var(--admin-2));}
+  .role-card.assistant .emoji{background:linear-gradient(135deg,#f59e0b,#d97706);}
+  .role-card.student .emoji{background:linear-gradient(135deg,#10b981,#059669);}
   .role-card > span{padding:16px 16px 16px 0; display:flex; flex-direction:column; justify-content:center;}
   .role-card .label{font-size:16.5px; font-weight:700; font-family:'Cairo',sans-serif;}
   .role-card .sub{font-size:12px; color:var(--muted); margin-top:3px;}
@@ -406,7 +410,24 @@
         </span>
         <span class="chev">‹</span>
       </button>
+      <button class="role-card assistant" onclick="goToPin('ASSISTANT', null)">
+        <span class="emoji">🧑‍💼</span>
+        <span>
+          <div class="label">الأسيستنت</div>
+          <div class="sub">مساعدة المدرّس في تسجيل الحضور</div>
+        </span>
+        <span class="chev">‹</span>
+      </button>
+      <button class="role-card student" onclick="goToPin('STUDENT', null)">
+        <span class="emoji">🎓</span>
+        <span>
+          <div class="label">الطالب</div>
+          <div class="sub">حل الامتحانات ومتابعة درجاتك</div>
+        </span>
+        <span class="chev">‹</span>
+      </button>
     </div>
+    <button class="back-link" onclick="goToPin('SUPER_ADMIN', null)" style="margin-top:18px; opacity:0.55; font-size:12px;">دخول المالك / فريق التطوير</button>
   </div>
 </div>
 
@@ -420,8 +441,11 @@
     <p id="pin-sub">أدخل الإيميل وكلمة السر</p>
     <div class="pin-error" id="pin-error"></div>
     <form id="email-login-form" onsubmit="return false;" style="width:100%;">
-      <input type="email" id="login-email" placeholder="الإيميل" autocomplete="username" required
-             style="width:100%; padding:14px; margin-bottom:12px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:12px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); padding:0 12px; box-sizing:border-box;" dir="ltr">
+        <input type="text" id="login-email" placeholder="username" autocomplete="username" required
+               style="flex:1; padding:14px 0; border:none; background:transparent; color:var(--text); font-family:inherit; text-align:left;">
+        <span style="color:var(--sub,#9ca3af); font-size:14px; white-space:nowrap;">@masar-centers.app</span>
+      </div>
       <div class="pw-wrap" style="margin-bottom:16px;">
         <input type="password" id="login-password" placeholder="كلمة السر" autocomplete="current-password" required
                style="padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
@@ -429,84 +453,53 @@
       </div>
       <button type="submit" onclick="handleEmailLogin()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">دخول</button>
     </form>
-    <button class="back-link" onclick="showScreen('signup-screen')" style="margin-top:10px;">فعّل حسابك الجديد</button>
     <button class="back-link" onclick="openForgotPasswordScreen()">نسيت كلمة السر؟</button>
     <button class="back-link" onclick="showScreen('login-screen')">رجوع لاختيار الدور</button>
   </div>
 </div>
 
-<!-- ============ FORGOT PASSWORD (SEND RESET EMAIL) SCREEN ============ -->
+<!-- ============ FORGOT PASSWORD (REQUEST VIA WHATSAPP) SCREEN ============ -->
 <div id="forgot-password-screen" class="screen">
   <div class="pin-box">
-    <h2>استرجاع كلمة السر</h2>
-    <p>اكتب الإيميل بتاعك وهنبعتلك لينك تعمل بيه كلمة سر جديدة</p>
+    <h2>نسيت كلمة السر</h2>
+    <p>اكتب اسم المستخدم بتاعك ورقم واتساب تقدر يتواصل معاك عليه، وطلبك هيوصل للمدير عشان يديك كلمة سر مؤقتة</p>
     <div class="pin-error" id="forgot-password-error"></div>
     <div class="pin-success" id="forgot-password-success" style="color:#16a34a; font-size:14px; margin-bottom:10px;"></div>
     <form id="forgot-password-form" onsubmit="return false;" style="width:100%;">
-      <input type="email" id="forgot-password-email" placeholder="الإيميل" autocomplete="username" required
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:12px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); padding:0 12px; box-sizing:border-box;" dir="ltr">
+        <input type="text" id="forgot-password-username" placeholder="username" autocomplete="username" required
+               style="flex:1; padding:14px 0; border:none; background:transparent; color:var(--text); font-family:inherit; text-align:left;">
+        <span style="color:var(--sub,#9ca3af); font-size:14px; white-space:nowrap;">@masar-centers.app</span>
+      </div>
+      <input type="tel" id="forgot-password-whatsapp" placeholder="رقم الواتساب" autocomplete="tel" required
              style="width:100%; padding:14px; margin-bottom:16px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
-      <button type="submit" id="forgot-password-submit-btn" onclick="handleForgotPassword()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">ابعت لينك الاسترجاع</button>
+      <button type="submit" id="forgot-password-submit-btn" onclick="handleForgotPassword()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">ابعت الطلب للمدير</button>
     </form>
     <button class="back-link" onclick="showScreen('pin-screen')" style="margin-top:10px;">رجوع لتسجيل الدخول</button>
   </div>
 </div>
 
-<!-- ============ RESET PASSWORD (AFTER CLICKING EMAIL LINK) SCREEN ============ -->
+<!-- ============ FORCE PASSWORD CHANGE (FIRST LOGIN WITH TEMP PASSWORD) SCREEN ============ -->
 <div id="reset-password-screen" class="screen">
   <div class="pin-box">
-    <h2>كلمة سر جديدة</h2>
-    <p>اكتب كلمة السر الجديدة بتاعتك</p>
+    <h2>غيّر كلمة السر المؤقتة</h2>
+    <p>دخلت بكلمة سر مؤقتة — لازم تحط كلمة سر دائمة بتاعتك قبل ما تكمل</p>
     <div class="pin-error" id="reset-password-error"></div>
     <form id="reset-password-form" onsubmit="return false;" style="width:100%;">
-      <div class="pw-wrap" style="margin-bottom:8px;">
+      <div class="pw-wrap" style="margin-bottom:6px;">
         <input type="password" id="reset-password-new" placeholder="كلمة السر الجديدة" autocomplete="new-password" required minlength="8"
                oninput="renderResetPasswordChecklist()"
                style="padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
         <button type="button" class="pw-eye" onclick="togglePasswordVisibility('reset-password-new', this)">👁️</button>
       </div>
-      <ul id="reset-password-checklist" style="list-style:none; padding:0; margin:0 0 16px; font-size:12px; display:flex; flex-direction:column; gap:4px;"></ul>
+      <ul id="reset-password-checklist" style="list-style:none; padding:0; margin:0 0 16px; font-size:12px; display:flex; flex-direction:column; gap:4px;">
+        <li id="rchk-len" style="color:var(--sub,#9ca3af);">○ 8 خانات على الأقل</li>
+        <li id="rchk-letter" style="color:var(--sub,#9ca3af);">○ حرف واحد على الأقل (a-z/A-Z)</li>
+        <li id="rchk-digit" style="color:var(--sub,#9ca3af);">○ رقم واحد على الأقل</li>
+        <li id="rchk-symbol" style="color:var(--sub,#9ca3af);">○ رمز واحد على الأقل (!@#$%...)</li>
+      </ul>
       <button type="submit" onclick="handleResetPassword()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">حفظ كلمة السر</button>
     </form>
-  </div>
-</div>
-
-<!-- ============ SIGNUP SCREEN (verified self-registration) ============ -->
-<div id="signup-screen" class="screen">
-  <div class="pin-box">
-    <h2>تفعيل حسابك</h2>
-    <p>لازم يكون المدير أضاف إيميلك الأول قبل ما تقدر تفعّل حسابك</p>
-    <div class="pin-error" id="signup-error"></div>
-    <form id="signup-form" onsubmit="return false;" style="width:100%;">
-      <input type="email" id="signup-email" placeholder="نفس الإيميل اللي المدير سجله" autocomplete="username" required
-             style="width:100%; padding:14px; margin-bottom:12px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
-      <div class="pw-wrap" style="margin-bottom:6px;">
-        <input type="password" id="signup-password" placeholder="اختار كلمة سر" autocomplete="new-password" required minlength="8"
-               style="padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
-        <button type="button" class="pw-eye" onclick="togglePasswordVisibility('signup-password', this)">👁️</button>
-      </div>
-      <div id="signup-password-hint" style="font-size:12px; color:var(--sub,#9ca3af); margin-bottom:6px; line-height:1.6;">
-        كلمة السر لازم تكون: 8 خانات على الأقل، وتحتوي على حرف إنجليزي واحد على الأقل ورقم واحد على الأقل، من غير مسافات
-      </div>
-      <ul id="signup-password-checklist" style="list-style:none; padding:0; margin:0 0 16px; font-size:12px; display:flex; flex-direction:column; gap:4px;">
-        <li id="chk-len" style="color:var(--sub,#9ca3af);">○ 8 خانات على الأقل</li>
-        <li id="chk-letter" style="color:var(--sub,#9ca3af);">○ حرف إنجليزي واحد على الأقل (a-z/A-Z)</li>
-        <li id="chk-digit" style="color:var(--sub,#9ca3af);">○ رقم واحد على الأقل</li>
-        <li id="chk-nospace" style="color:var(--sub,#9ca3af);">○ من غير مسافات فارغة</li>
-      </ul>
-      <div class="pw-wrap" style="margin-bottom:6px;">
-        <input type="password" id="signup-password-confirm" placeholder="أكّد كلمة السر" autocomplete="new-password" required
-               style="padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
-        <button type="button" class="pw-eye" onclick="togglePasswordVisibility('signup-password-confirm', this)">👁️</button>
-      </div>
-      <div id="signup-password-match" style="font-size:12px; margin-bottom:16px; min-height:16px;"></div>
-      <input type="tel" id="signup-phone" placeholder="رقم الهاتف (اختياري)" autocomplete="tel"
-             style="width:100%; padding:14px; margin-bottom:6px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; box-sizing:border-box;">
-      <div style="font-size:12px; color:var(--sub,#9ca3af); margin-bottom:16px; line-height:1.6;">
-        الرقم ده هيتحفظ كبيانات تواصل بس، من غير أي تأكيد برسالة — ممكن تعدّله بعدين من الإعدادات
-      </div>
-      <button type="submit" onclick="handleSignup()" class="pin-key" style="width:100%; background:var(--admin-1,#2563eb); color:#fff; padding:14px; border-radius:12px;">تفعيل الحساب</button>
-    </form>
-    <button class="back-link" onclick="showScreen('pin-screen')">عندك حساب بالفعل؟ سجّل دخول</button>
   </div>
 </div>
 
@@ -1322,17 +1315,7 @@ const SUPABASE_URL = 'https://gqevqyduncfnyyfyxreh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZXZxeWR1bmNmbnl5Znl4cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjIzOTgsImV4cCI6MjEwMjg5ODM5OH0.dJwydh3CNyyBnQG6M-Wm6WU37gXwFj2wlhC6p9MWDzY';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// لينك "استرجاع كلمة السر" اللي بييجي في الإيميل بيرجّع اليوزر هنا مع type=recovery
-// في الرابط — لو حصل كده لازم نوديه لشاشة "كلمة سر جديدة" مباشرة، مش لشاشة
-// الدور العادية (initAuth) رغم إنه فعليًا بقى عنده session صالحة.
-let isPasswordRecoveryFlow = /type=recovery/.test(window.location.hash) || /type=recovery/.test(window.location.search);
 let isManualLoginInProgress = false; // بيتفعّل من بداية handleEmailLogin لحد ما يخلص، عشان initAuth() (اللي بتشتغل تلقائي عند تحميل الصفحة) متتصادمش معاه وتعمل enterRoleScreen مرتين بالتوازي على نفس session
-supabaseClient.auth.onAuthStateChange(function(event, _s){
-  if(event === 'PASSWORD_RECOVERY'){
-    isPasswordRecoveryFlow = true;
-    showScreen('reset-password-screen');
-  }
-});
 
 let session = { role:null, personId:null, centerId:null, isSuperAdmin:false, isOwner:false, permissions:{}, centerSlug:'markaz', authId:null, viewingLabel:null };
 // مكدس "الدخول بالنيابة" — كل عنصر هو نسخة كاملة من الـsession قبل الدخول للمستوى الجديد،
@@ -1470,7 +1453,7 @@ function checkAgeGradeMismatch(dobStr, grade){
  * الشاشة — عشان مايفضلش فيه session شغالة في الخلفية لو المستخدم
  * دوس "قدام" تاني أو رجع فتح التطبيق.
  */
-const PUBLIC_SCREENS = ['login-screen', 'pin-screen', 'signup-screen', 'forgot-password-screen', 'reset-password-screen'];
+const PUBLIC_SCREENS = ['login-screen', 'pin-screen', 'forgot-password-screen', 'reset-password-screen'];
 let navHistory = [];
 let isPoppingState = false; // true وقت إننا بنستجيب لـ popstate، عشان مانعملش pushState تاني بالغلط
 
@@ -1581,7 +1564,7 @@ function goToPin(role, personId){
   pendingRole = role;
   pendingPersonId = personId;
   document.getElementById('pin-error').textContent = '';
-  const titles = { TEACHER:'دخول المدرّس', PARENT:'دخول ولي الأمر', ADMIN:'دخول المدير' };
+  const titles = { TEACHER:'دخول المدرّس', PARENT:'دخول ولي الأمر', ADMIN:'دخول المدير', ASSISTANT:'دخول الأسيستنت', STUDENT:'دخول الطالب', SUPER_ADMIN:'دخول المالك / فريق التطوير' };
   document.getElementById('pin-title').textContent = titles[role] || 'تسجيل الدخول';
   showScreen('pin-screen');
 }
@@ -1598,160 +1581,71 @@ function togglePasswordVisibility(inputId, btn){
   }
 }
 
-function renderPasswordMatch(){
-  const pw = document.getElementById('signup-password')?.value || '';
-  const confirm = document.getElementById('signup-password-confirm');
-  const el = document.getElementById('signup-password-match');
-  if(!confirm || !el) return true;
-  if(confirm.value.length === 0){
-    el.textContent = '';
-    return false;
-  }
-  if(pw === confirm.value){
-    el.textContent = '✓ كلمتا السر متطابقتان';
-    el.style.color = 'var(--admin-1,#2563eb)';
-    return true;
-  } else {
-    el.textContent = '✗ كلمتا السر غير متطابقتين';
-    el.style.color = 'var(--danger)';
-    return false;
-  }
-}
-
-function checkPasswordRules(password){
-  return {
-    len: password.length >= 8,
-    letter: /[a-zA-Z]/.test(password),
-    digit: /[0-9]/.test(password),
-    nospace: password.length > 0 && !/\s/.test(password)
-  };
-}
-
-function renderPasswordChecklist(){
-  const password = document.getElementById('signup-password').value;
-  const rules = checkPasswordRules(password);
-  const map = { 'chk-len': ['len','8 خانات على الأقل'], 'chk-letter': ['letter','حرف إنجليزي واحد على الأقل (a-z/A-Z)'], 'chk-digit': ['digit','رقم واحد على الأقل'], 'chk-nospace': ['nospace','من غير مسافات فارغة'] };
-  Object.keys(map).forEach(id => {
-    const [key, label] = map[id];
-    const el = document.getElementById(id);
-    if(!el) return;
-    if(rules[key]){
-      el.textContent = '✓ ' + label;
-      el.style.color = 'var(--admin-1,#2563eb)';
-    } else {
-      el.textContent = '○ ' + label;
-      el.style.color = 'var(--sub,#9ca3af)';
-    }
-  });
-  return rules;
-}
-
-document.addEventListener('DOMContentLoaded', function(){
-  const pwField = document.getElementById('signup-password');
-  if(pwField){
-    pwField.addEventListener('input', function(){ renderPasswordChecklist(); renderPasswordMatch(); });
-  }
-  const pwConfirmField = document.getElementById('signup-password-confirm');
-  if(pwConfirmField){
-    pwConfirmField.addEventListener('input', renderPasswordMatch);
-  }
-});
-
-async function handleSignup(){
-  const email = document.getElementById('signup-email').value.trim();
-  const password = document.getElementById('signup-password').value;
-  const errorEl = document.getElementById('signup-error');
-  errorEl.textContent = '';
-
-  const rules = renderPasswordChecklist();
-  if(!rules.len || !rules.letter || !rules.digit || !rules.nospace){
-    errorEl.textContent = 'كلمة السر لازم تكون 8 خانات على الأقل، فيها حرف ورقم، من غير مسافات فارغة';
-    return;
-  }
-
-  const confirmPassword = document.getElementById('signup-password-confirm').value;
-  if(password !== confirmPassword){
-    renderPasswordMatch();
-    errorEl.textContent = 'كلمتا السر مش متطابقتين — راجع الخانتين';
-    return;
-  }
-
-  const { data, error } = await supabaseClient.auth.signUp({ email, password });
-
-  if(error){
-    // الرسالة اللي بيرميها الـ trigger لو الإيميل مش مسجل مسبقاً من المدير بتوصل هنا
-    errorEl.textContent = error.message.includes('غير مسجل')
-      ? error.message
-      : 'الإيميل ده غير مسموح له بعمل حساب — كلم مدير المؤسسة';
-    return;
-  }
-
-  showToast('تم إنشاء الحساب ✓ جاري الدخول...');
-
-  // حفظ رقم الهاتف (اختياري، من غير تأكيد) في سجل الشخص المطابق للإيميل — مش هيأثر لو الحقل فاضي
-  const phone = document.getElementById('signup-phone').value.trim();
-  if(phone){
-    try{
-      await supabaseClient.from('teachers').update({ phone }).eq('email', email);
-      await supabaseClient.from('parents').update({ phone }).eq('email', email);
-    } catch(phoneErr){
-      console.error('Phone save error (non-blocking):', phoneErr);
-    }
-  }
-
-  showScreen('pin-screen');
-  document.getElementById('login-email').value = email;
-  document.getElementById('login-password').focus();
-}
-
-/* ========================= نسيت كلمة السر ========================= */
+/* ========================= نسيت كلمة السر (طلب عبر واتساب للأدمن) ========================= */
 function openForgotPasswordScreen(){
   document.getElementById('forgot-password-error').textContent = '';
   document.getElementById('forgot-password-success').textContent = '';
-  document.getElementById('forgot-password-email').value = document.getElementById('login-email')?.value.trim() || '';
+  document.getElementById('forgot-password-username').value = document.getElementById('login-email')?.value.trim() || '';
+  document.getElementById('forgot-password-whatsapp').value = '';
   showScreen('forgot-password-screen');
 }
 
 async function handleForgotPassword(){
-  const email = document.getElementById('forgot-password-email').value.trim();
+  const username = document.getElementById('forgot-password-username').value.trim().toLowerCase();
+  const whatsapp = document.getElementById('forgot-password-whatsapp').value.trim();
   const errorEl = document.getElementById('forgot-password-error');
   const successEl = document.getElementById('forgot-password-success');
   const btn = document.getElementById('forgot-password-submit-btn');
   errorEl.textContent = '';
   successEl.textContent = '';
-  if(!email){ errorEl.textContent = 'اكتب الإيميل الأول'; return; }
+  if(!username){ errorEl.textContent = 'اكتب اسم المستخدم الأول'; return; }
+  if(!whatsapp){ errorEl.textContent = 'اكتب رقم الواتساب'; return; }
 
   btn.disabled = true;
   btn.textContent = 'بيتبعت...';
   try{
-    // redirectTo لازم يكون نفس رابط الصفحة الحالية عشان بعد ما اليوزر يدوس على اللينك
-    // في إيميله، Supabase يرجّعه لنفس التطبيق ده (مش صفحة تانية) مع توكن الاسترجاع في الرابط
-    const redirectTo = window.location.origin + window.location.pathname;
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+    // المركز الحالي مش معروف قبل تسجيل الدخول، فبنستخدم مركز الديمو الوحيد المتاح
+    // حاليًا كثابت — لازم يتحدّث لو المنصة بقى فيها أكتر من مركز فعليًا شغال
+    const { error } = await supabaseClient.from('password_reset_requests').insert({
+      center_id: '00000000-0000-0000-0000-000000000001',
+      username,
+      whatsapp_number: whatsapp,
+    });
     if(error){
       errorEl.textContent = 'خطأ من السيرفر: ' + error.message;
     } else {
-      // بنفس رسالة النجاح بغض النظر هل الإيميل مسجل ولا لأ، عشان محدش يقدر
-      // يستخدم الشاشة دي يتأكد إيه الإيميلات المسجلة في النظام من عدمه
-      successEl.textContent = '✅ لو الإيميل ده مسجل عندنا، هتوصلك رسالة فيها لينك تعمل بيه كلمة سر جديدة. افتحها من على نفس الجهاز/المتصفح ده.';
+      successEl.textContent = '✅ طلبك وصل للمدير، هيتواصل معاك على الواتساب بكلمة سر مؤقتة قريبًا.';
     }
   } catch(networkErr){
     errorEl.textContent = '⚠️ تعذّر الاتصال بالسيرفر: ' + networkErr.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = 'ابعت لينك الاسترجاع';
+    btn.textContent = 'ابعت الطلب للمدير';
   }
+}
+
+/* ========================= تغيير الباسورد المؤقت (إجباري أول دخول) ========================= */
+function checkPasswordRules(password){
+  return {
+    len: password.length >= 8,
+    letter: /[a-zA-Z]/.test(password),
+    digit: /[0-9]/.test(password),
+    symbol: /[^a-zA-Z0-9\s]/.test(password),
+    nospace: password.length > 0 && !/\s/.test(password)
+  };
 }
 
 function renderResetPasswordChecklist(){
   const password = document.getElementById('reset-password-new').value;
   const rules = checkPasswordRules(password);
-  const labels = { len:'8 خانات على الأقل', letter:'حرف إنجليزي واحد على الأقل (a-z/A-Z)', digit:'رقم واحد على الأقل', nospace:'من غير مسافات فارغة' };
-  const listEl = document.getElementById('reset-password-checklist');
-  listEl.innerHTML = Object.keys(labels).map(key => {
-    const ok = rules[key];
-    return `<li style="color:${ok ? 'var(--admin-1,#2563eb)' : 'var(--sub,#9ca3af)'}">${ok ? '✓' : '○'} ${labels[key]}</li>`;
-  }).join('');
+  const map = { 'rchk-len':'len', 'rchk-letter':'letter', 'rchk-digit':'digit', 'rchk-symbol':'symbol' };
+  Object.keys(map).forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const ok = rules[map[id]];
+    el.style.color = ok ? 'var(--admin-1,#2563eb)' : 'var(--sub,#9ca3af)';
+    el.textContent = (ok ? '✓ ' : '○ ') + el.textContent.replace(/^[✓○]\s*/, '');
+  });
   return rules;
 }
 
@@ -1761,8 +1655,8 @@ async function handleResetPassword(){
   errorEl.textContent = '';
 
   const rules = renderResetPasswordChecklist();
-  if(!rules.len || !rules.letter || !rules.digit || !rules.nospace){
-    errorEl.textContent = 'كلمة السر لازم تكون 8 خانات على الأقل، فيها حرف ورقم، من غير مسافات فارغة';
+  if(!rules.len || !rules.letter || !rules.digit || !rules.symbol || !rules.nospace){
+    errorEl.textContent = 'كلمة السر لازم تكون 8 خانات على الأقل، فيها حرف ورقم ورمز، من غير مسافات فارغة';
     return;
   }
 
@@ -1772,9 +1666,13 @@ async function handleResetPassword(){
       errorEl.textContent = 'خطأ من السيرفر: ' + error.message;
       return;
     }
-    showToast('✅ اتغيّرت كلمة السر بنجاح — سجّل دخولك بيها');
-    await supabaseClient.auth.signOut();
-    showScreen('login-screen');
+    await supabaseClient.from('profiles').update({ must_change_password: false }).eq('id', session.authId);
+    showToast('✅ اتغيّرت كلمة السر بنجاح');
+    // الدخول أصلًا شغال (الحساب مسجّل دخول بالفعل بالباسورد المؤقت)، فبعد التغيير
+    // نكمل على طول لشاشة الدور بدل ما نرجّعه لتسجيل الدخول تاني
+    if(session.isSuperAdmin){ enterRoleScreen('SUPER_ADMIN'); return; }
+    await fetchDBFromSupabase();
+    enterRoleScreen(session.role);
   } catch(networkErr){
     errorEl.textContent = '⚠️ تعذّر الاتصال بالسيرفر: ' + networkErr.message;
   }
@@ -1783,7 +1681,8 @@ async function handleResetPassword(){
 async function handleEmailLogin(){
   isManualLoginInProgress = true;
   try{
-  const email = document.getElementById('login-email').value.trim();
+  const usernamePart = document.getElementById('login-email').value.trim().toLowerCase();
+  const email = usernamePart.includes('@') ? usernamePart : `${usernamePart}@masar-centers.app`;
   const password = document.getElementById('login-password').value;
   const errorEl = document.getElementById('pin-error');
   errorEl.textContent = '';
@@ -1805,12 +1704,24 @@ async function handleEmailLogin(){
 
   const { data: profile, error: profileError } = await supabaseClient
     .from('profiles')
-    .select('role, person_id, center_id, is_super_admin, is_owner, permissions, full_name')
+    .select('role, person_id, center_id, is_super_admin, is_owner, permissions, full_name, must_change_password')
     .eq('id', data.user.id)
     .single();
 
   if(profileError || !profile){
     errorEl.textContent = 'حصل خطأ في تحميل بيانات الحساب';
+    await supabaseClient.auth.signOut();
+    return;
+  }
+
+  // قفل الدور: الحساب لازم يكون دوره الحقيقي مطابق للدور اللي اختاره اليوزر
+  // من شاشة الدخول الأولى، إلا لو هو مالك/فريق تطوير (SUPER_ADMIN مالوش صف
+  // دور عادي في profiles.role، بيتحدد من is_super_admin بس)
+  const roleMatches = profile.is_super_admin
+    ? pendingRole === 'SUPER_ADMIN'
+    : profile.role === pendingRole;
+  if(!roleMatches){
+    errorEl.textContent = 'الحساب ده مش دوره ' + (({TEACHER:'المدرّس',PARENT:'ولي الأمر',ADMIN:'المدير',ASSISTANT:'الأسيستنت',STUDENT:'الطالب',SUPER_ADMIN:'المالك/فريق التطوير'})[pendingRole] || pendingRole) + ' — ادخل من الشاشة الصح';
     await supabaseClient.auth.signOut();
     return;
   }
@@ -1825,6 +1736,18 @@ async function handleEmailLogin(){
 
   if(profile.is_super_admin){
     session.role = 'SUPER_ADMIN'; // مهم: عمود role في profiles ممكن يكون null للمالك — لازم نثبته هنا عشان impersonation stack (push/pop) يشتغل صح لما نرجع خطوة
+  }
+
+  // لسه بالباسورد المؤقت (أول دخول، أو بعد استعادة عبر الأدمن) — يتغيّر إجباريًا قبل أي استخدام
+  if(profile.must_change_password){
+    document.getElementById('reset-password-error').textContent = '';
+    document.getElementById('reset-password-new').value = '';
+    renderResetPasswordChecklist();
+    showScreen('reset-password-screen');
+    return;
+  }
+
+  if(profile.is_super_admin){
     enterRoleScreen('SUPER_ADMIN');
     return;
   }
@@ -1836,11 +1759,6 @@ async function handleEmailLogin(){
 }
 
 async function initAuth(){
-  if(isPasswordRecoveryFlow){
-    // مستني اليوزر يحط كلمة سر جديدة في reset-password-screen — منسيبش
-    // الفلو العادي يوديه لشاشة الدور بمجرد ما يلاقي session صالحة
-    return;
-  }
   const { data: { session: supaSession } } = await supabaseClient.auth.getSession();
   if(isManualLoginInProgress){
     // handleEmailLogin شغال بالفعل وهو المسؤول عن استكمال الدخول —
@@ -1862,7 +1780,7 @@ async function initAuth(){
     history.replaceState({ screenId: 'login-screen' }, '', '#login-screen');
     const { data: profile } = await supabaseClient
       .from('profiles')
-      .select('role, person_id, center_id, is_super_admin, is_owner, permissions')
+      .select('role, person_id, center_id, is_super_admin, is_owner, permissions, must_change_password')
       .eq('id', supaSession.user.id)
       .single();
     if(profile){
@@ -1875,6 +1793,14 @@ async function initAuth(){
   session.authId = supaSession.user.id;
       if(profile.is_super_admin){
         session.role = 'SUPER_ADMIN'; // نفس تثبيت handleEmailLogin — role في profiles ممكن يكون null للمالك
+      }
+      if(profile.must_change_password){
+        // session اتحمّلت من قبل من غير ما يخلّص تغيير الباسورد المؤقت (مثلًا قفل الصفحة قبل ما يحفظ)
+        renderResetPasswordChecklist();
+        showScreen('reset-password-screen');
+        return;
+      }
+      if(profile.is_super_admin){
         enterRoleScreen('SUPER_ADMIN');
         return;
       }
