@@ -4769,7 +4769,7 @@ function saveAdminModal(){
   renderAdminList();
 }
 
-function deleteAdminItem(type, id){
+async function deleteAdminItem(type, id){
   const warnings = {
     subjects: 'متأكد إنك عايز تحذف المادة دي؟ ⚠️ هتتمسح معاها كل التقييمات المسجلة في المادة دي، وأي حصص ليها في الجدول.',
     classrooms: 'متأكد إنك عايز تحذف المجموعة دي؟ ⚠️ الطلاب المسجلين فيها هيبقوا "بدون مجموعة"، والمدرّسين المرتبطين بيها هيتشال المجموعة من عندهم، وجدول الحصص بتاعها هيتمسح بالكامل.',
@@ -4778,7 +4778,65 @@ function deleteAdminItem(type, id){
     parents: 'متأكد إنك عايز تحذف ولي الأمر ده؟ ⚠️ حسابه وشكاويه هيتمسحوا، وهيتفك ربطه بأي طلاب.',
     children: 'متأكد إنك عايز تحذف الطالب ده؟ ⚠️ كل سجلاته (الأحداث، المدفوعات، التقييمات، الرسائل) هتتمسح بالكامل.'
   };
-  confirmAction(warnings[type] || 'متأكد إنك عايز تحذف ده؟', ()=>{
+  confirmAction(warnings[type] || 'متأكد إنك عايز تحذف ده؟', async ()=>{
+  // خطوة 1: حذف فعلي من Supabase الأول — قبل أي تعديل محلي، عشان لو فشل نوقف
+  // ومنسيبش الواجهة تفتكر إن الحذف نجح وهو فعليًا لسه موجود في السيرفر
+  // (upsert وحده في pushDBToSupabase مش بيمسح صفوف، فلازم .delete() صريح هنا)
+  try{
+    if(type==='children'){
+      await Promise.all([
+        supabaseClient.from('children').delete().eq('id', id),
+        supabaseClient.from('events').delete().eq('child_id', id),
+        supabaseClient.from('payments').delete().eq('child_id', id),
+        supabaseClient.from('evaluations').delete().eq('child_id', id),
+        supabaseClient.from('messages').delete().eq('child_id', id),
+        supabaseClient.from('task_completions').delete().eq('child_id', id),
+        supabaseClient.from('enrollments').delete().eq('child_id', id),
+        supabaseClient.from('subscriptions').delete().eq('child_id', id)
+      ]);
+    } else if(type==='teachers'){
+      await Promise.all([
+        supabaseClient.from('teachers').delete().eq('id', id),
+        supabaseClient.from('teacher_attendance').delete().eq('teacher_id', id),
+        supabaseClient.from('teacher_evaluations').delete().eq('teacher_id', id),
+        supabaseClient.from('teacher_raises').delete().eq('teacher_id', id)
+      ]);
+    } else if(type==='assistants'){
+      await supabaseClient.from('assistants').delete().eq('id', id);
+    } else if(type==='parents'){
+      await Promise.all([
+        supabaseClient.from('parents').delete().eq('id', id),
+        supabaseClient.from('complaints').delete().eq('parent_id', id)
+      ]);
+    } else if(type==='classrooms'){
+      await Promise.all([
+        supabaseClient.from('classrooms').delete().eq('id', id),
+        supabaseClient.from('schedule').delete().eq('classroom_id', id),
+        supabaseClient.from('schedule_settings_by_classroom').delete().eq('classroom_id', id),
+        supabaseClient.from('enrollments').delete().eq('classroom_id', id),
+        supabaseClient.from('subscriptions').delete().eq('classroom_id', id)
+      ]);
+    } else if(type==='subjects'){
+      await Promise.all([
+        supabaseClient.from('subjects').delete().eq('id', id),
+        supabaseClient.from('schedule').delete().eq('subject_id', id),
+        supabaseClient.from('evaluations').delete().eq('subject_id', id),
+        supabaseClient.from('subject_tasks').delete().eq('subject_id', id),
+        supabaseClient.from('task_completions').delete().eq('subject_id', id)
+      ]);
+    } else if(type==='payments'){
+      await supabaseClient.from('payments').delete().eq('id', id);
+    } else if(type==='calendar'){
+      await supabaseClient.from('calendar_events').delete().eq('id', id);
+    } else if(type==='complaints'){
+      await supabaseClient.from('complaints').delete().eq('id', id);
+    }
+  } catch(e){
+    console.error('فشل الحذف من السيرفر', e);
+    showToast('⚠️ فشل الحذف من السيرفر — حاول تاني');
+    return; // منكملش تعديل محلي لو الحذف الفعلي فشل، عشان الواجهة تفضل متطابقة مع السيرفر
+  }
+
   const db = loadDB();
   if(type==='children'){
     db.children = db.children.filter(c=>c.id!==id);
