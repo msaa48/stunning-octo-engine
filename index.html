@@ -312,6 +312,11 @@
   }
   .modal-bg.show .modal{ transform: translateY(0) scale(1); opacity:1; }
 
+  /* Modal variant: قايمة صغيرة منسدلة من فوق قريبة من الزرار اللي فتحها (زي قوائم الـ⋮ المعتادة) بدل شيت كامل من تحت */
+  .modal-bg.dropdown-anchor{ background:transparent; align-items:flex-start; justify-content:flex-end; padding:64px 16px 0 0; backdrop-filter:none !important; }
+  .modal-bg.dropdown-anchor .modal{ width:240px; max-width:75vw; border-radius:16px; padding:8px; margin:0; box-shadow:0 10px 30px var(--shadow-2); transform: translateY(-8px) scale(.96); }
+  .modal-bg.dropdown-anchor.show .modal{ transform: translateY(0) scale(1); }
+
   /* Toast: gentle rise with slight bounce settle */
   .toast{ animation: toastIn .45s var(--ease-spring); }
   @keyframes toastIn{
@@ -688,9 +693,9 @@
 <!-- ============ ADMIN SCREEN ============ -->
 <div id="admin-screen" class="screen">
   <div class="topbar admin">
+    <button class="notif-bell" onclick="openAdminMoreModal()" aria-label="خيارات إضافية">⋮</button>
     <div class="title">🗂️ لوحة المدير</div>
     <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-admin" style="display:none;">0</span></button>
-    <button class="notif-bell" onclick="openAdminMoreModal()" aria-label="خيارات إضافية">⋮</button>
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
@@ -974,11 +979,11 @@
   </div>
 </div>
 
-<div class="modal-bg" id="admin-more-modal-bg">
+<div class="modal-bg dropdown-anchor" id="admin-more-modal-bg" onclick="if(event.target===this) closeModal('admin-more-modal-bg')">
   <div class="modal">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-      <h3 style="margin:0; font-size:16px;">⋮ خيارات إضافية</h3>
-      <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeModal('admin-more-modal-bg')">✕</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+      <h3 style="margin:0; font-size:15px;">⋮ خيارات إضافية</h3>
+      <button class="back-link" style="font-size:18px; padding:0 6px;" onclick="closeModal('admin-more-modal-bg')">✕</button>
     </div>
     <div class="list-row" style="cursor:pointer;" onclick="toggleTheme()">
       <div class="list-row-main">
