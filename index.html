@@ -1187,14 +1187,22 @@ function loadDB(){
   try{ return JSON.parse(raw); } catch(e){ return seedData(); }
 }
 
-function saveDB(db){
+async function saveDB(db){
   dbCache = db;
   try{
     localStorage.setItem(DB_KEY, JSON.stringify(db)); // نسخة احتياطية فورية محليًا
   } catch(e){
     showToast('⚠️ فشل حفظ نسخة احتياطية محلية (مساحة التخزين ممكن تكون خلصت)');
   }
-  pushDBToSupabase(db); // مزامنة في الخلفية — مش بتوقف واجهة المستخدم لحد ما تخلص
+  // بترجع نتيجة pushDBToSupabase عشان اللي بينده saveDB يقدر يستنى (await)
+  // ويتأكد إن الحفظ فعلًا نجح على السيرفر قبل ما يقول للمستخدم "تم الحفظ".
+  // fallback: أي حد لسه بينادي saveDB(db) من غير await (زي الأماكن القديمة)
+  // برضه هيشوف تحذير تلقائي هنا لو المزامنة فشلت، بدل ما الفشل يمر بصمت.
+  const result = await pushDBToSupabase(db);
+  if(!result.ok && !result.skipped){
+    showToast('⚠️ تعذّرت المزامنة مع السيرفر، هنحاول تاني تلقائيًا');
+  }
+  return result;
 }
 
 // بيوصل جدول الربط many-to-many بين الأسيستنت والمدرّسين بأحدث اختيار في الفورم — بيمسح اللي قديم ويكتب اللي جديد لكل أسيستنت
@@ -1263,9 +1271,9 @@ async function handleTransferOwnership(table, id, personName){
 
 async function pushDBToSupabase(db){
   const centerId = session.centerId;
-  if(!centerId) return; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
+  if(!centerId) return {ok:true, skipped:true}; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
   try{
-    await Promise.all([
+    const results = await Promise.all([
       supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, center_id:centerId}))),
       supabaseClient.from('enrollments').upsert((db.enrollments||[]).map(e=>({id:e.id, child_id:e.childId, classroom_id:e.classroomId, payment_mode:e.paymentMode, center_id:centerId}))),
       supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, center_id:centerId}))),
@@ -1293,9 +1301,18 @@ async function pushDBToSupabase(db){
       supabaseClient.from('teacher_raises').upsert(db.teacherRaises.map(r=>({id:r.id, teacher_id:r.teacherId||null, payload:r, center_id:centerId}))),
       supabaseClient.from('app_settings').upsert({center_id:centerId, raise_cycle_months:db.settings.raiseCycleMonths, teacher_payout_basis:db.settings.teacherPayoutBasis||'sessions'})
     ]);
+    // Supabase JS بيرجع {data, error} من غير ما يرمي exception حتى لو الـ upsert اترفض
+    // (زي رفض RLS أو قيد في الداتابيز)، فلازم نتأكد من كل نتيجة بنفسنا —
+    // الاعتماد بس على try/catch كان بيفوّت النوع ده من الفشل بصمت تام
+    const failed = results.filter(r => r && r.error);
+    if(failed.length){
+      console.error('فشل جزئي في مزامنة بعض الجداول مع Supabase', failed.map(f=>f.error));
+      return {ok:false, errors: failed.map(f=>f.error)};
+    }
+    return {ok:true};
   } catch(e){
     console.error('فشل مزامنة البيانات مع Supabase — النسخة المحلية محفوظة، هيتعاد المحاولة عند أول حفظ تاني', e);
-    showToast('⚠️ تعذّرت المزامنة مع السيرفر، هنحاول تاني تلقائيًا');
+    return {ok:false, errors:[e]};
   }
 }
 
@@ -4166,7 +4183,7 @@ function generateMonthlyPayments(){
   }
 }
 
-function saveAdminPayment(db){
+async function saveAdminPayment(db){
   const childId = document.getElementById('f-child').value;
   const month = document.getElementById('f-month').value.trim();
   const amount = document.getElementById('f-amount').value.trim();
@@ -4177,14 +4194,16 @@ function saveAdminPayment(db){
   if(adminModalMode==='edit' && adminModalEditId){
     const item = db.payments.find(p=>p.id===adminModalEditId);
     if(item){ item.month=month; item.amount=amount; item.status=status; }
-    saveDB(db);
+    const result = await saveDB(db);
+    if(!result.ok){ showToast('⚠️ فشل حفظ تعديل الدفعة على السيرفر — حاول تاني'); return; }
     closeModal('admin-modal-bg');
     showToast('تم تعديل الدفعة ✓');
     renderAdminList();
     return;
   }
   db.payments.push({id:uid('pay'), childId, month, amount, status});
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل تسجيل الدفعة على السيرفر — حاول تاني'); return; }
   closeModal('admin-modal-bg');
   showToast('تم تسجيل الدفعة ✓');
   renderAdminList();
@@ -4583,12 +4602,12 @@ function renderAgeGradeWarning(){
   wrap.innerHTML = `<div style="font-size:12px; color:${color}; margin:-4px 0 4px;">${warning}</div>`;
 }
 
-function saveAdminModal(){
+async function saveAdminModal(){
   if(adminModalMode==='schedule'){ saveScheduleCell(); return; }
   if(adminModalMode==='subscription-add'){ saveNewSubscription(); return; }
   const db = loadDB();
   const type = adminActiveTab;
-  if(type==='payments'){ saveAdminPayment(db); return; }
+  if(type==='payments'){ await saveAdminPayment(db); return; }
   if(type==='links'){ saveAdminLink(db); return; }
   const name = document.getElementById('f-name') ? document.getElementById('f-name').value.trim() : '';
   if(!name){ showToast('اكتب الاسم الأول'); return; }
@@ -4762,7 +4781,8 @@ function saveAdminModal(){
     }
   }
 
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل الحفظ على السيرفر — البيانات لسه مش متسجلة، حاول تاني'); return; }
   closeModal('admin-modal-bg');
   showToast('تم الحفظ ✓');
   renderAdminStats(); renderAdminOverdueBanner(); renderAdminNoGuardianBanner();
