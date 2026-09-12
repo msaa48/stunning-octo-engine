@@ -1530,6 +1530,16 @@ function showScreen(id, opts){
 }
 
 window.addEventListener('popstate', async function(e){
+  // لو فيه مودال مفتوح، زرار الرجوع الأول لازم يقفله بس — من غير ما يأثر على
+  // تنقل الشاشات اللي وراه، عشان كده بنلغي أثر الرجوع اللي حصل فعليًا في المتصفح
+  const openModal = document.querySelector('.modal-bg.show');
+  if(openModal){
+    isPoppingState = true;
+    history.pushState({ screenId: navHistory[navHistory.length - 1] }, '', location.hash);
+    isPoppingState = false;
+    closeModal(openModal.id);
+    return;
+  }
   // المستخدم دوس زرار الرجوع (فيزيائي أو من المتصفح)
   if(navHistory.length > 1){
     const currentId = navHistory[navHistory.length - 1];
