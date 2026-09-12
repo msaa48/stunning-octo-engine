@@ -3785,12 +3785,13 @@ let scheduleCellCtx = null; // {classroomId, day, period}
 function getScheduleDays(classroomId){ const db=loadDB(); return (db.scheduleSettingsByClassroom[classroomId]||{days:[]}).days; }
 function getSchedulePeriods(classroomId){ const db=loadDB(); return (db.scheduleSettingsByClassroom[classroomId]||{periods:[]}).periods; }
 
-function addSchedulePeriod(classroomId){
+async function addSchedulePeriod(classroomId){
   const db = loadDB();
   const settings = db.scheduleSettingsByClassroom[classroomId];
   const nextPeriod = Math.max(0, ...settings.periods) + 1;
   settings.periods.push(nextPeriod);
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ الحصة الجديدة على السيرفر'); return; }
   renderAdminList();
   showToast('اتضافت حصة ' + nextPeriod + ' لهذا المجموعة ✓');
 }
@@ -3809,7 +3810,7 @@ function removeSchedulePeriod(classroomId){
     showToast('اتحذفت حصة ' + lastPeriod);
   });
 }
-function addScheduleDay(classroomId){
+async function addScheduleDay(classroomId){
   const names = ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
   const db = loadDB();
   const settings = db.scheduleSettingsByClassroom[classroomId];
@@ -3817,7 +3818,8 @@ function addScheduleDay(classroomId){
   const next = names.find(n=> !used.includes(n));
   if(!next){ showToast('كل أيام الأسبوع مضافة بالفعل لهذا المجموعة'); return; }
   used.push(next);
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ اليوم الجديد على السيرفر'); return; }
   renderAdminList();
   showToast('اتضاف يوم ' + next + ' لهذا المجموعة ✓');
 }
@@ -3918,7 +3920,7 @@ function openScheduleCellModal(classroomId, day, period){
 }
 
 
-function saveScheduleCell(){
+async function saveScheduleCell(){
   const db = loadDB();
   const subjectId = document.getElementById('f-schedule-subject').value;
   const teacherId = document.getElementById('f-schedule-teacher').value;
@@ -3936,17 +3938,19 @@ function saveScheduleCell(){
   if(subjectId){
     db.schedule.push({id:uid('sc'), classroomId, day, period, subjectId, teacherId: teacherId||null});
   }
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ الجدول على السيرفر'); return; }
   closeModal('admin-modal-bg');
   renderAdminList();
   showToast('تم حفظ الجدول ✓');
 }
 
-function clearScheduleCell(){
+async function clearScheduleCell(){
   const db = loadDB();
   const {classroomId, day, period} = scheduleCellCtx;
   db.schedule = db.schedule.filter(s=> !(s.classroomId===classroomId && s.day===day && s.period===period));
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل مسح الحصة على السيرفر'); return; }
   closeModal('admin-modal-bg');
   renderAdminList();
   showToast('تم مسح الحصة');
@@ -4013,7 +4017,7 @@ function pickLinkItem(kind, id, label){
   }
 }
 
-function saveAdminLink(db){
+async function saveAdminLink(db){
   const parentId = linkSelectedParentId;
   const childId = linkSelectedChildId;
   const makePrimary = document.getElementById('f-link-primary').checked;
@@ -4024,7 +4028,8 @@ function saveAdminLink(db){
   if(alreadyLinked && !makePrimary){ showToast('ولي الأمر ده مربوط بالطالب ده بالفعل'); return; }
   if(!alreadyLinked) parent.childIds.push(childId);
   if(makePrimary || !child.primaryParentId) child.primaryParentId = parentId;
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ الربط على السيرفر'); return; }
   closeModal('admin-modal-bg');
   showToast(alreadyLinked ? 'تم تعيينه رئيسي ✓' : 'تم الربط ✓');
   if(quickLinkActive){
@@ -4036,7 +4041,7 @@ function saveAdminLink(db){
 }
 
 function unlinkGuardian(parentId, childId){
-  confirmAction('متأكد إنك عايز تفك الربط ده؟', ()=>{
+  confirmAction('متأكد إنك عايز تفك الربط ده؟', async ()=>{
     const db = loadDB();
     const parent = db.parents.find(p=>p.id===parentId);
     if(parent) parent.childIds = parent.childIds.filter(id=>id!==childId);
@@ -4046,26 +4051,29 @@ function unlinkGuardian(parentId, childId){
       const remaining = db.parents.filter(p=>p.childIds.includes(childId));
       child.primaryParentId = remaining.length ? remaining[0].id : null;
     }
-    saveDB(db);
+    const result = await saveDB(db);
+    if(!result.ok){ showToast('⚠️ فشل فك الربط على السيرفر'); return; }
     showToast('تم فك الربط');
     renderAdminList();
   });
 }
 
-function setPrimaryGuardian(childId, parentId){
+async function setPrimaryGuardian(childId, parentId){
   const db = loadDB();
   const child = db.children.find(c=>c.id===childId);
   if(child) child.primaryParentId = parentId;
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ التعيين على السيرفر'); return; }
   showToast('تم تعيينه كولي أمر رئيسي ⭐');
   renderAdminList();
 }
 
-function unsetPrimaryGuardian(childId){
+async function unsetPrimaryGuardian(childId){
   const db = loadDB();
   const child = db.children.find(c=>c.id===childId);
   if(child) child.primaryParentId = null;
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل إلغاء التعيين على السيرفر'); return; }
   showToast('اتلغى التعيين كرئيسي');
   renderAdminList();
 }
@@ -4157,7 +4165,7 @@ async function flagExceptionUnjustified(exceptionId){
   renderAdminList();
 }
 
-function generateMonthlyPayments(){
+async function generateMonthlyPayments(){
   const db = loadDB();
   const currentMonth = new Date().toISOString().slice(0,7);
   let created = 0;
@@ -4174,7 +4182,8 @@ function generateMonthlyPayments(){
       created++;
     });
   });
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ الفواتير الجديدة على السيرفر — حاول تاني'); return; }
   renderAdminList();
   if(skipped.length){
     showToast(`تم توليد ${created} فاتورة. ⚠️ اتجاهل ${skipped.length}: ${skipped.join('، ')} (مش مسجلين في أي مجموعة)`);
@@ -4209,12 +4218,13 @@ async function saveAdminPayment(db){
   renderAdminList();
 }
 
-function togglePaymentStatus(id){
+async function togglePaymentStatus(id){
   const db = loadDB();
   const p = db.payments.find(x=>x.id===id);
   if(!p) return;
   p.status = p.status==='PAID' ? 'PENDING' : 'PAID';
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل تحديث حالة الدفعة على السيرفر'); return; }
   renderAdminList();
   showToast(p.status==='PAID' ? 'اتسجلت كمدفوعة ✓' : 'اتسجلت كمعلقة');
 }
@@ -4257,7 +4267,7 @@ function renderSubjectTasksList(){
       <span onclick="deleteSubjectTask('${t.id}')" style="cursor:pointer; color:var(--danger);">✕</span>
     </div>`).join('') : '<div class="empty">لسه مفيش مهام معرّفة لهذه المادة</div>';
 }
-function addSubjectTask(){
+async function addSubjectTask(){
   const input = document.getElementById('subject-task-new-name');
   const name = input.value.trim();
   if(!name){ showToast('اكتب اسم المهمة الأول'); return; }
@@ -4265,17 +4275,30 @@ function addSubjectTask(){
   db.subjectTasks = db.subjectTasks || [];
   const existingCount = db.subjectTasks.filter(t=>t.subjectId===subjectTasksModalSubjectId).length;
   db.subjectTasks.push({id:uid('task'), subjectId:subjectTasksModalSubjectId, name, sortOrder:existingCount});
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ المهمة على السيرفر'); return; }
   input.value = '';
   renderSubjectTasksList();
   showToast('✅ اتضافت المهمة');
 }
 function deleteSubjectTask(taskId){
-  confirmAction('متأكد إنك عايز تمسح المهمة دي؟ أي سجلات إتمام قديمة ليها هتتمسح برضو.', ()=>{
+  confirmAction('متأكد إنك عايز تمسح المهمة دي؟ أي سجلات إتمام قديمة ليها هتتمسح برضو.', async ()=>{
+    // حذف فعلي من Supabase الأول — upsert وحدها في pushDBToSupabase مش بتمسح صفوف
+    // (نفس مشكلة حذف الطلاب اللي اتصلحت قبل كده)
+    try{
+      await Promise.all([
+        supabaseClient.from('subject_tasks').delete().eq('id', taskId),
+        supabaseClient.from('task_completions').delete().eq('task_id', taskId)
+      ]);
+    } catch(e){
+      console.error('فشل حذف المهمة من السيرفر', e);
+      showToast('⚠️ فشل حذف المهمة من السيرفر — حاول تاني');
+      return;
+    }
     const db = loadDB();
     db.subjectTasks = (db.subjectTasks||[]).filter(t=>t.id!==taskId);
     db.taskCompletions = (db.taskCompletions||[]).filter(c=>c.taskId!==taskId);
-    saveDB(db);
+    await saveDB(db);
     renderSubjectTasksList();
     showToast('تم حذف المهمة');
   });
@@ -4603,12 +4626,12 @@ function renderAgeGradeWarning(){
 }
 
 async function saveAdminModal(){
-  if(adminModalMode==='schedule'){ saveScheduleCell(); return; }
+  if(adminModalMode==='schedule'){ await saveScheduleCell(); return; }
   if(adminModalMode==='subscription-add'){ saveNewSubscription(); return; }
   const db = loadDB();
   const type = adminActiveTab;
   if(type==='payments'){ await saveAdminPayment(db); return; }
-  if(type==='links'){ saveAdminLink(db); return; }
+  if(type==='links'){ await saveAdminLink(db); return; }
   const name = document.getElementById('f-name') ? document.getElementById('f-name').value.trim() : '';
   if(!name){ showToast('اكتب الاسم الأول'); return; }
 
@@ -4644,6 +4667,7 @@ async function saveAdminModal(){
     }
     // مزامنة enrollments مع المجموعات المختارة: نضيف اللي جديد، نحدّث طريقة الدفع لو اتغيّرت، ونشيل اللي اتشال تسجيله
     db.enrollments = db.enrollments || [];
+    const removedEnrollments = db.enrollments.filter(e=> e.childId===childId && !classroomIds.includes(e.classroomId));
     db.enrollments = db.enrollments.filter(e=> e.childId!==childId || classroomIds.includes(e.classroomId));
     classroomIds.forEach(cid=>{
       const classroom = db.classrooms.find(r=>r.id===cid);
@@ -4654,7 +4678,22 @@ async function saveAdminModal(){
       else db.enrollments.push({id:uid('en'), childId, classroomId:cid, paymentMode:mode});
     });
     // شيل الاشتراكات المرتبطة بمجموعة اتشال تسجيل الطالب فيها
+    const removedSubscriptions = (db.subscriptions||[]).filter(s=> s.childId===childId && !classroomIds.includes(s.classroomId));
     db.subscriptions = (db.subscriptions||[]).filter(s=> s.childId!==childId || classroomIds.includes(s.classroomId));
+    // حذف فعلي من Supabase للصفوف المتشالة — upsert وحدها (في pushDBToSupabase) مش بتمسح صفوف،
+    // فمن غير الحذف الصريح ده كانت المجموعات المتشالة من الطالب بترجع تاني بعد الـ reload
+    if(removedEnrollments.length || removedSubscriptions.length){
+      try{
+        await Promise.all([
+          ...removedEnrollments.map(e=> supabaseClient.from('enrollments').delete().eq('id', e.id)),
+          ...removedSubscriptions.map(s=> supabaseClient.from('subscriptions').delete().eq('id', s.id))
+        ]);
+      } catch(e){
+        console.error('فشل حذف تسجيلات/اشتراكات قديمة من السيرفر', e);
+        showToast('⚠️ فشل تحديث تسجيل الطالب في المجموعات على السيرفر — حاول تاني');
+        return;
+      }
+    }
   }
   else if(type==='teachers'){
     const phone = document.getElementById('f-phone').value.trim();
@@ -4915,19 +4954,21 @@ async function deleteAdminItem(type, id){
   else if(type==='complaints'){
     db.complaints = db.complaints.filter(c=>c.id!==id);
   }
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ الحذف نجح على السيرفر بس فشل تحديث بعض البيانات المرتبطة محليًا — اعمل reload للتأكد'); return; }
   showToast('تم الحذف');
   renderAdminStats(); renderAdminOverdueBanner(); renderAdminNoGuardianBanner();
   renderAdminList();
   });
 }
 
-function toggleComplaintStatus(id){
+async function toggleComplaintStatus(id){
   const db = loadDB();
   const c = db.complaints.find(x=>x.id===id);
   if(!c) return;
   c.status = c.status==='PENDING' ? 'RESOLVED' : 'PENDING';
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل تحديث حالة الشكوى على السيرفر'); return; }
   renderAdminList();
   renderAdminStats(); renderAdminOverdueBanner(); renderAdminNoGuardianBanner();
   showToast(c.status==='RESOLVED' ? 'تم وضع علامة "تم الحل" ✓' : 'تم إرجاعها لقيد المراجعة');
@@ -5043,7 +5084,7 @@ function ensureAutoEvalsUpToDate(months){
   return loadDB();
 }
 
-function changeRaiseCycle(){
+async function changeRaiseCycle(){
   const db = loadDB();
   const current = db.settings.raiseCycleMonths || 4;
   const input = prompt('كل كام شهر تحب تتراجع العلاوة؟ (رقم شهور)', current);
@@ -5051,18 +5092,20 @@ function changeRaiseCycle(){
   const n = parseInt(input, 10);
   if(!n || n<1 || n>24){ showToast('اكتب رقم شهور صحيح من 1 لـ24'); return; }
   db.settings.raiseCycleMonths = n;
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ الإعداد على السيرفر'); return; }
   showToast('تم تحديث دورة العلاوة لـ' + n + ' شهور');
   renderAdminList();
 }
 
 // ============ مرتبات المدرّسين (كشوف الحساب) ============
-function changeTeacherPayoutBasis(){
+async function changeTeacherPayoutBasis(){
   const db = loadDB();
   const current = db.settings.teacherPayoutBasis || 'sessions';
   const choice = confirm('اضغط "موافق" لحساب النسبة من (عدد الحصص × سعر الحصة)، أو "إلغاء" لحسابها من المبالغ المحصّلة فعليًا.\n\nالإعداد الحالي: ' + (current==='collections'?'مبالغ محصّلة فعليًا':'حصص × سعر الحصة'));
   db.settings.teacherPayoutBasis = choice ? 'sessions' : 'collections';
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ الإعداد على السيرفر'); return; }
   showToast('تم تحديث أساس حساب النسبة');
   renderAdminList();
 }
@@ -5204,12 +5247,13 @@ function renderTeacherEvalHistory(){
     </div>`).join('');
 }
 
-function saveTeacherEval(){
+async function saveTeacherEval(){
   const db = loadDB();
   const latest = db.teacherEvaluations.filter(e=>e.teacherId===teacherEvalTargetId && e.source==='AUTO').sort((a,b)=> b.month.localeCompare(a.month))[0];
   if(!latest){ showToast('مفيش تقييم محسوب لسه تقدر تضيفله ملاحظة'); return; }
   latest.note = document.getElementById('teval-note').value.trim();
-  saveDB(db);
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ الملاحظة على السيرفر'); return; }
   showToast('تم حفظ الملاحظة ✓');
   renderTeacherEvalHistory();
 }
