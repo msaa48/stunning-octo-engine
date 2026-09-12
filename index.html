@@ -42,6 +42,8 @@
   .theme-toggle .icon{display:inline-block; transition: transform .5s cubic-bezier(.22,1,.36,1), opacity .3s ease;}
   .screen{min-height:100vh; display:none; flex-direction:column;}
   .screen.active{display:flex;}
+  .app-spinner{width:40px; height:40px; border-radius:50%; border:3px solid var(--muted); border-top-color:var(--accent, #7c5cff); animation:spin .8s linear infinite; opacity:.85;}
+  @keyframes spin{to{transform:rotate(360deg);}}
   .container{max-width:480px; margin:0 auto; width:100%; padding:20px; flex:1;}
 
   /* ===== Login ===== */
@@ -367,8 +369,14 @@
   <span class="icon" id="theme-icon">🌙</span>
 </button>
 
+<!-- ============ LOADING SCREEN ============ -->
+<!-- شاشة انتقالية بتبان لحد ما initAuth() يتأكد المستخدم داخل ولا لأ ويحدد الشاشة الصح -->
+<div id="loading-screen" class="screen active" style="align-items:center; justify-content:center;">
+  <div class="app-spinner" aria-label="جاري التحميل" role="status"></div>
+</div>
+
 <!-- ============ LOGIN SCREEN ============ -->
-<div id="login-screen" class="screen active">
+<div id="login-screen" class="screen">
   <div class="deco-layer" aria-hidden="true">
     <svg class="deco-shape deco-1" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
     <svg class="deco-shape deco-2" viewBox="0 0 100 100"><path d="M10 70 Q 50 10, 90 55" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 10" stroke-linecap="round"/></svg>
