@@ -328,6 +328,11 @@
   .drawer-body{ padding:8px 14px 24px; }
   .drawer-section-title{ font-size:12.5px; font-weight:700; color:var(--muted); margin:16px 4px 6px; }
   .drawer-section-title:first-child{ margin-top:6px; }
+  .drawer-group-header{ display:flex; justify-content:space-between; align-items:center; cursor:pointer; padding:2px 4px; user-select:none; }
+  .drawer-group-arrow{ color:var(--muted); font-size:13px; transition: transform .3s var(--ease-out); }
+  .drawer-group-header.open .drawer-group-arrow{ transform: rotate(180deg); }
+  .drawer-group-items{ overflow:hidden; max-height:0; transition: max-height .35s var(--ease-out); }
+  .drawer-group-items.open{ max-height:600px; }
 
   /* بحث المدير العام في التوب بار: نسخة مضغوطة من .search-box تتماشى مع ارتفاع أزرار التوب بار */
   #admin-global-search-box{ background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); border-radius:20px; padding:6px 13px; margin:0; height:34px; box-sizing:border-box; }
@@ -741,20 +746,35 @@
       <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeModal('admin-drawer-bg')">✕</button>
     </div>
     <div class="drawer-body">
-      <div class="drawer-section-title">👨‍👩‍👧 الأسرة</div>
-      <div id="admin-menu-family"></div>
+      <div class="drawer-group-header" onclick="toggleDrawerGroup(event,'family')">
+        <div class="drawer-section-title" style="margin:0;">👨‍👩‍👧 الأسرة</div>
+        <span class="drawer-group-arrow">▾</span>
+      </div>
+      <div class="drawer-group-items" id="admin-menu-family-wrap"><div id="admin-menu-family"></div></div>
 
-      <div class="drawer-section-title">🏫 المجموعات والمواد</div>
-      <div id="admin-menu-classes"></div>
+      <div class="drawer-group-header" onclick="toggleDrawerGroup(event,'classes')">
+        <div class="drawer-section-title" style="margin:0;">🏫 المجموعات والمواد</div>
+        <span class="drawer-group-arrow">▾</span>
+      </div>
+      <div class="drawer-group-items" id="admin-menu-classes-wrap"><div id="admin-menu-classes"></div></div>
 
-      <div class="drawer-section-title">📈 أداء المدرّسين</div>
-      <div id="admin-menu-staff"></div>
+      <div class="drawer-group-header" onclick="toggleDrawerGroup(event,'staff')">
+        <div class="drawer-section-title" style="margin:0;">📈 أداء المدرّسين</div>
+        <span class="drawer-group-arrow">▾</span>
+      </div>
+      <div class="drawer-group-items" id="admin-menu-staff-wrap"><div id="admin-menu-staff"></div></div>
 
-      <div class="drawer-section-title">💳 المالية</div>
-      <div id="admin-menu-money"></div>
+      <div class="drawer-group-header" onclick="toggleDrawerGroup(event,'money')">
+        <div class="drawer-section-title" style="margin:0;">💳 المالية</div>
+        <span class="drawer-group-arrow">▾</span>
+      </div>
+      <div class="drawer-group-items" id="admin-menu-money-wrap"><div id="admin-menu-money"></div></div>
 
-      <div class="drawer-section-title">📋 أخرى</div>
-      <div id="admin-menu-other"></div>
+      <div class="drawer-group-header" onclick="toggleDrawerGroup(event,'other')">
+        <div class="drawer-section-title" style="margin:0;">📋 أخرى</div>
+        <span class="drawer-group-arrow">▾</span>
+      </div>
+      <div class="drawer-group-items" id="admin-menu-other-wrap"><div id="admin-menu-other"></div></div>
     </div>
   </div>
 </div>
@@ -2032,6 +2052,14 @@ function openAdminMoreModal(){
 
 function openAdminDrawer(){
   document.getElementById('admin-drawer-bg').classList.add('show');
+}
+
+function toggleDrawerGroup(event, group){
+  const header = event.currentTarget;
+  const items = document.getElementById('admin-menu-'+group+'-wrap');
+  const isOpen = items.classList.contains('open');
+  if(isOpen){ items.classList.remove('open'); header.classList.remove('open'); }
+  else{ items.classList.add('open'); header.classList.add('open'); }
 }
 
 const NOTIF_TYPE_ICON = {
