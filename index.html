@@ -4851,7 +4851,9 @@ async function deleteAdminItem(type, id){
         supabaseClient.from('messages').delete().eq('child_id', id),
         supabaseClient.from('task_completions').delete().eq('child_id', id),
         supabaseClient.from('enrollments').delete().eq('child_id', id),
-        supabaseClient.from('subscriptions').delete().eq('child_id', id)
+        supabaseClient.from('subscriptions').delete().eq('child_id', id),
+        supabaseClient.from('attendance').delete().eq('child_id', id),
+        supabaseClient.from('attendance_exceptions').delete().eq('child_id', id)
       ]);
     } else if(type==='teachers'){
       await Promise.all([
