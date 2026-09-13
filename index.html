@@ -1745,6 +1745,13 @@ window.addEventListener('popstate', async function(e){
     // الخروج خالص، حتى لو التاب ده هو أول حاجة اتعملها بعد الدخول
     if(currentId.indexOf(TAB_STATE_MARKER) !== -1){
       const screenId = currentId.split(TAB_STATE_MARKER)[0];
+      // نفس منطق الحماية اللي فوق: نلغي أثر الرجوع الحقيقي ونخلي التنقل يتم داخليًا بس،
+      // عشان أي اختلاف مستقبلي بين navHistory والـstack الحقيقي (مثلاً لو اتضاف استرجاع
+      // تاب بعد ريلود زي بتاع الأدمن) ميطلعش المستخدم من الموقع بالغلط
+      isPoppingState = true;
+      history.pushState({ screenId: currentId }, '', location.hash);
+      isPoppingState = false;
+
       navHistory.pop();
       isPoppingState = true;
       if(screenId === 'parent-screen') showParentMenu();
