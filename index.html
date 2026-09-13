@@ -2605,8 +2605,19 @@ async function recordSessionAttendance(childId, classroomId){
   renderTeacherStudentGrid();
 }
 
-// المدرّس بيمنح استثناء فوري (معتمد على طول) — الحد الأقصى بيتفرض من قاعدة البيانات نفسها
+// المدرّس بيمنح استثناء فوري (معتمد على طول) لحد سقف شهري بيتحدد من إعدادات النظام (teacherExceptionSessionCap)
 async function grantTeacherException(childId, classroomId){
+  const db = loadDB();
+  const cap = db.settings.teacherExceptionSessionCap ?? 2;
+  const monthPrefix = new Date().toISOString().slice(0,7); // YYYY-MM
+  const usedThisMonth = (db.attendanceExceptions||[]).filter(x=>
+    x.childId===childId && x.classroomId===classroomId && x.grantedByRole==='teacher' &&
+    x.status==='approved' && (x.createdAt||'').slice(0,7)===monthPrefix
+  ).length;
+  if(usedThisMonth >= cap){
+    showToast(`وصلت لسقف الاستثناءات اللي تقدر تمنحها بنفسك الشهر ده (${cap}) — كلّم المدير عشان يمنح استثناء إضافي`);
+    return;
+  }
   const reason = prompt('اكتب سبب الاستثناء (هيتسجل في سجل المراجعة):');
   if(reason===null) return; // المستخدم رجع من غير ما يكتب سبب
   if(!reason.trim()){ showToast('لازم تكتب سبب عشان يتسجل الاستثناء'); return; }
@@ -4996,7 +5007,10 @@ async function saveAdminModal(){
     db.enrollments = db.enrollments.filter(e=> e.childId!==childId || classroomIds.includes(e.classroomId));
     classroomIds.forEach(cid=>{
       const classroom = db.classrooms.find(r=>r.id===cid);
-      const defaultMode = (classroom && classroom.paymentModes && classroom.paymentModes.length===1) ? classroom.paymentModes[0] : 'monthly';
+      const globalDefault = (db.settings && db.settings.defaultPaymentMode && db.settings.defaultPaymentMode!=='both') ? db.settings.defaultPaymentMode : 'monthly';
+      const defaultMode = (classroom && classroom.paymentModes && classroom.paymentModes.length===1)
+        ? classroom.paymentModes[0]
+        : ((classroom && classroom.paymentModes && classroom.paymentModes.includes(globalDefault)) ? globalDefault : 'monthly');
       const mode = paymentModeByClassroom[cid] || defaultMode;
       const existing = db.enrollments.find(e=> e.childId===childId && e.classroomId===cid);
       if(existing) existing.paymentMode = mode;
