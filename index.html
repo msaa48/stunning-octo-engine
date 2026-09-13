@@ -2071,10 +2071,30 @@ async function initAuth(){
       }
       enterRoleScreen(profile.role);
       // reload للصفحة وإحنا جوه شاشة فرعية في لوحة الأدمن (قسم معيّن أو الإعدادات) —
-      // نرجّعه لنفس الشاشة اللي كان فيها بدل ما نرميه للشاشة الرئيسية دايمًا
+      // نرجّعه لنفس الشاشة اللي كان فيها بدل ما نرميه للشاشة الرئيسية دايمًا.
+      //
+      // مهم جدًا: منعمل push حقيقي إلا مرة واحدة بس على الـhistory (زي بالظبط
+      // فلو تسجيل الدخول العادي: replace واحد + push واحد). لو عملنا push حقيقي
+      // تاني هنا (لكل مستوى فرعي)، بعض المتصفحات (خصوصًا Android WebView) بتتجاهل/
+      // بتدمج الـpushStates المتتالية اللي مالهاش user gesture حقيقي وقت تحميل
+      // الصفحة — يعني الـpopstate ممكن أصلاً ميتطلقش أول ضغطة رجوع، والمتصفح
+      // يقفل التطبيق على طول قبل ما أي كود جوانا ياخد فرصة يتدخل.
+      // الحل: نخلي الشاشة الفرعية "افتراضية" جوه navHistory بس (isPoppingState=true
+      // بيمنع showScreen من عمل أي push/navHistory حقيقي جواها)، وإحنا يدويًا
+      // بنضيفها لـnavHistory + نعمل replaceState واحد بس (مش push) عشان نفضل
+      // بعمق حقيقي = نفس عمق الدخول العادي بالظبط.
       if(profile.role==='ADMIN' && savedAdminScreen){
-        if(savedAdminScreen.type==='section' && savedAdminScreen.tab){ openAdminSection(savedAdminScreen.tab); }
-        else if(savedAdminScreen.type==='settings'){ openAdminSettingsScreen(); }
+        const targetId = savedAdminScreen.type==='settings' ? 'admin-settings-screen'
+                        : (savedAdminScreen.type==='section' && savedAdminScreen.tab) ? 'admin-section-screen'
+                        : null;
+        if(targetId){
+          isPoppingState = true; // يمنع showScreen من أي pushState/navHistory تلقائي جوه الفانكشن الجاية
+          if(savedAdminScreen.type==='section'){ openAdminSection(savedAdminScreen.tab); }
+          else { openAdminSettingsScreen(); }
+          isPoppingState = false;
+          navHistory.push(targetId); // نضيفها يدويًا (اتمنعت جوه showScreen بسبب isPoppingState)
+          history.replaceState({ screenId: targetId }, '', '#' + targetId); // عملية حقيقية واحدة بس (replace)
+        }
       }
       return;
     }
