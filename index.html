@@ -2605,17 +2605,20 @@ async function recordSessionAttendance(childId, classroomId){
   renderTeacherStudentGrid();
 }
 
-// المدرّس بيمنح استثناء فوري (معتمد على طول) لحد سقف شهري بيتحدد من إعدادات النظام (teacherExceptionSessionCap)
+// المدرّس بيمنح استثناء فوري (معتمد على طول) — الحد الأقصى بيتفرض فعليًا من الداتابيز
+// (trigger check_attendance_payment() بيرفض تسجيل الحضور لو عدد الاستثناءات المستهلكة consumed=true
+// لنفس الطالب/الفصل من نوع teacher وصل لـ app_settings.teacher_exception_session_cap).
+// الفحص هنا في الفرونت اند مجرد تكرار استباقي (نفس شرط الداتابيز بالظبط: تراكمي طول عمر تسجيل الطالب، مش شهري)
+// عشان نمنع المدرّس من كتابة سبب ومحاولة المنح ثم يفاجأ بالرفض من الداتابيز وقت تسجيل الحضور مباشرة.
 async function grantTeacherException(childId, classroomId){
   const db = loadDB();
   const cap = db.settings.teacherExceptionSessionCap ?? 2;
-  const monthPrefix = new Date().toISOString().slice(0,7); // YYYY-MM
-  const usedThisMonth = (db.attendanceExceptions||[]).filter(x=>
-    x.childId===childId && x.classroomId===classroomId && x.grantedByRole==='teacher' &&
-    x.status==='approved' && (x.createdAt||'').slice(0,7)===monthPrefix
+  const usedSoFar = (db.attendanceExceptions||[]).filter(x=>
+    x.childId===childId && x.classroomId===classroomId &&
+    x.grantedByRole==='teacher' && x.status==='approved' && x.consumed===true
   ).length;
-  if(usedThisMonth >= cap){
-    showToast(`وصلت لسقف الاستثناءات اللي تقدر تمنحها بنفسك الشهر ده (${cap}) — كلّم المدير عشان يمنح استثناء إضافي`);
+  if(usedSoFar >= cap){
+    showToast(`وصلت لسقف الاستثناءات اللي تقدر تمنحها بنفسك للطالب ده (${cap}) — القرار بقى للمدير بس`);
     return;
   }
   const reason = prompt('اكتب سبب الاستثناء (هيتسجل في سجل المراجعة):');
