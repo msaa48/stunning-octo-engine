@@ -219,7 +219,8 @@
   .tl-time{font-size:11px; color:var(--muted); white-space:nowrap;}
   .empty{text-align:center; color:var(--muted); font-size:13px; padding:32px 0;}
 
-  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px;}
+  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; align-items:stretch;}
+  .stat-card-wide{grid-column:1 / -1;}
   .stat-card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:15px; text-align:center; position:relative; overflow:hidden; cursor:pointer; transition:transform .15s var(--ease-out);}
   .stat-card:active{transform:scale(.96);}
   .stat-card::before{content:''; position:absolute; top:0; right:0; left:0; height:3px; background:linear-gradient(90deg,var(--gold),transparent);}
@@ -3743,11 +3744,16 @@ function renderAdminStats(){
     </div>`;
   document.getElementById('admin-stats-overview').innerHTML = overview.map(cardHtml).join('');
 
-  // "حالة اليوم" بقت تفاعلية: كل كارت بيفتح تفاصيل مباشرة (مين بالظبط) بدل ما يودّي لتاب عام بس
+  // "حالة اليوم" — تفاعلية + متوازنة بصريًا: الكارت اللي فيه محتوى (أسامي) ياخد عرض كامل بدل ما يتكسّر بجانب كارت فاضي
   const notCheckedIn = db.teachers.filter(t=> !checkedInTeacherIds.has(t.id));
+  // تمييز بالوقت: قبل الساعة 10 الصبح "لسه ما جاش" حالة طبيعية (رمادي)، بعدها تعتبر تأخير فعلي (أحمر)
+  const nowHour = new Date().getHours();
+  const isLate = nowHour >= 10;
+  const pendingColor = isLate ? 'var(--danger,#e55)' : 'var(--muted)';
+  const pendingIcon = isLate ? '⚠️' : '⏳';
   const teacherAttendanceDetail = db.teachers.length ? `
     ${teachersCheckedInToday>0 ? `<div style="font-size:12px; color:var(--muted); margin-bottom:4px;">✅ حضروا: ${db.teachers.filter(t=>checkedInTeacherIds.has(t.id)).map(t=>t.name).join('، ')}</div>` : ''}
-    ${notCheckedIn.length>0 ? `<div style="font-size:12px; color:var(--danger,#e55);">⏳ لسه: ${notCheckedIn.map(t=>t.name).join('، ')}</div>` : ''}
+    ${notCheckedIn.length>0 ? `<div style="font-size:12px; color:${pendingColor};">${pendingIcon} لسه: ${notCheckedIn.map(t=>t.name).join('، ')}</div>` : ''}
   ` : `<div style="font-size:12px; color:var(--muted);">لا يوجد مدرّسين مسجّلين بعد</div>`;
   const eventsDetail = todayEvents.length ? `
     <div style="font-size:12px; color:var(--muted); text-align:right;">
@@ -3755,8 +3761,10 @@ function renderAdminStats(){
       ${todayEvents.length>3 ? `<br>+${todayEvents.length-3} حدث تاني` : ''}
     </div>` : `<div style="font-size:12px; color:var(--muted);">مفيش أحداث مجدولة النهاردة</div>`;
 
+  // لو فيه أسامي معروضة (حضور أو لسه) الكارت بياخد عرض كامل عشان النص ميتكسرش جوه مساحة ضيقة
+  const teacherCardWide = (teachersCheckedInToday>0 || notCheckedIn.length>0);
   document.getElementById('admin-stats-today').innerHTML = `
-    <div class="stat-card" style="cursor:pointer; text-align:center;" onclick="openAdminSection('teacherAttendance')">
+    <div class="stat-card${teacherCardWide?' stat-card-wide':''}" style="cursor:pointer; text-align:center;" onclick="openAdminSection('teacherAttendance')">
       <div class="stat-num">${teachersCheckedInToday}/${db.teachers.length}</div>
       <div class="stat-lbl">مدرّسين حضرن النهاردة</div>
       <div style="margin-top:6px;">${teacherAttendanceDetail}</div>
@@ -3778,10 +3786,11 @@ function quickAdminAction(tab){
 function renderAdminQuickActions(){
   const el = document.getElementById('admin-quick-actions');
   if(!el) return;
+  // رُتّبت حسب الاستخدام اليومي الفعلي؛ زرار البحث السريع فضل زي ما هو بدون حذف
   const actions = [
+    {icon:'💳', label:'تسجيل دفعة', onclick:"openAdminSection('payments')"},
     {icon:'👤', label:'إضافة طالب', onclick:"quickAdminAction('children')"},
     {icon:'📅', label:'إضافة حدث', onclick:"quickAdminAction('calendar')"},
-    {icon:'💳', label:'تسجيل دفعة', onclick:"openAdminSection('payments')"},
     {icon:'🔍', label:'بحث سريع', onclick:"toggleAdminGlobalSearch()"}
   ];
   el.innerHTML = actions.map(a=>`
