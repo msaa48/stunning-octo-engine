@@ -719,7 +719,7 @@
   <div style="position:relative;">
   <div class="topbar admin">
     <button class="notif-bell" onclick="openAdminDrawer()" aria-label="القائمة الرئيسية">☰</button>
-    <button class="notif-bell" onclick="openAdminMoreModal()" aria-label="خيارات إضافية">⋮</button>
+    <button class="notif-bell" onclick="openAdminSettingsScreen()" aria-label="إعدادات النظام">⚙️</button>
     <div class="title" id="admin-title-text">🗂️ لوحة المدير</div>
     <div class="search-box" id="admin-global-search-box" style="display:none; flex:1; min-width:0;">
       <span class="search-ico">🔍</span>
@@ -746,6 +746,19 @@
       <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeModal('admin-drawer-bg')">✕</button>
     </div>
     <div class="drawer-body">
+      <div class="list-row" style="cursor:pointer;" onclick="closeModal('admin-drawer-bg'); toggleTheme()">
+        <div class="list-row-main">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">🌗</div>
+          <div class="list-info"><div class="list-name">تبديل المظهر (فاتح/غامق)</div></div>
+        </div>
+      </div>
+      <div class="list-row" style="opacity:.7;">
+        <div class="list-row-main">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">🔑</div>
+          <div class="list-info"><div class="list-name">تسجيل الدخول بقى بإيميل وكلمة سر حقيقية — غيّرها من إعدادات حسابك في Supabase</div></div>
+        </div>
+      </div>
+
       <div class="drawer-group-header" onclick="toggleDrawerGroup(event,'family')">
         <div class="drawer-section-title" style="margin:0;">👨‍👩‍👧 الأسرة</div>
         <span class="drawer-group-arrow">▾</span>
@@ -1038,41 +1051,15 @@
   </div>
 </div>
 
-<div class="modal-bg dropdown-anchor" id="admin-more-modal-bg" onclick="if(event.target===this) closeModal('admin-more-modal-bg')">
-  <div class="modal">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-      <h3 style="margin:0; font-size:15px;">⋮ خيارات إضافية</h3>
-      <button class="back-link" style="font-size:18px; padding:0 6px;" onclick="closeModal('admin-more-modal-bg')">✕</button>
-    </div>
-    <div class="list-row" style="cursor:pointer;" onclick="closeModal('admin-more-modal-bg'); openAdminSettingsModal()">
-      <div class="list-row-main">
-        <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">⚙️</div>
-        <div class="list-info"><div class="list-name">إعدادات النظام</div></div>
-      </div>
-    </div>
-    <div class="list-row" style="cursor:pointer;" onclick="toggleTheme()">
-      <div class="list-row-main">
-        <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">🌗</div>
-        <div class="list-info"><div class="list-name">تبديل المظهر (فاتح/غامق)</div></div>
-      </div>
-    </div>
-    <div class="list-row" style="opacity:.7;">
-      <div class="list-row-main">
-        <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">🔑</div>
-        <div class="list-info"><div class="list-name">تسجيل الدخول بقى بإيميل وكلمة سر حقيقية — غيّرها من إعدادات حسابك في Supabase</div></div>
-      </div>
-    </div>
+<!-- ============ ADMIN SETTINGS SCREEN (⚙️ إعدادات النظام — صفحة كاملة مستقلة) ============ -->
+<div id="admin-settings-screen" class="screen">
+  <div class="topbar admin">
+    <button class="back-link" style="color:#fff; font-size:20px; padding:0 6px;" onclick="showScreen('admin-screen')">→</button>
+    <div class="title">⚙️ إعدادات النظام</div>
+    <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
-</div>
-
-<!-- ============ ADMIN SETTINGS MODAL (⚙️ إعدادات النظام — كل حقول التخصيص القابلة للتحكم) ============ -->
-<div class="modal-bg" id="admin-settings-modal-bg" onclick="if(event.target===this) closeModal('admin-settings-modal-bg')">
-  <div class="modal">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-      <h3 style="margin:0; font-size:16px;">⚙️ إعدادات النظام</h3>
-      <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeModal('admin-settings-modal-bg')">✕</button>
-    </div>
-    <div style="display:flex; flex-direction:column; gap:16px;">
+  <div class="container">
+    <div style="display:flex; flex-direction:column; gap:16px; margin-top:6px;">
 
       <div>
         <div class="section-title" style="margin:0 0 8px;">💰 علاوات ومرتبات المدرّسين</div>
@@ -1126,7 +1113,7 @@
         </select>
       </div>
 
-      <button class="btn primary admin block" onclick="saveAdminSettings()">حفظ الإعدادات</button>
+      <button class="btn primary admin block" onclick="saveAdminSettings()" style="margin-bottom:24px;">حفظ الإعدادات</button>
     </div>
   </div>
 </div>
@@ -2144,10 +2131,6 @@ function openNotifModal(){
   document.getElementById('notif-modal-bg').classList.add('show');
 }
 
-function openAdminMoreModal(){
-  document.getElementById('admin-more-modal-bg').classList.add('show');
-}
-
 function openAdminDrawer(){
   document.getElementById('admin-drawer-bg').classList.add('show');
 }
@@ -2160,7 +2143,7 @@ function toggleDrawerGroup(event, group){
   else{ items.classList.add('open'); header.classList.add('open'); }
 }
 
-function openAdminSettingsModal(){
+function openAdminSettingsScreen(){
   const db = loadDB();
   const s = db.settings;
   document.getElementById('set-raiseCycleMonths').value = s.raiseCycleMonths || 4;
@@ -2172,7 +2155,7 @@ function openAdminSettingsModal(){
   document.getElementById('set-institutionBillingGraceDays').value = s.institutionBillingGraceDays ?? 3;
   document.getElementById('set-allowAssistants').checked = !!s.allowAssistants;
   document.getElementById('set-whoCanAssignAssistants').value = s.whoCanAssignAssistants || 'teacher_only';
-  document.getElementById('admin-settings-modal-bg').classList.add('show');
+  showScreen('admin-settings-screen');
 }
 
 async function saveAdminSettings(){
@@ -2203,7 +2186,7 @@ async function saveAdminSettings(){
   const result = await saveDB(db);
   if(!result.ok){ showToast('⚠️ فشل حفظ الإعدادات على السيرفر'); return; }
   showToast('تم حفظ الإعدادات');
-  closeModal('admin-settings-modal-bg');
+  showScreen('admin-screen');
   renderAdminList();
 }
 
@@ -3832,7 +3815,7 @@ function renderAdminListInner(){
   }
   else if(adminActiveTab==='teacherPayouts'){
     const basisLabel = (db.settings.teacherPayoutBasis==='collections') ? 'نسبة من المبالغ المحصّلة فعليًا' : 'نسبة من (الحصص × سعر الحصة)';
-    const basisRow = `<div class="list-row" style="cursor:pointer;" onclick="openAdminSettingsModal()">
+    const basisRow = `<div class="list-row" style="cursor:pointer;" onclick="openAdminSettingsScreen()">
       <div class="list-row-main">
         <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">⚙️</div>
         <div class="list-info"><div class="list-name">أساس حساب النسبة</div><div class="list-sub">${basisLabel} — اضغط للتغيير</div></div>
@@ -3974,7 +3957,7 @@ function renderAdminListInner(){
           <div style="font-size:13px; color:var(--muted);">دورة مراجعة العلاوة الحالية</div>
           <div style="font-weight:700;">كل ${cycle} شهور</div>
         </div>
-        <button class="badge" onclick="openAdminSettingsModal()">تغيير المدة</button>
+        <button class="badge" onclick="openAdminSettingsScreen()">تغيير المدة</button>
       </div>
       ${searchBoxHtml('دور باسم مدرّس...')}
       ${items.map(t=>{
@@ -5429,14 +5412,14 @@ function ensureAutoEvalsUpToDate(months){
 }
 
 async function changeRaiseCycle(){
-  // مستبدلة بـopenAdminSettingsModal() — الإعدادات كلها بقت في شاشة موحّدة تحت ⋮
-  openAdminSettingsModal();
+  // مستبدلة بـopenAdminSettingsScreen() — الإعدادات كلها بقت في شاشة مستقلة تحت زرار ⚙️ المميز
+  openAdminSettingsScreen();
 }
 
 // ============ مرتبات المدرّسين (كشوف الحساب) ============
 async function changeTeacherPayoutBasis(){
-  // مستبدلة بـopenAdminSettingsModal() — الإعدادات كلها بقت في شاشة موحّدة تحت ⋮
-  openAdminSettingsModal();
+  // مستبدلة بـopenAdminSettingsScreen() — الإعدادات كلها بقت في شاشة مستقلة تحت زرار ⚙️ المميز
+  openAdminSettingsScreen();
 }
 
 // بيقترح الفترة = الشهر اللي فات (من أول الشهر لآخره)، ممكن الأدمن يعدّلها قبل الإنشاء
