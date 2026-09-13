@@ -1059,10 +1059,10 @@
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
-    <div style="display:flex; flex-direction:column; gap:16px; margin-top:6px;">
+    <div style="margin-top:6px;">
 
-      <div>
-        <div class="section-title" style="margin:0 0 8px;">💰 علاوات ومرتبات المدرّسين</div>
+      <div class="card">
+        <div class="section-title" style="margin:0 0 10px;">💰 علاوات ومرتبات المدرّسين</div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">دورة مراجعة العلاوة (شهور)</label>
         <input type="number" id="set-raiseCycleMonths" min="1" max="24">
         <label style="font-size:12.5px; color:var(--muted); display:block; margin:10px 0 4px;">أساس حساب نسبة المدرّس</label>
@@ -1072,14 +1072,14 @@
         </select>
       </div>
 
-      <div>
-        <div class="section-title" style="margin:0 0 8px;">🎫 الحضور والاستثناءات</div>
+      <div class="card">
+        <div class="section-title" style="margin:0 0 10px;">🎫 الحضور والاستثناءات</div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">أقصى عدد حصص يقدر المدرّس يمنح استثناء لها بنفسه</label>
         <input type="number" id="set-teacherExceptionSessionCap" min="0" max="20">
       </div>
 
-      <div>
-        <div class="section-title" style="margin:0 0 8px;">💳 الاشتراكات والتذكيرات</div>
+      <div class="card">
+        <div class="section-title" style="margin:0 0 10px;">💳 الاشتراكات والتذكيرات</div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">طريقة الدفع الافتراضية للطالب الجديد</label>
         <select id="set-defaultPaymentMode">
           <option value="monthly">شهري</option>
@@ -1090,23 +1090,23 @@
         <input type="number" id="set-renewalReminderSessionsBefore" min="1" max="20">
       </div>
 
-      <div>
-        <div class="section-title" style="margin:0 0 8px;">🏢 اشتراك المؤسسة والتقفيل المالي</div>
+      <div class="card">
+        <div class="section-title" style="margin:0 0 10px;">🏢 اشتراك المؤسسة والتقفيل المالي</div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">يوم الشهر للتقفيل المالي (1-28)</label>
         <input type="number" id="set-financialClosingDay" min="1" max="28">
         <label style="font-size:12.5px; color:var(--muted); display:block; margin:10px 0 4px;">مهلة السماح بعد تأخر سداد اشتراك المؤسسة (أيام)</label>
         <input type="number" id="set-institutionBillingGraceDays" min="0" max="30">
       </div>
 
-      <div>
-        <div class="section-title" style="margin:0 0 8px;">🧑‍💼 نظام الأسيستنت</div>
-        <div class="list-row" style="cursor:pointer;" onclick="const cb=document.getElementById('set-allowAssistants'); cb.checked=!cb.checked;">
+      <div class="card">
+        <div class="section-title" style="margin:0 0 10px;">🧑‍💼 نظام الأسيستنت</div>
+        <div class="list-row" style="cursor:pointer; padding:0 0 12px;" onclick="const cb=document.getElementById('set-allowAssistants'); cb.checked=!cb.checked;">
           <div class="list-row-main">
             <div class="list-info"><div class="list-name">تفعيل نظام الأسيستنت في المركز</div></div>
           </div>
           <input type="checkbox" id="set-allowAssistants" style="width:20px; height:20px;">
         </div>
-        <label style="font-size:12.5px; color:var(--muted); display:block; margin:10px 0 4px;">مين يقدر يربط أسيستنت بمدرّس</label>
+        <label style="font-size:12.5px; color:var(--muted); display:block; margin:0 0 4px;">مين يقدر يربط أسيستنت بمدرّس</label>
         <select id="set-whoCanAssignAssistants">
           <option value="teacher_only">المدرّس بس</option>
           <option value="teacher_and_admin">المدرّس أو الأدمن</option>
