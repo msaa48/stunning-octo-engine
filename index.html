@@ -1695,6 +1695,14 @@ function showScreen(id, opts){
   const themeBtn = document.getElementById('theme-toggle');
   if(themeBtn) themeBtn.style.display = (id === 'login-screen') ? 'flex' : 'none';
 
+  // حفظ آخر شاشة فرعية للأدمن في localStorage (مش navHistory اللي بيتصفّر كل reload) —
+  // عشان initAuth() يقدر يرجّع الأدمن لنفس الشاشة الفرعية لو عمل reload للصفحة بدل ما يرميه للرئيسية
+  if(session.role==='ADMIN'){
+    if(id==='admin-screen'){ localStorage.removeItem('adminLastScreen'); }
+    else if(id==='admin-section-screen'){ localStorage.setItem('adminLastScreen', JSON.stringify({type:'section', tab:adminActiveTab})); }
+    else if(id==='admin-settings-screen'){ localStorage.setItem('adminLastScreen', JSON.stringify({type:'settings'})); }
+  }
+
   // تسجيل التنقل في history المتصفح (إلا لو إحنا جايين من popstate نفسه، أو الطلب صراحة مايتسجلش)
   if(!isPoppingState && !opts.skipHistory){
     if(opts.replace){
@@ -2038,6 +2046,15 @@ async function initAuth(){
       }
       await fetchDBFromSupabase();
       enterRoleScreen(profile.role);
+      // reload للصفحة وإحنا جوه شاشة فرعية في لوحة الأدمن (قسم معيّن أو الإعدادات) —
+      // نرجّعه لنفس الشاشة اللي كان فيها بدل ما نرميه للشاشة الرئيسية دايمًا
+      if(profile.role==='ADMIN'){
+        try{
+          const saved = JSON.parse(localStorage.getItem('adminLastScreen')||'null');
+          if(saved && saved.type==='section' && saved.tab){ openAdminSection(saved.tab); }
+          else if(saved && saved.type==='settings'){ openAdminSettingsScreen(); }
+        }catch(e){ /* بيانات محفوظة تالفة — نتجاهلها ونسيبه في الشاشة الرئيسية */ }
+      }
       return;
     }
   }
@@ -2046,6 +2063,7 @@ async function initAuth(){
 
 async function logout(){
   await supabaseClient.auth.signOut();
+  localStorage.removeItem('adminLastScreen');
   session = {role:null, personId:null, centerId:null, isSuperAdmin:false, isOwner:false, permissions:{}, centerSlug:'markaz', authId:null, viewingLabel:null};
   impersonationStack = [];
   dbCache = null;
