@@ -1062,10 +1062,13 @@
     <div style="margin-top:6px;">
 
       <div class="card">
-        <div class="section-title" style="margin:0 0 10px;">💰 علاوات ومرتبات المدرّسين</div>
+        <div style="display:flex; align-items:center; gap:10px; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div class="list-avatar" style="width:36px; height:36px; font-size:16px; background:linear-gradient(135deg,#4a3d7a,#6553a0);">💰</div>
+          <div class="section-title" style="margin:0;">علاوات ومرتبات المدرّسين</div>
+        </div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">دورة مراجعة العلاوة (شهور)</label>
         <input type="number" id="set-raiseCycleMonths" min="1" max="24">
-        <label style="font-size:12.5px; color:var(--muted); display:block; margin:10px 0 4px;">أساس حساب نسبة المدرّس</label>
+        <label style="font-size:12.5px; color:var(--muted); display:block; margin:14px 0 4px;">أساس حساب نسبة المدرّس</label>
         <select id="set-teacherPayoutBasis">
           <option value="sessions">نسبة من (الحصص × سعر الحصة)</option>
           <option value="collections">نسبة من المبالغ المحصّلة فعليًا</option>
@@ -1073,34 +1076,46 @@
       </div>
 
       <div class="card">
-        <div class="section-title" style="margin:0 0 10px;">🎫 الحضور والاستثناءات</div>
+        <div style="display:flex; align-items:center; gap:10px; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div class="list-avatar" style="width:36px; height:36px; font-size:16px; background:linear-gradient(135deg,#4a3d7a,#6553a0);">🎫</div>
+          <div class="section-title" style="margin:0;">الحضور والاستثناءات</div>
+        </div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">أقصى عدد حصص يقدر المدرّس يمنح استثناء لها بنفسه</label>
         <input type="number" id="set-teacherExceptionSessionCap" min="0" max="20">
       </div>
 
       <div class="card">
-        <div class="section-title" style="margin:0 0 10px;">💳 الاشتراكات والتذكيرات</div>
+        <div style="display:flex; align-items:center; gap:10px; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div class="list-avatar" style="width:36px; height:36px; font-size:16px; background:linear-gradient(135deg,#4a3d7a,#6553a0);">💳</div>
+          <div class="section-title" style="margin:0;">الاشتراكات والتذكيرات</div>
+        </div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">طريقة الدفع الافتراضية للطالب الجديد</label>
         <select id="set-defaultPaymentMode">
           <option value="monthly">شهري</option>
           <option value="session">بالحصة</option>
           <option value="both">الاتنين (يختار المستخدم)</option>
         </select>
-        <label style="font-size:12.5px; color:var(--muted); display:block; margin:10px 0 4px;">تنبيه تجديد الاشتراك قبل انتهائه بكام حصة</label>
+        <label style="font-size:12.5px; color:var(--muted); display:block; margin:14px 0 4px;">تنبيه تجديد الاشتراك قبل انتهائه بكام حصة</label>
         <input type="number" id="set-renewalReminderSessionsBefore" min="1" max="20">
       </div>
 
       <div class="card">
-        <div class="section-title" style="margin:0 0 10px;">🏢 اشتراك المؤسسة والتقفيل المالي</div>
+        <div style="display:flex; align-items:center; gap:10px; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div class="list-avatar" style="width:36px; height:36px; font-size:16px; background:linear-gradient(135deg,#4a3d7a,#6553a0);">🏢</div>
+          <div class="section-title" style="margin:0;">اشتراك المؤسسة والتقفيل المالي</div>
+        </div>
         <label style="font-size:12.5px; color:var(--muted); display:block; margin-bottom:4px;">يوم الشهر للتقفيل المالي (1-28)</label>
         <input type="number" id="set-financialClosingDay" min="1" max="28">
-        <label style="font-size:12.5px; color:var(--muted); display:block; margin:10px 0 4px;">مهلة السماح بعد تأخر سداد اشتراك المؤسسة (أيام)</label>
+        <label style="font-size:12.5px; color:var(--muted); display:block; margin:14px 0 4px;">مهلة السماح بعد تأخر سداد اشتراك المؤسسة (أيام)</label>
         <input type="number" id="set-institutionBillingGraceDays" min="0" max="30">
       </div>
 
       <div class="card">
-        <div class="section-title" style="margin:0 0 10px;">🧑‍💼 نظام الأسيستنت</div>
-        <div class="list-row" style="cursor:pointer; padding:0 0 12px;" onclick="const cb=document.getElementById('set-allowAssistants'); cb.checked=!cb.checked;">
+        <div style="display:flex; align-items:center; gap:10px; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+          <div class="list-avatar" style="width:36px; height:36px; font-size:16px; background:linear-gradient(135deg,#4a3d7a,#6553a0);">🧑‍💼</div>
+          <div class="section-title" style="margin:0;">نظام الأسيستنت</div>
+        </div>
+        <div class="list-row" style="cursor:pointer; padding:0 0 14px;" onclick="const cb=document.getElementById('set-allowAssistants'); cb.checked=!cb.checked;">
           <div class="list-row-main">
             <div class="list-info"><div class="list-name">تفعيل نظام الأسيستنت في المركز</div></div>
           </div>
