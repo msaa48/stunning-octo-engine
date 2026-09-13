@@ -1660,6 +1660,28 @@ const PUBLIC_SCREENS = ['login-screen', 'pin-screen', 'forgot-password-screen', 
 let navHistory = [];
 let isPoppingState = false; // true وقت إننا بنستجيب لـ popstate، عشان مانعملش pushState تاني بالغلط
 
+// ⚠️ كروم على الموبايل بيتجاهل/بيدمج أي history.pushState أو replaceState بيحصل من
+// غير "user gesture" حقيقي (تاتش/كليك) وقت تحميل الصفحة تلقائيًا — ده بيأثر بالتحديد
+// على استرجاع الـsession بعد أي ريلود (initAuth() بتشتغل لوحدها، مفيش تفاعل من
+// المستخدم لسه). النتيجة كانت: أول ضغطة رجوع فيزيائي بعد الريلود بتطلّع المستخدم بره
+// الموقع بالكامل (لصفحة New Tab بتاعة كروم)، مش بس شاشة غلط، لأن مفيش أي حاجة حقيقية
+// في الـhistory أصلاً يرجع لها. الحل: initAuth() بتبني navHistory في الذاكرة بس
+// (من غير أي history.pushState/replaceState فعلي)، وبتحط اسم الشاشة النهائية هنا؛
+// أول لمسة/كليك حقيقي من المستخدم بيشغّل establishHistoryBaselineOnce() اللي
+// بتعمل نفس عملية replace+push بتاعة تسجيل الدخول العادي، لكن دلوقتي مضمونة إنها
+// شرعية عند كروم لأنها مرتبطة بتفاعل حقيقي.
+let pendingHistoryBaseline = null;
+function establishHistoryBaselineOnce(){
+  if(!pendingHistoryBaseline) return;
+  const target = pendingHistoryBaseline;
+  pendingHistoryBaseline = null;
+  history.replaceState({ screenId: 'login-screen' }, '', '#login-screen');
+  history.pushState({ screenId: target }, '', '#' + target);
+}
+['pointerdown','touchstart','keydown'].forEach(evt=>{
+  document.addEventListener(evt, establishHistoryBaselineOnce, { capture:true });
+});
+
 /*
  * دعم زرار الرجوع جوه تابات ولي الأمر/المدرّس (parent-screen / teacher-screen):
  * التابات دي مش شاشات منفصلة (مفيش عنصر .screen ليها)، فبتتعامل بمنطق
@@ -2026,14 +2048,20 @@ async function initAuth(){
     // مهم لزرار الرجوع: لو فيه session محفوظة من قبل (فتحنا التطبيق وإحنا
     // لسه داخلين)، احنا هنقفز على طول لشاشة الدور (admin/teacher/parent)
     // من غير ما نعدي على showScreen('login-screen') زي الفلو العادي.
-    // من غير السطرين دول، navHistory هيبقى فيه عنصر واحد بس وقت أول
-    // showScreen، فشرط "navHistory.length > 1" في popstate هيفضل false
-    // على طول، وزرار الرجوع مش هيعمل logout ولا يظهر تأكيد — هيسيب
-    // المتصفح يتصرف عادي (يقفل/يطلع من التطبيق). بنزرع هنا نفس القاعدة
-    // (['login-screen']) اللي بتتبني عادي لو مفيش session، عشان أي دخول
-    // (سواء يدوي أو مسترجَع) يبدأ من navHistory بعنصر واحد أساسي.
+    //
+    // ⚠️ اكتشاف مهم (13 سبتمبر، بعد تحليل فيديو فعلي): كروم على الموبايل بيتجاهل/
+    // بيدمج أي history.pushState أو replaceState بيحصل من غير "user gesture" حقيقي
+    // (تاتش/كليك) وقت تحميل الصفحة تلقائيًا — وده بالظبط اللي بيحصل هنا (initAuth
+    // بتشتغل تلقائي، مفيش أي لمسة من المستخدم لسه). النتيجة: أول ضغطة على زرار
+    // الرجوع الفيزيائي بعد أي ريلود كانت بتطلّع المستخدم بره الموقع بالكامل (لصفحة
+    // New Tab بتاعة كروم)، مش بس ترجعه لشاشة غلط — لأن مفيش أي حاجة حقيقية في
+    // الـhistory أصلاً يرجع لها.
+    // الحل: منعملش أي history.pushState/replaceState فعلي دلوقتي خالص. بدل كده
+    // بنبني navHistory (في الذاكرة بس) عادي، ونأجّل تأسيس نقطة الأمان الحقيقية في
+    // الـhistory لحد أول تفاعل حقيقي من المستخدم (أي تاتش/كليك في أي مكان في
+    // الصفحة) عن طريق pendingHistoryBaseline + establishHistoryBaselineOnce()
+    // (تعريفهم فوق قريب من navHistory).
     navHistory = ['login-screen'];
-    history.replaceState({ screenId: 'login-screen' }, '', '#login-screen');
     const { data: profile } = await supabaseClient
       .from('profiles')
       .select('role, person_id, center_id, is_super_admin, is_owner, permissions, must_change_password')
@@ -2053,11 +2081,19 @@ async function initAuth(){
       if(profile.must_change_password){
         // session اتحمّلت من قبل من غير ما يخلّص تغيير الباسورد المؤقت (مثلًا قفل الصفحة قبل ما يحفظ)
         renderResetPasswordChecklist();
-        showScreen('reset-password-screen');
+        isPoppingState = true;
+        showScreen('reset-password-screen', { skipHistory:true });
+        isPoppingState = false;
+        navHistory.push('reset-password-screen');
+        pendingHistoryBaseline = 'reset-password-screen';
         return;
       }
       if(profile.is_super_admin){
+        isPoppingState = true;
         enterRoleScreen('SUPER_ADMIN');
+        isPoppingState = false;
+        navHistory.push('super-admin-screen');
+        pendingHistoryBaseline = 'super-admin-screen';
         return;
       }
       await fetchDBFromSupabase();
@@ -2069,33 +2105,28 @@ async function initAuth(){
         try{ savedAdminScreen = JSON.parse(localStorage.getItem('adminLastScreen')||'null'); }
         catch(e){ savedAdminScreen = null; /* بيانات محفوظة تالفة — نتجاهلها ونسيبه في الشاشة الرئيسية */ }
       }
+      const ROLE_SCREEN_MAP = { TEACHER:'teacher-screen', PARENT:'parent-screen', ADMIN:'admin-screen', ASSISTANT:'assistant-screen' };
+      isPoppingState = true; // يمنع أي pushState/navHistory تلقائي جوه enterRoleScreen (هنبنيها يدويًا)
       enterRoleScreen(profile.role);
+      isPoppingState = false;
+      let finalScreenId = ROLE_SCREEN_MAP[profile.role] || 'admin-screen';
+      navHistory.push(finalScreenId);
       // reload للصفحة وإحنا جوه شاشة فرعية في لوحة الأدمن (قسم معيّن أو الإعدادات) —
-      // نرجّعه لنفس الشاشة اللي كان فيها بدل ما نرميه للشاشة الرئيسية دايمًا.
-      //
-      // مهم جدًا: منعمل push حقيقي إلا مرة واحدة بس على الـhistory (زي بالظبط
-      // فلو تسجيل الدخول العادي: replace واحد + push واحد). لو عملنا push حقيقي
-      // تاني هنا (لكل مستوى فرعي)، بعض المتصفحات (خصوصًا Android WebView) بتتجاهل/
-      // بتدمج الـpushStates المتتالية اللي مالهاش user gesture حقيقي وقت تحميل
-      // الصفحة — يعني الـpopstate ممكن أصلاً ميتطلقش أول ضغطة رجوع، والمتصفح
-      // يقفل التطبيق على طول قبل ما أي كود جوانا ياخد فرصة يتدخل.
-      // الحل: نخلي الشاشة الفرعية "افتراضية" جوه navHistory بس (isPoppingState=true
-      // بيمنع showScreen من عمل أي push/navHistory حقيقي جواها)، وإحنا يدويًا
-      // بنضيفها لـnavHistory + نعمل replaceState واحد بس (مش push) عشان نفضل
-      // بعمق حقيقي = نفس عمق الدخول العادي بالظبط.
+      // نرجّعه لنفس الشاشة اللي كان فيها بدل ما نرميه للشاشة الرئيسية دايمًا
       if(profile.role==='ADMIN' && savedAdminScreen){
         const targetId = savedAdminScreen.type==='settings' ? 'admin-settings-screen'
                         : (savedAdminScreen.type==='section' && savedAdminScreen.tab) ? 'admin-section-screen'
                         : null;
         if(targetId){
-          isPoppingState = true; // يمنع showScreen من أي pushState/navHistory تلقائي جوه الفانكشن الجاية
+          isPoppingState = true;
           if(savedAdminScreen.type==='section'){ openAdminSection(savedAdminScreen.tab); }
           else { openAdminSettingsScreen(); }
           isPoppingState = false;
-          navHistory.push(targetId); // نضيفها يدويًا (اتمنعت جوه showScreen بسبب isPoppingState)
-          history.replaceState({ screenId: targetId }, '', '#' + targetId); // عملية حقيقية واحدة بس (replace)
+          navHistory.push(targetId);
+          finalScreenId = targetId;
         }
       }
+      pendingHistoryBaseline = finalScreenId;
       return;
     }
   }
