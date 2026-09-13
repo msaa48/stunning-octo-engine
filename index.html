@@ -1776,6 +1776,15 @@ window.addEventListener('popstate', async function(e){
         isPoppingState = false;
       });
     } else {
+      // بنلغي أثر الرجوع الحقيقي اللي حصل فعلاً في المتصفح (زي بالظبط منطق المودال/صندوق
+      // البحث فوق) والتنقل الفعلي بيتم داخليًا بس (skipHistory). ده يحمي من أي حالة يكون
+      // فيها الـstack الحقيقي للمتصفح مش متطابق تمامًا مع navHistory (مثلاً بعد ريلود
+      // عملنا فيه أكتر من pushState ورا بعض من غير user gesture حقيقي — بعض المتصفحات
+      // بتتجاهل/تدمج جزء منها فعليًا رغم إن navHistory شايفها موجودة).
+      isPoppingState = true;
+      history.pushState({ screenId: currentId }, '', '#' + currentId);
+      isPoppingState = false;
+
       navHistory.pop();
       isPoppingState = true;
       showScreen(prevId, { skipHistory:true });
