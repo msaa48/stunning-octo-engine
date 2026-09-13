@@ -2045,15 +2045,20 @@ async function initAuth(){
         return;
       }
       await fetchDBFromSupabase();
+      // لازم نقرا القيمة المحفوظة قبل enterRoleScreen، عشان showScreen('admin-screen')
+      // اللي جوه enterRoleScreen بتمسح adminLastScreen بمجرد ما تتنفذ (وإلا هتلاقيها
+      // اتمسحت قبل ما توصل للقراءة تحت، والاسترجاع مبيحصلش أبدًا)
+      let savedAdminScreen = null;
+      if(profile.role==='ADMIN'){
+        try{ savedAdminScreen = JSON.parse(localStorage.getItem('adminLastScreen')||'null'); }
+        catch(e){ savedAdminScreen = null; /* بيانات محفوظة تالفة — نتجاهلها ونسيبه في الشاشة الرئيسية */ }
+      }
       enterRoleScreen(profile.role);
       // reload للصفحة وإحنا جوه شاشة فرعية في لوحة الأدمن (قسم معيّن أو الإعدادات) —
       // نرجّعه لنفس الشاشة اللي كان فيها بدل ما نرميه للشاشة الرئيسية دايمًا
-      if(profile.role==='ADMIN'){
-        try{
-          const saved = JSON.parse(localStorage.getItem('adminLastScreen')||'null');
-          if(saved && saved.type==='section' && saved.tab){ openAdminSection(saved.tab); }
-          else if(saved && saved.type==='settings'){ openAdminSettingsScreen(); }
-        }catch(e){ /* بيانات محفوظة تالفة — نتجاهلها ونسيبه في الشاشة الرئيسية */ }
+      if(profile.role==='ADMIN' && savedAdminScreen){
+        if(savedAdminScreen.type==='section' && savedAdminScreen.tab){ openAdminSection(savedAdminScreen.tab); }
+        else if(savedAdminScreen.type==='settings'){ openAdminSettingsScreen(); }
       }
       return;
     }
