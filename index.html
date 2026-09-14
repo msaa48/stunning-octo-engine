@@ -219,18 +219,12 @@
   .tl-time{font-size:11px; color:var(--muted); white-space:nowrap;}
   .empty{text-align:center; color:var(--muted); font-size:13px; padding:32px 0;}
 
-  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; align-items:stretch;}
-  .stat-card-wide{grid-column:1 / -1;}
+  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px;}
   .stat-card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:15px; text-align:center; position:relative; overflow:hidden; cursor:pointer; transition:transform .15s var(--ease-out);}
   .stat-card:active{transform:scale(.96);}
   .stat-card::before{content:''; position:absolute; top:0; right:0; left:0; height:3px; background:linear-gradient(90deg,var(--gold),transparent);}
   .stat-num{font-size:25px; font-weight:800; font-family:'Cairo',sans-serif; color:var(--ink);}
   .stat-lbl{font-size:12px; color:var(--muted); margin-top:2px;}
-  .quick-actions-row{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px;}
-  .quick-action-btn{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 4px; text-align:center; cursor:pointer; transition:transform .15s var(--ease-out); display:flex; flex-direction:column; align-items:center; gap:4px;}
-  .quick-action-btn:active{transform:scale(.94);}
-  .quick-action-ico{font-size:22px;}
-  .quick-action-lbl{font-size:11px; color:var(--ink); font-weight:600;}
   .admin-alert-card{display:flex; align-items:center; gap:12px; padding:14px; border-radius:14px; margin-bottom:10px; cursor:pointer; transition:transform .15s var(--ease-out); border:1px solid transparent;}
   .admin-alert-card:active{transform:scale(.98);}
   .admin-alert-card .alert-ico{font-size:22px; flex-shrink:0;}
@@ -435,6 +429,9 @@
     background:#3b2a00; color:#fbbf24; border:none; border-radius:8px; padding:6px 10px;
     font-size:12px; font-weight:700; cursor:pointer; flex-shrink:0;
   }
+  /* لما يكون مالك المنصة تحديدًا هو الداخل بالنيابة (مش أدمن مركز عادي بيعاين مدرّس) — لون مميز يمنع اللبس */
+  #impersonation-banner.super-admin-mode{ background:linear-gradient(90deg,#4a3d7a,#6553a0); color:#f3e8d8; }
+  #impersonation-banner.super-admin-mode button{ background:#f3e8d8; color:#4a3d7a; }
   body.has-imp-banner .topbar{ margin-top:36px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -782,12 +779,10 @@
   </div>
   <div class="container">
     <div id="admin-alerts-section"></div>
-    <div class="section-title" style="margin-top:4px;">حالة اليوم</div>
-    <div class="stat-grid" id="admin-stats-today"></div>
-    <div class="section-title">إجراءات سريعة</div>
-    <div class="quick-actions-row" id="admin-quick-actions"></div>
-    <div class="section-title">نظرة عامة</div>
+    <div class="section-title" style="margin-top:4px;">نظرة عامة</div>
     <div class="stat-grid" id="admin-stats-overview"></div>
+    <div class="section-title">حالة اليوم</div>
+    <div class="stat-grid" id="admin-stats-today"></div>
   </div>
 </div>
 
@@ -914,6 +909,42 @@
         <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('sa-invite-modal-bg')">إلغاء</button>
         <button class="btn primary admin block" onclick="inviteTeamMember()">إضافة</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: محاكاة الوقت لمؤسسة معيّنة -->
+  <div class="modal-bg" id="sa-timesim-modal-bg">
+    <div class="modal">
+      <h3>⏱ محاكاة الوقت — <span id="sa-timesim-center-name"></span></h3>
+      <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">الوقت الوهمي الحالي لهذه المؤسسة: <b id="sa-timesim-current-display"></b></div>
+      <input type="hidden" id="sa-timesim-center-id">
+      <div class="section-title" style="margin:8px 0 6px; font-size:13px;">قفزة سريعة</div>
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px;">
+        <button class="badge" onclick="jumpSimulatedTime(1)">+يوم</button>
+        <button class="badge" onclick="jumpSimulatedTime(7)">+أسبوع</button>
+        <button class="badge" onclick="jumpSimulatedTime(30)">+شهر</button>
+        <button class="badge" onclick="jumpSimulatedTime(-1)">-يوم</button>
+        <button class="badge" onclick="jumpSimulatedTime(-7)">-أسبوع</button>
+        <button class="badge" onclick="jumpSimulatedTime(-30)">-شهر</button>
+      </div>
+      <div class="section-title" style="margin:8px 0 6px; font-size:13px;">أو حدد تاريخ ووقت بالظبط</div>
+      <input type="datetime-local" id="sa-timesim-exact">
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="resetSimulatedTime()">رجّع الوقت الحقيقي</button>
+        <button class="btn primary admin block" onclick="setExactSimulatedTime()">تطبيق التاريخ المحدد</button>
+      </div>
+      <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('sa-timesim-modal-bg')">إغلاق</button>
+    </div>
+  </div>
+
+  <!-- Modal: دخول بأي حساب (Quick Jump) -->
+  <div class="modal-bg" id="sa-quickjump-modal-bg">
+    <div class="modal">
+      <h3>🎭 دخول بأي حساب — <span id="sa-quickjump-center-name"></span></h3>
+      <input type="text" id="sa-quickjump-search" placeholder="دوّر بالاسم..." oninput="renderQuickJumpList()" style="margin-bottom:10px;">
+      <div id="sa-quickjump-tabs" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>
+      <div id="sa-quickjump-list" style="max-height:50vh; overflow-y:auto;"></div>
+      <button class="btn block" style="margin-top:12px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('sa-quickjump-modal-bg')">إغلاق</button>
     </div>
   </div>
 </div>
@@ -1228,6 +1259,16 @@ function toggleTheme(){
 const DB_KEY = 'center_demo_db_v1';
 let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخول — loadDB() بيرجعه على طول من غير ما ينده على الشبكة تاني
 
+/* ========================= SIMULATED TIME (وقت وهمي لكل مركز — لمحاكاة التطوير/الديمو) =========================
+ * simulatedTimeOffsetMs = الفرق بالمللي ثانية بين الوقت الوهمي والوقت الحقيقي (Date.now()).
+ * بيتحمّل من centers.simulated_time_offset_ms وقت fetchDBFromSupabase(). القيمة 0 (الافتراضي) = الوقت الوهمي = الوقت الحقيقي.
+ * getSystemNow() هي الدالة الوحيدة المفروض إنها تستخدم بدل "new Date()" في أي منطق مرتبط بالتاريخ/الوقت الحالي
+ * (حسابات التأخير، الحضور، "أحداث اليوم"، إلخ) — عشان مالك المنصة يقدر "ينط" بالنظام كله قدام/ورا للمحاكاة والاختبار.
+ * التعديل عليها بيتم فقط من شاشة مالك المنصة (RLS: "super admin updates centers" بس).
+ */
+let simulatedTimeOffsetMs = 0;
+function getSystemNow(){ return new Date(Date.now() + simulatedTimeOffsetMs); }
+
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
   const db = seedData(); // نبدأ بشكل افتراضي كامل، وبعدين نستبدل كل جزء بيانات حقيقية جاية من Supabase
@@ -1285,8 +1326,9 @@ async function fetchDBFromSupabase(){
   const centerId = session.centerId;
   if(!centerId){ dbCache = seedData(); return; } // Super Admin (لسه ملوش شاشة خاصة) — ديمو مؤقت لحد ما نبني لوحته
   try{
-    const { data: centerRow } = await supabaseClient.from('centers').select('name').eq('id', centerId).single();
+    const { data: centerRow } = await supabaseClient.from('centers').select('name, simulated_time_offset_ms').eq('id', centerId).single();
     session.centerSlug = slugifyWordsForDomain(centerRow?.name || 'markaz'); // مستخدم كدومين للإيميلات المولّدة أوتوماتيك (بعد الـ@) — مفصول بـ hyphen "-" لأن الـ underscore ممنوع في أسماء الدومين
+    simulatedTimeOffsetMs = centerRow?.simulated_time_offset_ms || 0;
     const isAdmin = session.role==='ADMIN';
     const tables = ['classrooms','subjects','assistants','assistant_teachers','parents','children','schedule',
       'schedule_settings_by_classroom','calendar_events','events','complaints','payments',
@@ -1568,6 +1610,35 @@ async function getAuthUserId(){
   return s && s.user ? s.user.id : null;
 }
 
+// بيتنادى بعد أي عملية كتابة (INSERT/UPDATE) نجحت في Supabase أثناء إن مالك المنصة داخل بالنيابة عن دور تاني.
+// بيسجل صف في impersonation_audit_log — الاسم/الدور الحقيقي بيتاخدوا من session.impersonatorLabel/isSuperAdmin
+// المحفوظين في أول عنصر بالمكدس وقت أول startImpersonation، مش من الـsession الحالي (اللي بقى دور المنتحل).
+// best-effort: فشل التسجيل نفسه ميوقفش أو يفشل العملية الأصلية.
+async function logImpersonatedWrite(tableName, operation, rowId, payloadSummary){
+  if(!impersonationStack.length || !isSuperAdminImpersonating()) return;
+  try{
+    const authId = await getAuthUserId();
+    if(!authId) return;
+    await supabaseClient.from('impersonation_audit_log').insert({
+      super_admin_auth_id: authId,
+      impersonated_role: session.role,
+      impersonated_person_id: session.personId || null,
+      center_id: session.centerId || null,
+      table_name: tableName,
+      operation,
+      row_id: rowId || null,
+      payload_summary: payloadSummary || null
+    });
+  } catch(e){
+    console.warn('فشل تسجيل audit log للانتحال (العملية الأصلية اتمت بنجاح رغم ده)', e);
+  }
+}
+
+// بيتأكد إن أول مستوى في المكدس (قبل أي انتحال) كان فعليًا مالك منصة — يعني الشخص الحقيقي اللي بيكتب دلوقتي هو مالك المنصة
+function isSuperAdminImpersonating(){
+  return impersonationStack.length>0 && impersonationStack[0].isSuperAdmin===true;
+}
+
 /* ========================= SESSION STATE ========================= */
 function confirmAction(message, onConfirm){
   document.getElementById('confirm-modal-text').textContent = message;
@@ -1584,13 +1655,60 @@ const SUPABASE_URL = 'https://gqevqyduncfnyyfyxreh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZXZxeWR1bmNmbnl5Znl4cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjIzOTgsImV4cCI6MjEwMjg5ODM5OH0.dJwydh3CNyyBnQG6M-Wm6WU37gXwFj2wlhC6p9MWDzY';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// ============ Impersonation write auditing (شفاف تمامًا لباقي الكود) ============
+// بيغلّف .insert()/.update() بتوع أي جدول عادي (مش impersonation_audit_log نفسه، تجنبًا للتكرار اللانهائي)
+// عشان يسجل تلقائيًا في impersonation_audit_log أي عملية كتابة ناجحة أثناء انتحال مالك المنصة لدور تاني —
+// من غير ما نحتاج نعدّل كل نقطة نداء .insert()/.update() المنتشرة في الكود (~15 مكان).
+// مبني على Proxy (مش استبدال .then مباشرة) عشان يحافظ 100% على أي تسلسل chaining بعد .insert()/.update()
+// زي .eq(...).select().single() — الـPromise الحقيقي بيتكوّن بس لما حد يعمل await/.then على القيمة النهائية،
+// فالـawait بتاع الكود الأصلي هو اللي بيحصله intercept هنا، مش قبل ما يخلص بناء السلسلة.
+(function wrapSupabaseWritesForAudit(){
+  const originalFrom = supabaseClient.from.bind(supabaseClient);
+  function wrapBuilderForAudit(builder, table, method, payload){
+    if(!builder || typeof builder.then !== 'function') return builder;
+    return new Proxy(builder, {
+      get(target, prop, receiver){
+        const val = Reflect.get(target, prop, receiver);
+        if(prop === 'then'){
+          return function(onFulfilled, onRejected){
+            return val.call(target, res=>{
+              if(!res.error && isSuperAdminImpersonating()){
+                const row = Array.isArray(res.data) ? res.data[0] : res.data;
+                logImpersonatedWrite(table, method, row?.id || null, payload);
+              }
+              return onFulfilled ? onFulfilled(res) : res;
+            }, onRejected);
+          };
+        }
+        if(typeof val === 'function'){
+          return function(...args){
+            const chained = val.apply(target, args);
+            return wrapBuilderForAudit(chained, table, method, payload);
+          };
+        }
+        return val;
+      }
+    });
+  }
+  supabaseClient.from = function(table){
+    const qb = originalFrom(table);
+    if(table === 'impersonation_audit_log') return qb; // تجنب تسجيل عملية التسجيل نفسها
+    const originalInsert = qb.insert.bind(qb);
+    const originalUpdate = qb.update.bind(qb);
+    qb.insert = function(payload){ return wrapBuilderForAudit(originalInsert(payload), table, 'INSERT', payload); };
+    qb.update = function(payload){ return wrapBuilderForAudit(originalUpdate(payload), table, 'UPDATE', payload); };
+    return qb;
+  };
+})();
+
 let isManualLoginInProgress = false; // بيتفعّل من بداية handleEmailLogin لحد ما يخلص، عشان initAuth() (اللي بتشتغل تلقائي عند تحميل الصفحة) متتصادمش معاه وتعمل enterRoleScreen مرتين بالتوازي على نفس session
 
 let session = { role:null, personId:null, centerId:null, isSuperAdmin:false, isOwner:false, permissions:{}, centerSlug:'markaz', authId:null, viewingLabel:null };
 // مكدس "الدخول بالنيابة" — كل عنصر هو نسخة كاملة من الـsession قبل الدخول للمستوى الجديد،
-// عشان الرجوع يبقى خطوة-خطوة صحيح. session.authId (الهوية الحقيقية) بيفضل ثابت طول الوقت،
-// وأي كتابة (حضور/استثناء/إلخ) بتتسجل بيه دايمًا لأن الـauth الحقيقي في Supabase مايتغيرش خالص —
-// الميزة كلها فرونت اند بحت لأن RLS بيسمح لـis_super_admin() وللأدمن بكل بيانات مركزه أصلاً.
+// عشان الرجوع يبقى خطوة-خطوة صحيح. الـauth الحقيقي في Supabase (auth.uid()) مايتغيرش خالص طول وقت الانتحال —
+// الميزة فرونت اند بحت في التنقل بين الشاشات، لكن عمليات الكتابة (حضور/استثناء/رسائل/إلخ) لازم RLS تسمح بيها
+// صراحة لمالك المنصة عبر is_super_admin() OR ... في كل policy (اتضاف batch من الـmigrations لكل الجداول القابلة
+// للانتحال — راجع impersonation_audit_log). كل عملية كتابة تحت انتحال المفروض تتسجل هناك من دوال logImpersonatedWrite().
 let impersonationStack = [];
 let pendingRole = null;
 let pendingPersonId = null;
@@ -1641,7 +1759,7 @@ function parseISODateLocal(dobStr){
 }
 // أول أكتوبر لبداية السنة الدراسية الحالية (لو النهارده قبل أول أكتوبر، بنرجع لأول أكتوبر السنة اللي فاتت)
 function currentSchoolYearStart(){
-  const now = new Date();
+  const now = getSystemNow();
   const y = now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear()-1; // getMonth()===9 يعني أكتوبر
   return new Date(y, 9, 1);
 }
@@ -2274,7 +2392,9 @@ function updateImpersonationBanner(){
   const labelEl = document.getElementById('imp-label-text');
   if(!banner || !labelEl) return;
   if(impersonationStack.length && session.viewingLabel){
-    labelEl.textContent = 'بتشوف كـ' + session.viewingLabel;
+    const bySuperAdmin = isSuperAdminImpersonating();
+    labelEl.textContent = (bySuperAdmin ? '👑 مالك المنصة بيشوف كـ' : 'بتشوف كـ') + session.viewingLabel;
+    banner.classList.toggle('super-admin-mode', bySuperAdmin);
     banner.style.display = 'flex';
     document.body.classList.add('has-imp-banner');
   } else {
@@ -2424,7 +2544,7 @@ function timeStr(iso){
   return d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
 }
 function isToday(iso){
-  const d = new Date(iso), n = new Date();
+  const d = new Date(iso), n = getSystemNow();
   return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
 }
 
@@ -2469,7 +2589,7 @@ async function logTeacherAttendance(type){
   const teacherId = session.personId;
   const todays = db.teacherAttendance.filter(r=> r.teacherId===teacherId && isToday(r.time));
   const doLog = async ()=>{
-    const timeIso = new Date().toISOString();
+    const timeIso = getSystemNow().toISOString();
     // إدخال مباشر (insert) بدل الحفظ العام (saveDB/pushDBToSupabase) — عشان المدرّس
     // معندوش صلاحية على أغلب الجداول التانية اللي الحفظ العام بيحاول يبعتها، وكان بيفشل صامت
     const { data, error } = await supabaseClient.from('teacher_attendance').insert({
@@ -2517,7 +2637,7 @@ function renderTeacherAttendance(){
   }
   const el = document.getElementById('teacher-attendance-history');
   if(!el) return;
-  const cutoff = Date.now() - 14*86400000;
+  const cutoff = getSystemNow().getTime() - 14*86400000;
   const list = db.teacherAttendance
     .filter(r=> r.teacherId===teacherId && new Date(r.time).getTime() >= cutoff)
     .sort((a,b)=> new Date(b.time)-new Date(a.time));
@@ -2574,7 +2694,7 @@ async function sendTeacherMessage(){
   if(!text) return;
   const db = loadDB();
   const teacher = db.teachers.find(t=>t.id===session.personId);
-  const msg = {childId:teacherActiveChildId, sender:'TEACHER', senderName: teacher?teacher.name:'المدرّس', text, time:new Date().toISOString()};
+  const msg = {childId:teacherActiveChildId, sender:'TEACHER', senderName: teacher?teacher.name:'المدرّس', text, time:getSystemNow().toISOString()};
   const { data, error } = await supabaseClient.from('messages').insert({
     child_id: teacherActiveChildId, sender_role: 'teacher', payload: msg, center_id: session.centerId
   }).select().single();
@@ -2677,7 +2797,7 @@ function subjectsTaughtToChildByTeacher(db, teacher, child){
 function computeChildEffortPercent(db, teacher, child){
   const subjectIds = subjectsTaughtToChildByTeacher(db, teacher, child);
   if(subjectIds.length===0) return null;
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getSystemNow().toISOString().slice(0,10);
   let totalTasks = 0, doneTasks = 0;
   subjectIds.forEach(sid=>{
     const tasks = (db.subjectTasks||[]).filter(t=> t.subjectId===sid);
@@ -2699,7 +2819,7 @@ function renderTeacherStudentGrid(){
   if(!teacher || !grid) return;
   const myChildren = db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid)));
   if(myChildren.length===0){ grid.innerHTML = '<div class="empty">لا يوجد طلاب في مجموعاتك</div>'; return; }
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getSystemNow().toISOString().slice(0,10);
   grid.innerHTML = myChildren.map(c=>{
     const effort = computeChildEffortPercent(db, teacher, c);
     const sharedRoomIds = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
@@ -2737,7 +2857,7 @@ async function recordSessionAttendance(childId, classroomId){
   const db = loadDB();
   const authId = await getAuthUserId();
   const teacher = db.teachers.find(t=>t.id===session.personId);
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getSystemNow().toISOString().slice(0,10);
   const { data, error } = await supabaseClient.from('attendance').insert({
     child_id: childId, classroom_id: classroomId, session_date: todayStr,
     teacher_id: teacher?teacher.id:null, recorded_by: authId
@@ -2830,7 +2950,7 @@ function renderAssistantStudentGrid(){
   if(!teacher){ grid.innerHTML = '<div class="empty">مش مرتبط بأي مدرّس لسه — كلّم الأدمن يربطك بمدرّس</div>'; return; }
   const myChildren = db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid)));
   if(myChildren.length===0){ grid.innerHTML = '<div class="empty">لا يوجد طلاب في مجموعات المدرّس ده</div>'; return; }
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getSystemNow().toISOString().slice(0,10);
   grid.innerHTML = myChildren.map(c=>{
     const sharedRoomIds = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
     const sharedRooms = sharedRoomIds.map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
@@ -2863,7 +2983,7 @@ async function recordAssistantAttendance(childId, classroomId){
   const db = loadDB();
   const authId = await getAuthUserId();
   const teacher = db.teachers.find(t=>t.id===assistantActiveTeacherId);
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getSystemNow().toISOString().slice(0,10);
   const { data, error } = await supabaseClient.from('attendance').insert({
     child_id: childId, classroom_id: classroomId, session_date: todayStr,
     teacher_id: teacher?teacher.id:null, recorded_by: authId
@@ -2942,7 +3062,7 @@ function renderTeacherTasksToday(){
   const child = db.children.find(c=>c.id===teacherActiveChildId);
   if(!teacher || !child){ el.innerHTML = '<div class="empty">اختر طالب الأول</div>'; return; }
   const subjectIds = subjectsTaughtToChildByTeacher(db, teacher, child);
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getSystemNow().toISOString().slice(0,10);
   const blocks = subjectIds.map(sid=>{
     const subj = db.subjects.find(s=>s.id===sid);
     const tasks = (db.subjectTasks||[]).filter(t=>t.subjectId===sid).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
@@ -2961,7 +3081,7 @@ function renderTeacherTasksToday(){
 
 async function toggleTaskCompletion(childId, subjectId, taskId, isDone){
   const db = loadDB();
-  const todayStr = new Date().toISOString().slice(0,10);
+  const todayStr = getSystemNow().toISOString().slice(0,10);
   const { data, error } = await supabaseClient.from('task_completions').upsert({
     child_id: childId, subject_id: subjectId, task_id: taskId, teacher_id: session.personId,
     completion_date: todayStr, done: isDone, center_id: session.centerId
@@ -3073,7 +3193,7 @@ async function logEvent(type, em, label, metadata, note){
   const teacher = db.teachers.find(t=>t.id===session.personId);
   const child = db.children.find(c=>c.id===teacherActiveChildId);
   const classroomId = (child?.classroomIds||[]).find(cid => (teacher?.classroomIds||[]).includes(cid));
-  const eventTime = new Date().toISOString();
+  const eventTime = getSystemNow().toISOString();
   const payload = {
     childId: teacherActiveChildId,
     eventType: type,
@@ -3218,7 +3338,7 @@ async function saveEval(){
     childId: teacherActiveChildId,
     subjectId, rating, note,
     teacherId: session.personId,
-    date: new Date().toISOString()
+    date: getSystemNow().toISOString()
   };
   const { data, error } = await supabaseClient.from('evaluations').insert({
     child_id: teacherActiveChildId, subject_id: subjectId, payload, center_id: session.centerId
@@ -3343,7 +3463,7 @@ async function sendParentMessage(){
   const db = loadDB();
   const childId = document.getElementById('parent-child-select').value;
   const parent = db.parents.find(p=>p.id===session.personId);
-  const msg = {childId, sender:'PARENT', senderName: parent?parent.name:'ولي الأمر', text, time:new Date().toISOString()};
+  const msg = {childId, sender:'PARENT', senderName: parent?parent.name:'ولي الأمر', text, time:getSystemNow().toISOString()};
   const { data, error } = await supabaseClient.from('messages').insert({
     child_id: childId, sender_role: 'parent', payload: msg, center_id: session.centerId
   }).select().single();
@@ -3358,7 +3478,7 @@ async function sendParentMessage(){
 function renderParentPayments(){
   const db = loadDB();
   const childId = document.getElementById('parent-child-select').value;
-  const today = new Date().toISOString().slice(0,10);
+  const today = getSystemNow().toISOString().slice(0,10);
   const enrollments = (db.enrollments||[]).filter(e=>e.childId===childId);
   const el = document.getElementById('parent-payments-view');
   if(enrollments.length===0){ el.innerHTML = '<div class="empty">الطالب مش مسجّل في أي مجموعة لسه</div>'; return; }
@@ -3419,7 +3539,7 @@ async function submitComplaint(){
   const payload = {
     parentId: session.personId,
     message: text,
-    submittedAt: new Date().toISOString(),
+    submittedAt: getSystemNow().toISOString(),
     status: 'PENDING'
   };
   const { data, error } = await supabaseClient.from('complaints').insert({
@@ -3495,6 +3615,8 @@ async function initSuperAdminScreen(){
       </div>
       <div class="list-actions" style="flex-wrap:wrap;">
         <button class="badge" onclick="startImpersonation({role:'ADMIN', personId:null, centerId:'${c.id}', label:'مؤسسة: ${escAttr(c.name)}'})">👁 دخول كأدمن</button>
+        <button class="badge" onclick="openQuickJumpModal('${c.id}','${escAttr(c.name)}')">🎭 دخول بأي حساب</button>
+        <button class="badge" onclick="openTimeSimModal('${c.id}','${escAttr(c.name)}', ${c.simulated_time_offset_ms||0})">⏱ محاكاة الوقت</button>
         ${c.subscription_status==='suspended'
           ? `<button class="badge" onclick="setCenterStatus('${c.id}','active')">تفعيل</button>`
           : `<button class="badge" style="color:var(--danger);" onclick="setCenterStatus('${c.id}','suspended')">إيقاف</button>`}
@@ -3657,6 +3779,109 @@ async function setCenterStatus(centerId, status){
   initSuperAdminScreen();
 }
 
+/* ========================= محاكاة الوقت (مالك المنصة فقط) ========================= */
+function formatSimulatedOffset(offsetMs){
+  if(!offsetMs) return 'الوقت الحقيقي (مفيش محاكاة نشطة)';
+  const d = new Date(Date.now() + offsetMs);
+  return d.toLocaleString('ar-EG', {dateStyle:'medium', timeStyle:'short'});
+}
+
+function openTimeSimModal(centerId, centerName, currentOffsetMs){
+  document.getElementById('sa-timesim-center-id').value = centerId;
+  document.getElementById('sa-timesim-center-name').textContent = centerName;
+  document.getElementById('sa-timesim-center-id').dataset.offset = currentOffsetMs || 0;
+  document.getElementById('sa-timesim-current-display').textContent = formatSimulatedOffset(currentOffsetMs || 0);
+  document.getElementById('sa-timesim-exact').value = '';
+  document.getElementById('sa-timesim-modal-bg').classList.add('show');
+}
+
+async function applySimulatedOffset(centerId, newOffsetMs){
+  const { error } = await supabaseClient.from('centers').update({ simulated_time_offset_ms: newOffsetMs }).eq('id', centerId);
+  if(error){ showToast('فشل تحديث الوقت الوهمي'); return; }
+  // لو المركز ده هو اللي جوّاه دلوقتي (session.centerId)، حدّث الوقت الوهمي فورًا في الجلسة الحالية
+  if(session.centerId === centerId) simulatedTimeOffsetMs = newOffsetMs;
+  document.getElementById('sa-timesim-center-id').dataset.offset = newOffsetMs;
+  document.getElementById('sa-timesim-current-display').textContent = formatSimulatedOffset(newOffsetMs);
+  showToast('اتحدّث الوقت الوهمي ✓');
+  initSuperAdminScreen();
+}
+
+function jumpSimulatedTime(days){
+  const centerId = document.getElementById('sa-timesim-center-id').value;
+  const currentOffset = Number(document.getElementById('sa-timesim-center-id').dataset.offset || 0);
+  applySimulatedOffset(centerId, currentOffset + days*86400000);
+}
+
+function setExactSimulatedTime(){
+  const centerId = document.getElementById('sa-timesim-center-id').value;
+  const val = document.getElementById('sa-timesim-exact').value;
+  if(!val){ showToast('حدد تاريخ ووقت الأول'); return; }
+  const target = new Date(val).getTime();
+  applySimulatedOffset(centerId, target - Date.now());
+}
+
+function resetSimulatedTime(){
+  const centerId = document.getElementById('sa-timesim-center-id').value;
+  applySimulatedOffset(centerId, 0);
+}
+
+/* ========================= دخول بأي حساب (Quick Jump Impersonation) ========================= */
+let quickJumpCenterId = null;
+let quickJumpCache = { teachers:[], parents:[], children:[], assistants:[] };
+let quickJumpActiveTab = 'teachers';
+
+async function openQuickJumpModal(centerId, centerName){
+  quickJumpCenterId = centerId;
+  document.getElementById('sa-quickjump-center-name').textContent = centerName;
+  document.getElementById('sa-quickjump-search').value = '';
+  document.getElementById('sa-quickjump-list').innerHTML = '<div class="empty">بيتحمّل...</div>';
+  document.getElementById('sa-quickjump-modal-bg').classList.add('show');
+
+  const [teachersRes, parentsRes, childrenRes, assistantsRes] = await Promise.all([
+    supabaseClient.from('teachers').select('id,name').eq('center_id', centerId),
+    supabaseClient.from('parents').select('id,name').eq('center_id', centerId),
+    supabaseClient.from('children').select('id,name').eq('center_id', centerId),
+    supabaseClient.from('assistants').select('id,name').eq('center_id', centerId)
+  ]);
+  quickJumpCache = {
+    teachers: teachersRes.data || [],
+    parents: parentsRes.data || [],
+    children: childrenRes.data || [],
+    assistants: assistantsRes.data || []
+  };
+  quickJumpActiveTab = 'teachers';
+  renderQuickJumpTabs();
+  renderQuickJumpList();
+}
+
+function renderQuickJumpTabs(){
+  const tabs = [
+    {key:'teachers', label:`👨‍🏫 مدرّسين (${quickJumpCache.teachers.length})`},
+    {key:'assistants', label:`🧑‍💼 أسيستنت (${quickJumpCache.assistants.length})`},
+    {key:'parents', label:`👪 أولياء أمور (${quickJumpCache.parents.length})`},
+    {key:'children', label:`🎓 طلاب (${quickJumpCache.children.length})`}
+  ];
+  document.getElementById('sa-quickjump-tabs').innerHTML = tabs.map(t=>`
+    <button class="badge" style="${quickJumpActiveTab===t.key?'background:var(--gold); color:#3b2a00;':''}" onclick="quickJumpActiveTab='${t.key}'; renderQuickJumpTabs(); renderQuickJumpList();">${t.label}</button>
+  `).join('');
+}
+
+function renderQuickJumpList(){
+  const search = (document.getElementById('sa-quickjump-search').value || '').trim();
+  const roleMap = { teachers:'TEACHER', assistants:'ASSISTANT', parents:'PARENT', children:'STUDENT' };
+  const list = (quickJumpCache[quickJumpActiveTab] || []).filter(p => !search || p.name.includes(search));
+  const role = roleMap[quickJumpActiveTab];
+  document.getElementById('sa-quickjump-list').innerHTML = list.map(p=>`
+    <div class="list-row">
+      <div class="list-row-main">
+        <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">${avatarInitial(p.name)}</div>
+        <div class="list-info"><div class="list-name">${p.name}</div></div>
+      </div>
+      <button class="badge" onclick="closeModal('sa-quickjump-modal-bg'); startImpersonation({role:'${role}', personId:'${p.id}', centerId:'${quickJumpCenterId}', label:'${escAttr(p.name)}'});">دخول 🎭</button>
+    </div>
+  `).join('') || '<div class="empty">مفيش نتايج</div>';
+}
+
 function renderInvoicesList(){
   const statusLabel = {pending:'مستحقة', overdue:'متأخرة', paid:'مدفوعة'};
   const statusColor = {pending:'#d97706', overdue:'#dc2626', paid:'#16a34a'};
@@ -3703,7 +3928,7 @@ function initAdminScreen(){
 
 function renderAdminAlerts(){
   const db = loadDB();
-  const currentMonth = new Date().toISOString().slice(0,7);
+  const currentMonth = getSystemNow().toISOString().slice(0,7);
   const overdue = db.payments.filter(p=> p.status!=='PAID' && p.month < currentMonth);
   const orphans = getChildrenWithoutGuardian(db);
   const pendingComplaints = db.complaints.filter(c=>c.status==='PENDING');
@@ -3730,12 +3955,15 @@ function getChildrenWithoutGuardian(db){
 function renderAdminStats(){
   const db = loadDB();
   const todayEvents = db.events.filter(e=>isToday(e.eventTime));
-  const checkedInTeacherIds = new Set(db.teacherAttendance.filter(r=>r.type==='CHECK_IN' && isToday(r.time)).map(r=>r.teacherId));
-  const teachersCheckedInToday = checkedInTeacherIds.size;
+  const teachersCheckedInToday = new Set(db.teacherAttendance.filter(r=>r.type==='CHECK_IN' && isToday(r.time)).map(r=>r.teacherId)).size;
   const overview = [
     {num: db.children.length, label:'الطلاب', tab:'children'},
     {num: db.teachers.length, label:'المدرّسين', tab:'teachers'},
     {num: db.parents.length, label:'أولياء الأمور', tab:'parents'}
+  ];
+  const today = [
+    {num: todayEvents.length, label:'أحداث اليوم', tab:'calendar'},
+    {num: `${teachersCheckedInToday}/${db.teachers.length}`, label:'مدرّسين حضرن النهاردة', tab:'teacherAttendance'}
   ];
   const cardHtml = s => `
     <div class="stat-card" onclick="openAdminSection('${s.tab}')">
@@ -3743,61 +3971,7 @@ function renderAdminStats(){
       <div class="stat-lbl">${s.label}</div>
     </div>`;
   document.getElementById('admin-stats-overview').innerHTML = overview.map(cardHtml).join('');
-
-  // "حالة اليوم" — تفاعلية + متوازنة بصريًا: الكارت اللي فيه محتوى (أسامي) ياخد عرض كامل بدل ما يتكسّر بجانب كارت فاضي
-  const notCheckedIn = db.teachers.filter(t=> !checkedInTeacherIds.has(t.id));
-  // تمييز بالوقت: قبل الساعة 10 الصبح "لسه ما جاش" حالة طبيعية (رمادي)، بعدها تعتبر تأخير فعلي (أحمر)
-  const nowHour = new Date().getHours();
-  const isLate = nowHour >= 10;
-  const pendingColor = isLate ? 'var(--danger,#e55)' : 'var(--muted)';
-  const pendingIcon = isLate ? '⚠️' : '⏳';
-  const teacherAttendanceDetail = db.teachers.length ? `
-    ${teachersCheckedInToday>0 ? `<div style="font-size:12px; color:var(--muted); margin-bottom:4px;">✅ حضروا: ${db.teachers.filter(t=>checkedInTeacherIds.has(t.id)).map(t=>t.name).join('، ')}</div>` : ''}
-    ${notCheckedIn.length>0 ? `<div style="font-size:12px; color:${pendingColor};">${pendingIcon} لسه: ${notCheckedIn.map(t=>t.name).join('، ')}</div>` : ''}
-  ` : `<div style="font-size:12px; color:var(--muted);">لا يوجد مدرّسين مسجّلين بعد</div>`;
-  const eventsDetail = todayEvents.length ? `
-    <div style="font-size:12px; color:var(--muted); text-align:right;">
-      ${todayEvents.slice(0,3).map(e=>`• ${e.title||'حدث'}`).join('<br>')}
-      ${todayEvents.length>3 ? `<br>+${todayEvents.length-3} حدث تاني` : ''}
-    </div>` : `<div style="font-size:12px; color:var(--muted);">مفيش أحداث مجدولة النهاردة</div>`;
-
-  // لو فيه أسامي معروضة (حضور أو لسه) الكارت بياخد عرض كامل عشان النص ميتكسرش جوه مساحة ضيقة
-  const teacherCardWide = (teachersCheckedInToday>0 || notCheckedIn.length>0);
-  document.getElementById('admin-stats-today').innerHTML = `
-    <div class="stat-card${teacherCardWide?' stat-card-wide':''}" style="cursor:pointer; text-align:center;" onclick="openAdminSection('teacherAttendance')">
-      <div class="stat-num">${teachersCheckedInToday}/${db.teachers.length}</div>
-      <div class="stat-lbl">مدرّسين حضرن النهاردة</div>
-      <div style="margin-top:6px;">${teacherAttendanceDetail}</div>
-    </div>
-    <div class="stat-card" style="cursor:pointer; text-align:center;" onclick="openAdminSection('calendar')">
-      <div class="stat-num">${todayEvents.length}</div>
-      <div class="stat-lbl">أحداث اليوم</div>
-      <div style="margin-top:6px;">${eventsDetail}</div>
-    </div>`;
-
-  renderAdminQuickActions();
-}
-
-// إجراءات سريعة على الشاشة الرئيسية — بتفتح التاب المناسب وتنده على فورم الإضافة تلقائيًا
-function quickAdminAction(tab){
-  openAdminSection(tab);
-  openAdminAddModal();
-}
-function renderAdminQuickActions(){
-  const el = document.getElementById('admin-quick-actions');
-  if(!el) return;
-  // رُتّبت حسب الاستخدام اليومي الفعلي؛ زرار البحث السريع فضل زي ما هو بدون حذف
-  const actions = [
-    {icon:'💳', label:'تسجيل دفعة', onclick:"openAdminSection('payments')"},
-    {icon:'👤', label:'إضافة طالب', onclick:"quickAdminAction('children')"},
-    {icon:'📅', label:'إضافة حدث', onclick:"quickAdminAction('calendar')"},
-    {icon:'🔍', label:'بحث سريع', onclick:"toggleAdminGlobalSearch()"}
-  ];
-  el.innerHTML = actions.map(a=>`
-    <div class="quick-action-btn" onclick="${a.onclick}">
-      <span class="quick-action-ico">${a.icon}</span>
-      <span class="quick-action-lbl">${a.label}</span>
-    </div>`).join('');
+  document.getElementById('admin-stats-today').innerHTML = today.map(cardHtml).join('');
 }
 
 const ADMIN_TAB_GROUPS = {
@@ -4218,7 +4392,7 @@ function renderAdminListInner(){
     return;
   }
   else if(adminActiveTab==='payments'){
-    const today = new Date().toISOString().slice(0,10);
+    const today = getSystemNow().toISOString().slice(0,10);
     const enrollments = db.enrollments || [];
     let activeCount=0, expiredCount=0, noneCount=0;
     const rows = enrollments.map(e=>{
@@ -4626,7 +4800,7 @@ function openRegisterSubscriptionModal(childId, classroomId){
   const enrollment = (db.enrollments||[]).find(e=> e.childId===childId && e.classroomId===classroomId);
   if(!child || !room || !enrollment) return;
   subscriptionModalContext = {childId, classroomId};
-  const today = new Date().toISOString().slice(0,10);
+  const today = getSystemNow().toISOString().slice(0,10);
   const isSession = enrollment.paymentMode==='session';
   const defaultAmount = isSession ? (room.sessionFee||0) : (room.monthlyFee||0);
   const el = document.getElementById('admin-modal-fields');
@@ -4700,7 +4874,7 @@ async function flagExceptionUnjustified(exceptionId){
 
 async function generateMonthlyPayments(){
   const db = loadDB();
-  const currentMonth = new Date().toISOString().slice(0,7);
+  const currentMonth = getSystemNow().toISOString().slice(0,7);
   let created = 0;
   const skipped = [];
   db.children.forEach(c=>{
@@ -5022,7 +5196,7 @@ function renderAdminModalFields(id){
       </label>`;
   }
   else if(type==='payments'){
-    const now = new Date();
+    const now = getSystemNow();
     const item = id ? db.payments.find(p=>p.id===id) : null;
     const defaultMonth = item ? item.month : now.toISOString().slice(0,7);
     el.innerHTML = `
@@ -5537,7 +5711,7 @@ function workingDaysInMonth(year, monthIndex0, uptoDate){
 function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
   const monthStart = new Date(year, monthIndex0, 1);
   const monthEnd = new Date(year, monthIndex0+1, 0, 23,59,59);
-  const now = new Date();
+  const now = getSystemNow();
   const isCurrentMonth = (year===now.getFullYear() && monthIndex0===now.getMonth());
   const effectiveEnd = isCurrentMonth ? now : monthEnd;
 
@@ -5601,7 +5775,7 @@ function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
 function ensureAutoEvalsUpToDate(months){
   months = months || 6;
   const db = loadDB();
-  const now = new Date();
+  const now = getSystemNow();
   let changed = false;
   db.teachers.forEach(t=>{
     for(let i=0;i<months;i++){
@@ -5635,7 +5809,7 @@ async function changeTeacherPayoutBasis(){
 
 // بيقترح الفترة = الشهر اللي فات (من أول الشهر لآخره)، ممكن الأدمن يعدّلها قبل الإنشاء
 function openGeneratePayoutsModal(){
-  const now = new Date();
+  const now = getSystemNow();
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth()-1, 1);
   const fmt = d => d.toISOString().slice(0,10);
