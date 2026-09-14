@@ -219,7 +219,13 @@
   .tl-time{font-size:11px; color:var(--muted); white-space:nowrap;}
   .empty{text-align:center; color:var(--muted); font-size:13px; padding:32px 0;}
 
-  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px;}
+  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:16px; align-items:stretch;}
+  .stat-card-wide{grid-column:1 / -1;}
+  .quick-actions-row{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px;}
+  .quick-action-btn{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 4px; text-align:center; cursor:pointer; transition:transform .15s var(--ease-out); display:flex; flex-direction:column; align-items:center; gap:4px;}
+  .quick-action-btn:active{transform:scale(.94);}
+  .quick-action-ico{font-size:22px;}
+  .quick-action-lbl{font-size:11px; color:var(--ink); font-weight:600;}
   .stat-card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:15px; text-align:center; position:relative; overflow:hidden; cursor:pointer; transition:transform .15s var(--ease-out);}
   .stat-card:active{transform:scale(.96);}
   .stat-card::before{content:''; position:absolute; top:0; right:0; left:0; height:3px; background:linear-gradient(90deg,var(--gold),transparent);}
@@ -779,10 +785,12 @@
   </div>
   <div class="container">
     <div id="admin-alerts-section"></div>
-    <div class="section-title" style="margin-top:4px;">نظرة عامة</div>
-    <div class="stat-grid" id="admin-stats-overview"></div>
-    <div class="section-title">حالة اليوم</div>
+    <div class="section-title" style="margin-top:4px;">حالة اليوم</div>
     <div class="stat-grid" id="admin-stats-today"></div>
+    <div class="section-title">إجراءات سريعة</div>
+    <div class="quick-actions-row" id="admin-quick-actions"></div>
+    <div class="section-title">نظرة عامة</div>
+    <div class="stat-grid" id="admin-stats-overview"></div>
   </div>
 </div>
 
@@ -3955,15 +3963,12 @@ function getChildrenWithoutGuardian(db){
 function renderAdminStats(){
   const db = loadDB();
   const todayEvents = db.events.filter(e=>isToday(e.eventTime));
-  const teachersCheckedInToday = new Set(db.teacherAttendance.filter(r=>r.type==='CHECK_IN' && isToday(r.time)).map(r=>r.teacherId)).size;
+  const checkedInTeacherIds = new Set(db.teacherAttendance.filter(r=>r.type==='CHECK_IN' && isToday(r.time)).map(r=>r.teacherId));
+  const teachersCheckedInToday = checkedInTeacherIds.size;
   const overview = [
     {num: db.children.length, label:'الطلاب', tab:'children'},
     {num: db.teachers.length, label:'المدرّسين', tab:'teachers'},
     {num: db.parents.length, label:'أولياء الأمور', tab:'parents'}
-  ];
-  const today = [
-    {num: todayEvents.length, label:'أحداث اليوم', tab:'calendar'},
-    {num: `${teachersCheckedInToday}/${db.teachers.length}`, label:'مدرّسين حضرن النهاردة', tab:'teacherAttendance'}
   ];
   const cardHtml = s => `
     <div class="stat-card" onclick="openAdminSection('${s.tab}')">
@@ -3971,7 +3976,62 @@ function renderAdminStats(){
       <div class="stat-lbl">${s.label}</div>
     </div>`;
   document.getElementById('admin-stats-overview').innerHTML = overview.map(cardHtml).join('');
-  document.getElementById('admin-stats-today').innerHTML = today.map(cardHtml).join('');
+
+  // "حالة اليوم" — تفاعلية + متوازنة بصريًا: الكارت اللي فيه محتوى (أسامي) ياخد عرض كامل بدل ما يتكسّر بجانب كارت فاضي
+  const notCheckedIn = db.teachers.filter(t=> !checkedInTeacherIds.has(t.id));
+  // تمييز بالوقت: قبل الساعة 10 الصبح "لسه ما جاش" حالة طبيعية (رمادي)، بعدها تعتبر تأخير فعلي (أحمر)
+  // بيستخدم getSystemNow() عشان يحترم وقت المحاكاة لو مالك المنصة شغّال Time Simulation
+  const nowHour = getSystemNow().getHours();
+  const isLate = nowHour >= 10;
+  const pendingColor = isLate ? 'var(--danger,#e55)' : 'var(--muted)';
+  const pendingIcon = isLate ? '⚠️' : '⏳';
+  const teacherAttendanceDetail = db.teachers.length ? `
+    ${teachersCheckedInToday>0 ? `<div style="font-size:12px; color:var(--muted); margin-bottom:4px;">✅ حضروا: ${db.teachers.filter(t=>checkedInTeacherIds.has(t.id)).map(t=>t.name).join('، ')}</div>` : ''}
+    ${notCheckedIn.length>0 ? `<div style="font-size:12px; color:${pendingColor};">${pendingIcon} لسه: ${notCheckedIn.map(t=>t.name).join('، ')}</div>` : ''}
+  ` : `<div style="font-size:12px; color:var(--muted);">لا يوجد مدرّسين مسجّلين بعد</div>`;
+  const eventsDetail = todayEvents.length ? `
+    <div style="font-size:12px; color:var(--muted); text-align:right;">
+      ${todayEvents.slice(0,3).map(e=>`• ${e.title||'حدث'}`).join('<br>')}
+      ${todayEvents.length>3 ? `<br>+${todayEvents.length-3} حدث تاني` : ''}
+    </div>` : `<div style="font-size:12px; color:var(--muted);">مفيش أحداث مجدولة النهاردة</div>`;
+
+  // لو فيه أسامي معروضة (حضور أو لسه) الكارت بياخد عرض كامل عشان النص ميتكسرش جوه مساحة ضيقة
+  const teacherCardWide = (teachersCheckedInToday>0 || notCheckedIn.length>0);
+  document.getElementById('admin-stats-today').innerHTML = `
+    <div class="stat-card${teacherCardWide?' stat-card-wide':''}" style="cursor:pointer; text-align:center;" onclick="openAdminSection('teacherAttendance')">
+      <div class="stat-num">${teachersCheckedInToday}/${db.teachers.length}</div>
+      <div class="stat-lbl">مدرّسين حضرن النهاردة</div>
+      <div style="margin-top:6px;">${teacherAttendanceDetail}</div>
+    </div>
+    <div class="stat-card" style="cursor:pointer; text-align:center;" onclick="openAdminSection('calendar')">
+      <div class="stat-num">${todayEvents.length}</div>
+      <div class="stat-lbl">أحداث اليوم</div>
+      <div style="margin-top:6px;">${eventsDetail}</div>
+    </div>`;
+
+  renderAdminQuickActions();
+}
+
+// إجراءات سريعة على الشاشة الرئيسية — بتفتح التاب المناسب وتنده على فورم الإضافة تلقائيًا
+function quickAdminAction(tab){
+  openAdminSection(tab);
+  openAdminAddModal();
+}
+function renderAdminQuickActions(){
+  const el = document.getElementById('admin-quick-actions');
+  if(!el) return;
+  // رُتّبت حسب الاستخدام اليومي الفعلي؛ زرار البحث السريع فضل زي ما هو بدون حذف
+  const actions = [
+    {icon:'💳', label:'تسجيل دفعة', onclick:"openAdminSection('payments')"},
+    {icon:'👤', label:'إضافة طالب', onclick:"quickAdminAction('children')"},
+    {icon:'📅', label:'إضافة حدث', onclick:"quickAdminAction('calendar')"},
+    {icon:'🔍', label:'بحث سريع', onclick:"toggleAdminGlobalSearch()"}
+  ];
+  el.innerHTML = actions.map(a=>`
+    <div class="quick-action-btn" onclick="${a.onclick}">
+      <span class="quick-action-ico">${a.icon}</span>
+      <span class="quick-action-lbl">${a.label}</span>
+    </div>`).join('');
 }
 
 const ADMIN_TAB_GROUPS = {
