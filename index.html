@@ -241,6 +241,11 @@
   .admin-alert-card.danger .alert-title{color:var(--danger);}
   .admin-alert-card.warn{background:var(--tint-pending-bg); border-color:#e0b96e;}
   .admin-alert-card.warn .alert-title{color:var(--tint-pending-fg);}
+  .admin-alert-card.info{background:rgba(93,141,214,.12); border-color:#5d8dd6;}
+  .admin-alert-card.info .alert-title{color:#7ba7e8;}
+  .admin-alert-card.static{cursor:default;}
+  .admin-alert-card.static:active{transform:none;}
+  .form-step-badge{display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--primary,#7c5cff); color:#fff; font-size:11px; font-weight:800; margin-left:6px; flex-shrink:0;}
 
   .list-row{display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:12px; padding:14px; margin-bottom:10px; background:var(--card); border:1px solid var(--border); border-radius:16px; box-shadow: 0 1px 4px var(--shadow-1);}
   .list-row-main{display:flex; align-items:flex-start; gap:12px; min-width:0; flex:1 1 200px;}
@@ -5138,23 +5143,31 @@ function renderAdminModalFields(id){
     const enrolledIds = item.classroomIds || [];
     const gradeOptions = Object.entries(GRADE_LABELS).map(([g,label])=>`<option value="${g}" ${item.grade===g?'selected':''}>${label}</option>`).join('');
     el.innerHTML = `
+      <div class="section-title" style="margin:4px 0;"><span class="form-step-badge">1</span>البيانات الأساسية</div>
       <input type="text" id="f-name" placeholder="اسم الطالب" value="${item.name||''}">
-      <input type="text" id="f-dob" placeholder="تاريخ الميلاد (YYYY-MM-DD)" value="${item.dob||''}" oninput="renderAgeGradeWarning()">
+      <input type="date" id="f-dob" placeholder="تاريخ الميلاد" value="${item.dob||''}" oninput="renderAgeGradeWarning()">
       <div id="f-dob-warning"></div>
-      <div class="section-title" style="margin:4px 0;">المرحلة الدراسية</div>
+      <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">2</span>المرحلة الدراسية</div>
       <select id="f-grade" onchange="renderChildClassroomChecks(); renderAgeGradeWarning();">
         <option value="">اختر المرحلة الدراسية...</option>
         ${gradeOptions}
       </select>
-      <div class="section-title" style="margin:4px 0;">المجموعات المسجل فيها (ممكن أكتر من مجموعة)</div>
+      <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">3</span>المجموعات المسجل فيها (ممكن أكتر من مجموعة)</div>
       <div id="f-classroom-checks"></div>
-      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 اشتراك الطالب الشهري بيتحسب أوتوماتيك = مجموع اشتراكات المجموعات اللي هتختارها فوق</div>
+      <div class="admin-alert-card info static" style="margin-top:8px;">
+        <span class="alert-ico">💡</span>
+        <div><div class="alert-title">الاشتراك بيتحسب أوتوماتيك</div><div class="alert-sub">اشتراك الطالب الشهري = مجموع اشتراكات المجموعات اللي هتختارها فوق</div></div>
+      </div>
       ${linkedParents.length>1 ? `
-        <div class="section-title" style="margin:4px 0;">ولي الأمر الرئيسي</div>
+        <div class="section-title" style="margin:14px 0 4px;">ولي الأمر الرئيسي</div>
         ${linkedParents.map(p=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
           <input type="radio" name="f-primary-parent" value="${p.id}" ${item.primaryParentId===p.id?'checked':''}> ${p.name}
         </label>`).join('')}
-      ` : (linkedParents.length===1 ? `<div style="font-size:13px; color:var(--muted);">ولي الأمر الوحيد المرتبط: ${linkedParents[0].name} (رئيسي تلقائيًا)</div>` : `<div style="font-size:13px; color:var(--muted);">لسه مفيش ولي أمر مرتبط بالطالب ده — اربطه من تاب "أولياء الأمور"</div>`)}
+      ` : (linkedParents.length===1 ? `<div style="font-size:13px; color:var(--muted); margin-top:10px;">ولي الأمر الوحيد المرتبط: ${linkedParents[0].name} (رئيسي تلقائيًا)</div>` : `
+      <div class="admin-alert-card warn static" style="margin-top:10px;">
+        <span class="alert-ico">⚠️</span>
+        <div><div class="alert-title">لسه مفيش ولي أمر مرتبط</div><div class="alert-sub">اربطه من تاب "أولياء الأمور" بعد الحفظ عشان يقدر يتابع الطالب</div></div>
+      </div>`)}
       `;
     // بنخزّن المجموعات المسجل فيها الطالب فعلاً (لو تعديل) عشان نعرضها متعلّمة
     // حتى لو مش من نفس مرحلة الطالب الحالية (تصحيح بيانات قديمة)، وبنرسم
