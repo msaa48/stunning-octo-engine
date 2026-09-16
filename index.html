@@ -5460,7 +5460,7 @@ function renderChildClassroomChecks(){
            <option value="monthly" ${currentMode==='monthly'?'selected':''}>شهري (${r.monthlyFee||0} ج)</option>
            <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
          </select>`
-      : `<span style="color:var(--muted); font-size:12px;">(${modes[0]==='session' ? (r.sessionFee||0)+' ج/حصة' : (r.monthlyFee||0)+' ج/شهر'})</span>`;
+      : `<span style="color:var(--muted); font-size:12px;">(${[r.monthlyFee ? r.monthlyFee+' ج/شهر' : null, r.sessionFee ? r.sessionFee+' ج/حصة' : null].filter(Boolean).join(' · ') || '0 ج'})</span>`;
     return `<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
         <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const s=this.parentElement.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked;"> ${r.name} ${modeSelector}
       </label>`;
