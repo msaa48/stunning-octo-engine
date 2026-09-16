@@ -4248,7 +4248,11 @@ function renderAdminListInner(){
     </div>`;
     const baseItems = adminChildrenNoGuardianFilter ? db.children.filter(c=>orphanIds.has(c.id)) : db.children;
     const items = baseItems.filter(c=> matchesSearch(c.name));
-    el.innerHTML = filterChip + searchBoxHtml('دور على اسم طالب...') + (items.map(c=>{
+    const hasAgeIssue = c => { const s=getGradeAgeStatus(c.dob,c.grade); return s && (s.status==='over_reject'||s.status==='under_reject'); };
+    const isProblem = c => orphanIds.has(c.id) || hasAgeIssue(c);
+    // الطلاب اللي محتاجين تصرف (بدون ولي أمر / عمر غير منطقي) يظهروا فوق الأول، والباقي بترتيبهم الأصلي بعدهم
+    const sortedItems = [...items].sort((a,b)=> (isProblem(b)?1:0) - (isProblem(a)?1:0));
+    el.innerHTML = filterChip + searchBoxHtml('دور على اسم طالب...') + (sortedItems.map(c=>{
       const rooms = (c.classroomIds||[]).map(cid=> db.classrooms.find(r=>r.id===cid)).filter(Boolean);
       const roomsLabel = rooms.length ? rooms.map(r=>r.name).join('، ') : 'بدون مجموعات';
       const totalFee = rooms.reduce((s,r)=> s + (parseFloat(r.monthlyFee)||0), 0);
@@ -4257,12 +4261,14 @@ function renderAdminListInner(){
         ? linkedParents.map(p=> p.id===c.primaryParentId ? `⭐${p.name}` : p.name).join('، ')
         : 'بدون ولي أمر مرتبط';
       const isExpanded = expandedChildIds.has(c.id);
-      return `<div class="list-row" style="flex-direction:column; align-items:stretch; padding:8px 14px;">
+      const problem = isProblem(c);
+      return `<div class="list-row" style="flex-direction:column; align-items:stretch; padding:8px 14px; ${problem?'border-color:var(--danger);':''}">
         <div class="list-row-main" style="cursor:pointer; align-items:center; gap:10px; flex:0 0 auto;" onclick="toggleChildExpand('${c.id}')">
           <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:32px; height:32px; font-size:14px;">🧑‍🎓</div>
           <div class="list-info">
-            <div class="list-name">${c.name}</div>
+            <div class="list-name">${c.name} ${problem?'<span style="color:var(--danger); font-size:12px; font-weight:700;">⚠️</span>':''}</div>
           </div>
+          ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff; flex-shrink:0;" onclick="event.stopPropagation(); quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
           <span style="font-size:16px; transform:rotate(${isExpanded?90:0}deg); transition:transform .15s;">◀</span>
         </div>
         ${isExpanded ? `
@@ -4273,7 +4279,6 @@ function renderAdminListInner(){
           <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">${parentsLabel}</div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap; margin-top:8px;">
-          ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff;" onclick="quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
           <button class="badge" onclick="openAdminEditModal('children','${c.id}')">تعديل</button>
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('children','${c.id}')">حذف</button>
         </div>` : ''}
