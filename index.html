@@ -4238,6 +4238,83 @@ function toggleChildExpand(id){
   renderAdminList();
 }
 
+// ============ تقويم السنتر: عرض شبكة شهرية بدل قايمة نصية ============
+let calendarViewDate = new Date();
+let calendarSelectedDate = null; // ISO 'YYYY-MM-DD' لليوم المتحدد، أو null لو مفيش تحديد
+const ARABIC_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const ARABIC_WEEKDAYS_SHORT = ['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت']; // نفس ترتيب Date.getDay() (0=أحد)
+function pad2(n){ return String(n).padStart(2,'0'); }
+function isoDate(y,m,d){ return `${y}-${pad2(m+1)}-${pad2(d)}`; }
+function shiftCalendarMonth(delta){
+  calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth()+delta, 1);
+  calendarSelectedDate = null;
+  renderAdminList();
+}
+function selectCalendarDay(iso){
+  calendarSelectedDate = (calendarSelectedDate===iso) ? null : iso; // ضغطة تانية على نفس اليوم بتلغي التحديد
+  renderAdminList();
+}
+function renderCalendarGrid(db, el){
+  const year = calendarViewDate.getFullYear();
+  const month = calendarViewDate.getMonth();
+  const startOffset = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const today = new Date();
+  const todayISO = isoDate(today.getFullYear(), today.getMonth(), today.getDate());
+  const eventsByDate = {};
+  (db.calendarEvents||[]).forEach(ev=>{ (eventsByDate[ev.date] = eventsByDate[ev.date]||[]).push(ev); });
+
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = isoDate(year, month, d);
+    const dayEvents = eventsByDate[iso] || [];
+    const isToday = iso===todayISO;
+    const isSelected = iso===calendarSelectedDate;
+    cells += `<div onclick="selectCalendarDay('${iso}')" style="cursor:pointer; aspect-ratio:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; border-radius:10px; ${isSelected?'background:var(--admin-1,#7c3aed); color:#fff;':(isToday?'border:1.5px solid var(--admin-1,#7c3aed);':'')}">
+      <span style="font-size:13px; font-weight:${isToday||isSelected?'700':'500'};">${d}</span>
+      ${dayEvents.length ? `<span style="width:5px; height:5px; border-radius:50%; background:${isSelected?'#fff':'#ec4899'};"></span>` : ''}
+    </div>`;
+  }
+  const weekdayHeaders = ARABIC_WEEKDAYS_SHORT.map(w=>`<div style="text-align:center; font-size:11px; color:var(--muted); font-weight:700;">${w}</div>`).join('');
+
+  const eventRowHtml = ev => `<div class="list-row">
+      <div class="list-row-main">
+        <div class="list-avatar" style="background:linear-gradient(135deg,#ec4899,#db2777);">📅</div>
+        <div class="list-info"><div class="list-name">${ev.title}</div><div class="list-sub">${calendarSelectedDate?'':new Date(ev.date).toLocaleDateString('ar-EG')+' · '}${ev.note||''}</div></div>
+      </div>
+      <div class="list-actions">
+        <button class="badge" onclick="openAdminEditModal('calendar','${ev.id}')">تعديل</button>
+        <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('calendar','${ev.id}')">حذف</button>
+      </div>
+    </div>`;
+
+  let eventsSectionTitle, eventsListHtml;
+  if(calendarSelectedDate){
+    const dayEvents = eventsByDate[calendarSelectedDate] || [];
+    const label = new Date(calendarSelectedDate).toLocaleDateString('ar-EG', {weekday:'long', day:'numeric', month:'long'});
+    eventsSectionTitle = `📌 أحداث ${label}`;
+    eventsListHtml = dayEvents.length ? dayEvents.map(eventRowHtml).join('') : `<div class="empty">مفيش أحداث في اليوم ده</div>`;
+  } else {
+    const monthPrefix = `${year}-${pad2(month+1)}`;
+    const monthEvents = (db.calendarEvents||[]).filter(ev=> ev.date && ev.date.startsWith(monthPrefix)).sort((a,b)=> a.date.localeCompare(b.date));
+    eventsSectionTitle = `كل أحداث ${ARABIC_MONTHS[month]}`;
+    eventsListHtml = monthEvents.length ? monthEvents.map(eventRowHtml).join('') : `<div class="empty">مفيش أحداث في الشهر ده</div>`;
+  }
+
+  el.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <button class="badge" onclick="shiftCalendarMonth(-1)">▶</button>
+      <div style="font-weight:700; font-size:15px;">${ARABIC_MONTHS[month]} ${year}</div>
+      <button class="badge" onclick="shiftCalendarMonth(1)">◀</button>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:6px;">${weekdayHeaders}</div>
+    <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:16px;">${cells}</div>
+    <div style="font-weight:700; font-size:14px; margin-bottom:8px;">${eventsSectionTitle}</div>
+    ${eventsListHtml}
+  `;
+}
+
 function renderAdminListInner(){
   const db = loadDB();
   const el = document.getElementById('admin-list-panel');
@@ -4558,18 +4635,7 @@ function renderAdminListInner(){
     return;
   }
   else if(adminActiveTab==='calendar'){
-    const list = [...db.calendarEvents].sort((a,b)=> a.date.localeCompare(b.date)).filter(ev=> matchesSearch(ev.title));
-    el.innerHTML = searchBoxHtml('دور بعنوان الحدث...') + (list.map(ev=>`
-      <div class="list-row">
-        <div class="list-row-main">
-          <div class="list-avatar" style="background:linear-gradient(135deg,#ec4899,#db2777);">📅</div>
-          <div class="list-info"><div class="list-name">${ev.title}</div><div class="list-sub">${new Date(ev.date).toLocaleDateString('ar-EG')} ${ev.note?'· '+ev.note:''}</div></div>
-        </div>
-        <div class="list-actions">
-          <button class="badge" onclick="openAdminEditModal('calendar','${ev.id}')">تعديل</button>
-          <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('calendar','${ev.id}')">حذف</button>
-        </div>
-      </div>`).join('') || '<div class="empty">لا يوجد أحداث في التقويم</div>');
+    renderCalendarGrid(db, el);
   }
   else if(adminActiveTab==='links'){
     const rows = [];
@@ -5366,9 +5432,10 @@ function renderAdminModalFields(id){
   }
   else if(type==='calendar'){
     const item = id ? db.calendarEvents.find(e=>e.id===id) : {};
+    const defaultDate = item.date || (!id && calendarSelectedDate ? calendarSelectedDate : '');
     el.innerHTML = `
       <input type="text" id="f-name" placeholder="عنوان الحدث (رحلة، حفلة..)" value="${item.title||''}">
-      <input type="text" id="f-cal-date" placeholder="التاريخ (YYYY-MM-DD)" value="${item.date||''}">
+      <input type="text" id="f-cal-date" placeholder="التاريخ (YYYY-MM-DD)" value="${defaultDate}">
       <textarea id="f-cal-note" placeholder="تفاصيل (اختياري)">${item.note||''}</textarea>`;
   }
 }
