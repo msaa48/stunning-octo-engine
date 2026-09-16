@@ -2771,7 +2771,7 @@ function renderTeacherPendingExceptions(){
       <div style="font-size:12px; color:var(--muted);">السبب: ${x.reason||''}</div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button class="badge admin" onclick="resolveAssistantException('${x.id}','approved')">✅ موافقة</button>
-        <button class="badge" style="color:var(--danger);" onclick="resolveAssistantException('${x.id}','rejected')">✕ رفض</button>
+        <button class="badge" style="color:var(--danger);" onclick="confirmAction('متأكد إنك عايز ترفض استثناء الحضور ده؟', ()=>resolveAssistantException('${x.id}','rejected'))">✕ رفض</button>
       </div>
     </div>`;
   }).join('');
@@ -3786,10 +3786,17 @@ async function createCenter(){
 }
 
 async function setCenterStatus(centerId, status){
-  const { error } = await supabaseClient.from('centers').update({ subscription_status: status }).eq('id', centerId);
-  if(error){ showToast('فشل تحديث حالة المؤسسة'); return; }
-  showToast(status==='suspended' ? 'تم إيقاف المؤسسة — مستخدميها هيتقفلوا تلقائيًا' : 'تم تفعيل المؤسسة');
-  initSuperAdminScreen();
+  const run = async ()=>{
+    const { error } = await supabaseClient.from('centers').update({ subscription_status: status }).eq('id', centerId);
+    if(error){ showToast('فشل تحديث حالة المؤسسة'); return; }
+    showToast(status==='suspended' ? 'تم إيقاف المؤسسة — مستخدميها هيتقفلوا تلقائيًا' : 'تم تفعيل المؤسسة');
+    initSuperAdminScreen();
+  };
+  if(status==='suspended'){
+    confirmAction('متأكد إنك عايز توقف المؤسسة دي؟ ⚠️ كل المستخدمين (مدير، مدرّسين، أولياء أمور) هيتقفل دخولهم فورًا لحد ما تفعّلها تاني', run);
+  } else {
+    run();
+  }
 }
 
 /* ========================= محاكاة الوقت (مالك المنصة فقط) ========================= */
@@ -4224,6 +4231,13 @@ function renderAdminList(){
   }
 }
 
+let expandedChildIds = new Set();
+function toggleChildExpand(id){
+  if(expandedChildIds.has(id)) expandedChildIds.delete(id);
+  else expandedChildIds.add(id);
+  renderAdminList();
+}
+
 function renderAdminListInner(){
   const db = loadDB();
   const el = document.getElementById('admin-list-panel');
@@ -4242,22 +4256,27 @@ function renderAdminListInner(){
       const parentsLabel = linkedParents.length
         ? linkedParents.map(p=> p.id===c.primaryParentId ? `⭐${p.name}` : p.name).join('، ')
         : 'بدون ولي أمر مرتبط';
-      return `<div class="list-row">
-        <div class="list-row-main">
+      const isExpanded = expandedChildIds.has(c.id);
+      return `<div class="list-row" style="flex-direction:column; align-items:stretch;">
+        <div class="list-row-main" style="cursor:pointer;" onclick="toggleChildExpand('${c.id}')">
           <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">🧑‍🎓</div>
           <div class="list-info">
             <div class="list-name">${c.name}</div>
-            <div class="list-sub">${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'} ${c.dob?'· '+c.dob:''} ${(()=>{ const s=getGradeAgeStatus(c.dob,c.grade); if(!s) return ''; if(s.status==='over_repeat') return '· 🔁 يبدو معيد (سنة)'; if(s.status==='over_reject'||s.status==='under_reject') return '· ⛔ عمر غير منطقي للمرحلة'; return ''; })()}</div>
-            <div class="list-sub">${roomsLabel}</div>
-            <div class="list-sub">إجمالي الاشتراك: ${totalFee} جنيه/شهر</div>
-            <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">${parentsLabel}</div>
           </div>
+          <span style="font-size:18px; transform:rotate(${isExpanded?90:0}deg); transition:transform .15s;">◀</span>
         </div>
-        <div class="list-actions" style="flex-wrap:wrap;">
+        ${isExpanded ? `
+        <div class="list-info" style="margin-top:8px;">
+          <div class="list-sub">${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'} ${c.dob?'· '+c.dob:''} ${(()=>{ const s=getGradeAgeStatus(c.dob,c.grade); if(!s) return ''; if(s.status==='over_repeat') return '· 🔁 يبدو معيد (سنة)'; if(s.status==='over_reject'||s.status==='under_reject') return '· ⛔ عمر غير منطقي للمرحلة'; return ''; })()}</div>
+          <div class="list-sub">${roomsLabel}</div>
+          <div class="list-sub">إجمالي الاشتراك: ${totalFee} جنيه/شهر</div>
+          <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">${parentsLabel}</div>
+        </div>
+        <div class="list-actions" style="flex-wrap:wrap; margin-top:8px;">
           ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff;" onclick="quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
           <button class="badge" onclick="openAdminEditModal('children','${c.id}')">تعديل</button>
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('children','${c.id}')">حذف</button>
-        </div>
+        </div>` : ''}
       </div>`;
     }).join('') || '<div class="empty">لا يوجد نتائج</div>');
   }
@@ -4753,14 +4772,16 @@ async function saveScheduleCell(){
 }
 
 async function clearScheduleCell(){
-  const db = loadDB();
-  const {classroomId, day, period} = scheduleCellCtx;
-  db.schedule = db.schedule.filter(s=> !(s.classroomId===classroomId && s.day===day && s.period===period));
-  const result = await saveDB(db);
-  if(!result.ok){ showToast('⚠️ فشل مسح الحصة على السيرفر'); return; }
-  closeModal('admin-modal-bg');
-  renderAdminList();
-  showToast('تم مسح الحصة');
+  confirmAction('متأكد إنك عايز تمسح الحصة دي من الجدول؟', async ()=>{
+    const db = loadDB();
+    const {classroomId, day, period} = scheduleCellCtx;
+    db.schedule = db.schedule.filter(s=> !(s.classroomId===classroomId && s.day===day && s.period===period));
+    const result = await saveDB(db);
+    if(!result.ok){ showToast('⚠️ فشل مسح الحصة على السيرفر'); return; }
+    closeModal('admin-modal-bg');
+    renderAdminList();
+    showToast('تم مسح الحصة');
+  });
 }
 
 function renderScheduleTableReadonly(classroomId){
@@ -4877,13 +4898,15 @@ async function setPrimaryGuardian(childId, parentId){
 }
 
 async function unsetPrimaryGuardian(childId){
-  const db = loadDB();
-  const child = db.children.find(c=>c.id===childId);
-  if(child) child.primaryParentId = null;
-  const result = await saveDB(db);
-  if(!result.ok){ showToast('⚠️ فشل إلغاء التعيين على السيرفر'); return; }
-  showToast('اتلغى التعيين كرئيسي');
-  renderAdminList();
+  confirmAction('متأكد إنك عايز تلغي تعيين ولي الأمر ده كرئيسي؟', async ()=>{
+    const db = loadDB();
+    const child = db.children.find(c=>c.id===childId);
+    if(child) child.primaryParentId = null;
+    const result = await saveDB(db);
+    if(!result.ok){ showToast('⚠️ فشل إلغاء التعيين على السيرفر'); return; }
+    showToast('اتلغى التعيين كرئيسي');
+    renderAdminList();
+  });
 }
 
 // بترجع أحدث اشتراك (بتاريخ نهاية أكبر) لطالب في مجموعة معينة، أو null لو مفيش خالص
