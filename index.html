@@ -4258,7 +4258,7 @@ function renderAdminListInner(){
         : 'بدون ولي أمر مرتبط';
       const isExpanded = expandedChildIds.has(c.id);
       return `<div class="list-row" style="flex-direction:column; align-items:stretch; padding:8px 14px;">
-        <div class="list-row-main" style="cursor:pointer; align-items:center; gap:10px;" onclick="toggleChildExpand('${c.id}')">
+        <div class="list-row-main" style="cursor:pointer; align-items:center; gap:10px; flex:0 0 auto;" onclick="toggleChildExpand('${c.id}')">
           <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:32px; height:32px; font-size:14px;">🧑‍🎓</div>
           <div class="list-info">
             <div class="list-name">${c.name}</div>
