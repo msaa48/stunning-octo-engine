@@ -4272,13 +4272,18 @@ function renderAdminListInner(){
           <span style="font-size:16px; transform:rotate(${isExpanded?90:0}deg); transition:transform .15s;">◀</span>
         </div>
         ${isExpanded ? `
-        <div class="list-info" style="margin-top:8px;">
-          <div class="list-sub">${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'} ${c.dob?'· '+c.dob:''} ${(()=>{ const s=getGradeAgeStatus(c.dob,c.grade); if(!s) return ''; if(s.status==='over_repeat') return '· 🔁 يبدو معيد (سنة)'; if(s.status==='over_reject'||s.status==='under_reject') return '· ⛔ عمر غير منطقي للمرحلة'; return ''; })()}</div>
-          <div class="list-sub">${roomsLabel}</div>
-          <div class="list-sub">إجمالي الاشتراك: ${totalFee} جنيه/شهر</div>
-          <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">${parentsLabel}</div>
+        <div class="list-info" style="margin-top:10px; display:flex; flex-direction:column; gap:7px;">
+          <div class="list-sub" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span>🎓 ${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'}</span>
+            ${c.dob ? `<span style="opacity:.6;">·</span><span>🎂 ${c.dob}</span>` : ''}
+            ${(()=>{ const s=getGradeAgeStatus(c.dob,c.grade); if(!s) return ''; if(s.status==='over_repeat') return '<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:2px 8px; font-size:11px;">🔁 يبدو معيد (سنة)</span>'; if(s.status==='over_reject'||s.status==='under_reject') return '<span class="badge" style="background:var(--danger); color:#fff; padding:2px 8px; font-size:11px;">⛔ عمر غير منطقي للمرحلة</span>'; return ''; })()}
+          </div>
+          <div class="list-sub">📚 ${roomsLabel}</div>
+          <div style="border-top:1px solid var(--border); margin:2px 0;"></div>
+          <div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 إجمالي الاشتراك: ${totalFee} جنيه/شهر</div>
+          <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">👤 ${parentsLabel}</div>
         </div>
-        <div class="list-actions" style="flex-wrap:wrap; margin-top:8px;">
+        <div class="list-actions" style="flex-wrap:wrap; margin-top:10px;">
           <button class="badge" onclick="openAdminEditModal('children','${c.id}')">تعديل</button>
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('children','${c.id}')">حذف</button>
         </div>` : ''}
