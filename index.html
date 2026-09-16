@@ -4254,8 +4254,18 @@ function renderAdminListInner(){
     const sortedItems = [...items].sort((a,b)=> (isProblem(b)?1:0) - (isProblem(a)?1:0));
     el.innerHTML = filterChip + searchBoxHtml('دور على اسم طالب...') + (sortedItems.map(c=>{
       const rooms = (c.classroomIds||[]).map(cid=> db.classrooms.find(r=>r.id===cid)).filter(Boolean);
-      const roomsLabel = rooms.length ? rooms.map(r=>r.name).join('، ') : 'بدون مجموعات';
-      const totalFee = rooms.reduce((s,r)=> s + (parseFloat(r.monthlyFee)||0), 0);
+      // كل تسجيل (طالب+مجموعة) له طريقة دفع مستقلة (شهري/بالحصة) — لازم نجيبها من enrollments مش نفترض إنها كلها شهري
+      const roomsWithMode = rooms.map(r=>{
+        const enrollment = (db.enrollments||[]).find(e=> e.childId===c.id && e.classroomId===r.id);
+        const mode = enrollment ? enrollment.paymentMode : ((r.paymentModes&&r.paymentModes[0]) || 'monthly');
+        return {room:r, mode};
+      });
+      const monthlyRooms = roomsWithMode.filter(x=>x.mode==='monthly');
+      const sessionRooms = roomsWithMode.filter(x=>x.mode==='session');
+      const monthlyTotal = monthlyRooms.reduce((s,x)=> s + (parseFloat(x.room.monthlyFee)||0), 0);
+      const roomsLabel = rooms.length
+        ? roomsWithMode.map(x=> `${x.room.name} (${x.mode==='session'?'بالحصة':'شهري'})`).join('، ')
+        : 'بدون مجموعات';
       const linkedParents = db.parents.filter(p=> p.childIds.includes(c.id));
       const parentsLabel = linkedParents.length
         ? linkedParents.map(p=> p.id===c.primaryParentId ? `⭐${p.name}` : p.name).join('، ')
@@ -4280,7 +4290,9 @@ function renderAdminListInner(){
           </div>
           <div class="list-sub">📚 ${roomsLabel}</div>
           <div style="border-top:1px solid var(--border); margin:2px 0;"></div>
-          <div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 إجمالي الاشتراك: ${totalFee} جنيه/شهر</div>
+          ${monthlyRooms.length ? `<div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 الاشتراك الشهري الثابت: ${monthlyTotal} جنيه/شهر</div>` : ''}
+          ${sessionRooms.length ? `<div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 ${monthlyRooms.length?'+ ':''}بالحصة: ${sessionRooms.map(x=> `${x.room.name} (${x.room.sessionFee||0} ج/حصة)`).join('، ')}</div>` : ''}
+          ${(!monthlyRooms.length && !sessionRooms.length) ? `<div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 إجمالي الاشتراك: 0 جنيه/شهر</div>` : ''}
           <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">👤 ${parentsLabel}</div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap; margin-top:10px;">
