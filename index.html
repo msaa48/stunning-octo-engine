@@ -5519,12 +5519,10 @@ function renderChildClassroomChecks(){
   const mismatchedEnrolled = db.classrooms.filter(r=> enrolledIds.includes(r.id) && r.grade!==grade);
   const existingEnrollments = wrap._existingEnrollments || {};
   const gradeLabel = GRADE_LABELS[grade] || grade;
-  // القائمة دي أصلاً متفلترة على مرحلة واحدة، فلو اسم المجموعة بينتهي بنفس اسم المرحلة (نمط تسمية شائع)
+  // القائمة دي أصلاً متفلترة على مرحلة واحدة، فلو اسم المجموعة بينتهي بنفس اسم المرحلة (بأي نوع شرطة أو مسافات)
   // بنشيله من العرض هنا بس عشان منكررش نفس المعلومة 6 مرات؛ الاسم الأصلي في قاعدة البيانات ميتغيرش
-  const stripGradeSuffix = name => {
-    for(const sep of [' – ', ' — ', ' - ']){ if(name.endsWith(sep+gradeLabel)) return name.slice(0, -(sep.length+gradeLabel.length)); }
-    return name;
-  };
+  const gradeSuffixRe = new RegExp('[\\s]*[-–—][\\s]*' + gradeLabel.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s*$');
+  const stripGradeSuffix = name => name.replace(gradeSuffixRe, '').trim();
   let html = matching.map(r=>{
     const modes = r.paymentModes || ['monthly'];
     const isChecked = enrolledIds.includes(r.id);
@@ -5537,9 +5535,14 @@ function renderChildClassroomChecks(){
            <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
          </select>`
       : `<span style="color:var(--muted); font-size:12px;">${modes[0]==='session' ? `(بالحصة · ${r.sessionFee||0} ج)` : `(شهري · ${r.monthlyFee||0} ج)`}${(modes[0]==='monthly' && r.sessionFee) ? ` <span style="opacity:.7;">+ ${r.sessionFee} ج/حصة</span>` : ''}</span>`;
-    const unpricedBadge = isUnpriced ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px; margin-inline-start:6px;">⚠️ من غير سعر</span>` : '';
-    return `<label style="display:flex; gap:8px; align-items:center; font-size:14px; flex-wrap:wrap;">
-        <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const s=this.parentElement.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked;"> ${displayName} ${modeSelector}${unpricedBadge}
+    const unpricedBadge = isUnpriced ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px; flex-shrink:0;">⚠️ من غير سعر</span>` : '';
+    return `<label style="display:flex; gap:8px; align-items:center; justify-content:space-between; font-size:14px; padding:5px 0;">
+        <span style="display:flex; gap:8px; align-items:center; min-width:0;">
+          <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const s=this.parentElement.parentElement.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked;">
+          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${displayName}</span>
+          ${modeSelector}
+        </span>
+        ${unpricedBadge}
       </label>`;
   }).join('') || '<div class="empty">مفيش مجموعات لمرحلة "'+(GRADE_LABELS[grade]||grade)+'" لسه — أضف واحدة من تاب "المجموعات"</div>';
   if(mismatchedEnrolled.length){
