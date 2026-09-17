@@ -5267,7 +5267,7 @@ function renderAdminModalFields(id){
       <div id="f-classroom-checks"></div>
       <div class="admin-alert-card info static" style="margin-top:8px;">
         <span class="alert-ico">💡</span>
-        <div><div class="alert-title">الاشتراك بيتحسب أوتوماتيك</div><div class="alert-sub">اشتراك الطالب الشهري = مجموع اشتراكات المجموعات اللي هتختارها فوق</div></div>
+        <div><div class="alert-title">الاشتراك بيتحسب أوتوماتيك</div><div class="alert-sub">المجموعات الشهرية بيتجمع سعرها في اشتراك شهري ثابت، والمجموعات بالحصة ليها سعر حصة منفصل بيتحسب حسب الحضور — مش بيتجمعوا في رقم واحد</div></div>
       </div>
       ${linkedParents.length>1 ? `
         <div class="section-title" style="margin:14px 0 4px;">ولي الأمر الرئيسي</div>
@@ -5527,7 +5527,7 @@ function renderChildClassroomChecks(){
            <option value="monthly" ${currentMode==='monthly'?'selected':''}>شهري (${r.monthlyFee||0} ج)</option>
            <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
          </select>`
-      : `<span style="color:var(--muted); font-size:12px;">(${[r.monthlyFee ? r.monthlyFee+' ج/شهر' : null, r.sessionFee ? r.sessionFee+' ج/حصة' : null].filter(Boolean).join(' · ') || '0 ج'})</span>`;
+      : `<span style="color:var(--muted); font-size:12px;">${modes[0]==='session' ? `(بالحصة · ${r.sessionFee||0} ج)` : `(شهري · ${r.monthlyFee||0} ج)`}${(modes[0]==='monthly' && r.sessionFee) ? ` <span style="opacity:.7;">+ ${r.sessionFee} ج/حصة</span>` : ''}</span>`;
     return `<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
         <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const s=this.parentElement.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked;"> ${r.name} ${modeSelector}
       </label>`;
