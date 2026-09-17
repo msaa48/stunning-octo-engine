@@ -5265,10 +5265,7 @@ function renderAdminModalFields(id){
       </select>
       <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">3</span>المجموعات المسجل فيها (ممكن أكتر من مجموعة)</div>
       <div id="f-classroom-checks"></div>
-      <div class="admin-alert-card info static" style="margin-top:8px;">
-        <span class="alert-ico">💡</span>
-        <div><div class="alert-title">الاشتراك بيتحسب أوتوماتيك</div><div class="alert-sub">المجموعات الشهرية بيتجمع سعرها في اشتراك شهري ثابت، والمجموعات بالحصة ليها سعر حصة منفصل بيتحسب حسب الحضور — مش بيتجمعوا في رقم واحد</div></div>
-      </div>
+      <div id="f-classroom-summary" class="admin-alert-card info static" style="margin-top:8px;"></div>
       ${linkedParents.length>1 ? `
         <div class="section-title" style="margin:14px 0 4px;">ولي الأمر الرئيسي</div>
         ${linkedParents.map(p=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
@@ -5513,9 +5510,13 @@ function renderChildClassroomChecks(){
   const grade = document.getElementById('f-grade').value;
   if(!grade){
     wrap.innerHTML = '<div class="empty">اختر المرحلة الدراسية الأول عشان تظهرلك مجموعاتها</div>';
+    const summaryEl = document.getElementById('f-classroom-summary');
+    if(summaryEl) summaryEl.innerHTML = '';
     return;
   }
-  const matching = db.classrooms.filter(r=> r.grade===grade);
+  const isUnpriced = r => !r.monthlyFee && !r.sessionFee;
+  // المجموعات الجاهزة (بسعر) أول القائمة، والمجموعات "من غير سعر" في الآخر — عشان الخيارات الفعلية تبان الأول
+  const matching = db.classrooms.filter(r=> r.grade===grade).sort((a,b)=> (isUnpriced(a)?1:0) - (isUnpriced(b)?1:0));
   const mismatchedEnrolled = db.classrooms.filter(r=> enrolledIds.includes(r.id) && r.grade!==grade);
   const existingEnrollments = wrap._existingEnrollments || {};
   const gradeLabel = GRADE_LABELS[grade] || grade;
@@ -5528,17 +5529,17 @@ function renderChildClassroomChecks(){
     const isChecked = enrolledIds.includes(r.id);
     const currentMode = existingEnrollments[r.id] || 'monthly';
     const displayName = stripGradeSuffix(r.name);
-    const isUnpriced = !r.monthlyFee && !r.sessionFee;
+    const unpriced = isUnpriced(r);
     const modeSelector = modes.length>1
-      ? `<select class="f-classroom-pm-select" data-classroom="${r.id}" style="margin-inline-start:8px; font-size:12px; padding:2px 6px;" ${isChecked?'':'disabled'}>
+      ? `<select class="f-classroom-pm-select" data-classroom="${r.id}" style="margin-inline-start:8px; font-size:12px; padding:2px 6px;" ${isChecked?'':'disabled'} onchange="updateClassroomSummary();">
            <option value="monthly" ${currentMode==='monthly'?'selected':''}>شهري (${r.monthlyFee||0} ج)</option>
            <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
          </select>`
       : `<span style="color:var(--muted); font-size:12px;">${modes[0]==='session' ? `(بالحصة · ${r.sessionFee||0} ج)` : `(شهري · ${r.monthlyFee||0} ج)`}${(modes[0]==='monthly' && r.sessionFee) ? ` <span style="opacity:.7;">+ ${r.sessionFee} ج/حصة</span>` : ''}</span>`;
-    const unpricedBadge = isUnpriced ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px; flex-shrink:0;">⚠️ من غير سعر</span>` : '';
-    return `<label style="display:flex; gap:8px; align-items:center; justify-content:space-between; font-size:14px; padding:5px 0;">
+    const unpricedBadge = unpriced ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px; flex-shrink:0;">⚠️ من غير سعر</span>` : '';
+    return `<label class="classroom-check-row" style="display:flex; gap:8px; align-items:center; justify-content:space-between; font-size:14px; padding:8px 8px; border-radius:10px; transition:background .15s;">
         <span style="display:flex; gap:8px; align-items:center; min-width:0;">
-          <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const s=this.parentElement.parentElement.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked;">
+          <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const row=this.closest('.classroom-check-row'); const s=row.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked; row.style.background=this.checked?'rgba(124,58,237,.15)':''; updateClassroomSummary();">
           <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${displayName}</span>
           ${modeSelector}
         </span>
@@ -5549,7 +5550,38 @@ function renderChildClassroomChecks(){
     html += `<div style="font-size:12px; color:var(--danger); margin-top:6px;">⚠️ الطالب متسجّل أصلاً في مجموعة/مجموعات من مرحلة تانية غير اللي اخترتها: ${mismatchedEnrolled.map(r=>r.name).join('، ')} — دوس حفظ عشان يتشالوا تلقائيًا، أو راجع المرحلة المختارة لو دي غلطة</div>`;
   }
   wrap.innerHTML = html;
+  // نلوّن الصفوف المتحددة من الأول (المجموعات اللي الطالب متسجل فيها فعلاً وقت فتح الفورم)
+  wrap.querySelectorAll('.f-classroom-chk:checked').forEach(chk=>{ chk.closest('.classroom-check-row').style.background = 'rgba(124,58,237,.15)'; });
+  updateClassroomSummary();
 }
+
+// ملخص حي بيتحدث فورًا مع كل تيك/إلغاء تيك، بدل نص تعليمات ثابت — بيوضح فعليًا هيتحسب اشتراك الطالب إزاي
+function updateClassroomSummary(){
+  const summaryEl = document.getElementById('f-classroom-summary');
+  if(!summaryEl) return;
+  const db = loadDB();
+  const checked = Array.from(document.querySelectorAll('.f-classroom-chk:checked'));
+  if(!checked.length){
+    summaryEl.innerHTML = `<span class="alert-ico">💡</span><div><div class="alert-title">لسه معندكش مجموعات مختارة</div><div class="alert-sub">اختار مجموعة أو أكتر فوق عشان يبان اشتراك الطالب هنا فورًا</div></div>`;
+    return;
+  }
+  let monthlyTotal = 0;
+  const sessionParts = [];
+  checked.forEach(chk=>{
+    const r = db.classrooms.find(c=>c.id===chk.value);
+    if(!r) return;
+    const select = chk.closest('.classroom-check-row').querySelector('.f-classroom-pm-select');
+    const mode = select ? select.value : ((r.paymentModes&&r.paymentModes[0]) || 'monthly');
+    if(mode==='session') sessionParts.push(`${r.name.split(/[-–—]/)[0].trim()} (${r.sessionFee||0} ج/حصة)`);
+    else monthlyTotal += (parseFloat(r.monthlyFee)||0);
+  });
+  const lines = [];
+  if(monthlyTotal>0) lines.push(`💰 <b>${monthlyTotal}</b> جنيه/شهر (ثابت)`);
+  if(sessionParts.length) lines.push(`➕ بالحصة: ${sessionParts.join('، ')}`);
+  if(!lines.length) lines.push('الاشتراك: 0 جنيه (المجموعات المختارة من غير سعر متسجل)');
+  summaryEl.innerHTML = `<span class="alert-ico">💰</span><div><div class="alert-title">اشتراك الطالب الحالي</div><div class="alert-sub">${lines.join(' &nbsp;·&nbsp; ')}</div></div>`;
+}
+
 
 // بيعرض تحذير تحت خانة تاريخ الميلاد لو مش متسق منطقيًا مع المرحلة الدراسية المختارة
 function renderAgeGradeWarning(){
