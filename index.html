@@ -5519,31 +5519,32 @@ function renderChildClassroomChecks(){
   const matching = db.classrooms.filter(r=> r.grade===grade).sort((a,b)=> (isUnpriced(a)?1:0) - (isUnpriced(b)?1:0));
   const mismatchedEnrolled = db.classrooms.filter(r=> enrolledIds.includes(r.id) && r.grade!==grade);
   const existingEnrollments = wrap._existingEnrollments || {};
-  const gradeLabel = GRADE_LABELS[grade] || grade;
-  // القائمة دي أصلاً متفلترة على مرحلة واحدة، فلو اسم المجموعة بينتهي بنفس اسم المرحلة (بأي نوع شرطة أو مسافات)
-  // بنشيله من العرض هنا بس عشان منكررش نفس المعلومة 6 مرات؛ الاسم الأصلي في قاعدة البيانات ميتغيرش
-  const gradeSuffixRe = new RegExp('[\\s]*[-–—][\\s]*' + gradeLabel.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\s*$');
-  const stripGradeSuffix = name => name.replace(gradeSuffixRe, '').trim();
+  // القائمة دي أصلاً متفلترة على مرحلة واحدة، فمش محتاجين نكرر اسم المرحلة تاني في كل سطر.
+  // بدل ما نحاول نطابق نص المرحلة بالظبط (بيختلف شكله من مركز لمركز: "تانية"/"ثانية"...)،
+  // بناخد الجزء اللي قبل آخر شرطة في الاسم أيًا كان شكلها، وده بيشتغل مهما كان شكل الكتابة
+  const stripGradeSuffix = name => name.split(/[-–—](?=[^-–—]*$)/)[0].trim();
   let html = matching.map(r=>{
     const modes = r.paymentModes || ['monthly'];
     const isChecked = enrolledIds.includes(r.id);
     const currentMode = existingEnrollments[r.id] || 'monthly';
     const displayName = stripGradeSuffix(r.name);
     const unpriced = isUnpriced(r);
-    const modeSelector = modes.length>1
-      ? `<select class="f-classroom-pm-select" data-classroom="${r.id}" style="margin-inline-start:8px; font-size:12px; padding:2px 6px;" ${isChecked?'':'disabled'} onchange="updateClassroomSummary();">
+    const priceInfo = modes.length>1
+      ? `<select class="f-classroom-pm-select" data-classroom="${r.id}" style="font-size:12px; padding:2px 6px; border-radius:6px;" ${isChecked?'':'disabled'} onchange="updateClassroomSummary();">
            <option value="monthly" ${currentMode==='monthly'?'selected':''}>شهري (${r.monthlyFee||0} ج)</option>
            <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
          </select>`
-      : `<span style="color:var(--muted); font-size:12px;">${modes[0]==='session' ? `(بالحصة · ${r.sessionFee||0} ج)` : `(شهري · ${r.monthlyFee||0} ج)`}${(modes[0]==='monthly' && r.sessionFee) ? ` <span style="opacity:.7;">+ ${r.sessionFee} ج/حصة</span>` : ''}</span>`;
-    const unpricedBadge = unpriced ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px; flex-shrink:0;">⚠️ من غير سعر</span>` : '';
-    return `<label class="classroom-check-row" style="display:flex; gap:8px; align-items:center; justify-content:space-between; font-size:14px; padding:8px 8px; border-radius:10px; transition:background .15s;">
-        <span style="display:flex; gap:8px; align-items:center; min-width:0;">
-          <input type="checkbox" class="f-classroom-chk" value="${r.id}" ${isChecked?'checked':''} onchange="const row=this.closest('.classroom-check-row'); const s=row.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked; row.style.background=this.checked?'rgba(124,58,237,.15)':''; updateClassroomSummary();">
-          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${displayName}</span>
-          ${modeSelector}
-        </span>
-        ${unpricedBadge}
+      : `<span style="color:var(--muted); font-size:12px;">${modes[0]==='session' ? `بالحصة · ${r.sessionFee||0} ج` : `شهري · ${r.monthlyFee||0} ج`}${(modes[0]==='monthly' && r.sessionFee) ? ` <span style="opacity:.7;">+ ${r.sessionFee} ج/حصة</span>` : ''}</span>`;
+    const unpricedBadge = unpriced ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px;">⚠️ من غير سعر</span>` : '';
+    return `<label class="classroom-check-row" style="display:block; padding:10px 12px; border-radius:10px; border:1px solid var(--border); margin-bottom:6px; transition:background .15s, border-color .15s;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" class="f-classroom-chk" value="${r.id}" style="flex-shrink:0;" ${isChecked?'checked':''} onchange="const row=this.closest('.classroom-check-row'); const s=row.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked; row.style.background=this.checked?'rgba(124,58,237,.15)':''; row.style.borderColor=this.checked?'var(--admin-1,#7c3aed)':'var(--border)'; updateClassroomSummary();">
+          <span style="font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;">${displayName}</span>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px; padding-inline-start:26px;">
+          ${priceInfo}
+          ${unpricedBadge}
+        </div>
       </label>`;
   }).join('') || '<div class="empty">مفيش مجموعات لمرحلة "'+(GRADE_LABELS[grade]||grade)+'" لسه — أضف واحدة من تاب "المجموعات"</div>';
   if(mismatchedEnrolled.length){
@@ -5551,7 +5552,7 @@ function renderChildClassroomChecks(){
   }
   wrap.innerHTML = html;
   // نلوّن الصفوف المتحددة من الأول (المجموعات اللي الطالب متسجل فيها فعلاً وقت فتح الفورم)
-  wrap.querySelectorAll('.f-classroom-chk:checked').forEach(chk=>{ chk.closest('.classroom-check-row').style.background = 'rgba(124,58,237,.15)'; });
+  wrap.querySelectorAll('.f-classroom-chk:checked').forEach(chk=>{ const row=chk.closest('.classroom-check-row'); row.style.background = 'rgba(124,58,237,.15)'; row.style.borderColor = 'var(--admin-1,#7c3aed)'; });
   updateClassroomSummary();
 }
 
@@ -5572,7 +5573,7 @@ function updateClassroomSummary(){
     if(!r) return;
     const select = chk.closest('.classroom-check-row').querySelector('.f-classroom-pm-select');
     const mode = select ? select.value : ((r.paymentModes&&r.paymentModes[0]) || 'monthly');
-    if(mode==='session') sessionParts.push(`${r.name.split(/[-–—]/)[0].trim()} (${r.sessionFee||0} ج/حصة)`);
+    if(mode==='session') sessionParts.push(`${r.name.split(/[-–—](?=[^-–—]*$)/)[0].trim()} (${r.sessionFee||0} ج/حصة)`);
     else monthlyTotal += (parseFloat(r.monthlyFee)||0);
   });
   const lines = [];
