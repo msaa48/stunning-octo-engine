@@ -4170,6 +4170,7 @@ function openAdminSection(tab){
   adminActiveTab = tab;
   adminSearchQuery = '';
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
+  if(tab==='classrooms') expandedGradeSections = new Set();
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
   document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions') ? 'none' : 'block';
   const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
@@ -4229,6 +4230,14 @@ function renderAdminList(){
     const input = document.getElementById('admin-search-input');
     if(input){ input.focus(); input.setSelectionRange(caretPos, caretPos); }
   }
+}
+
+// أقسام المراحل العمرية المفتوحة في شاشة "المجموعات" — بتتصفّر لما تدخل التاب من جديد (openAdminSection)
+let expandedGradeSections = new Set();
+function toggleGradeSection(grade){
+  if(expandedGradeSections.has(grade)) expandedGradeSections.delete(grade);
+  else expandedGradeSections.add(grade);
+  renderAdminList();
 }
 
 let expandedChildIds = new Set();
@@ -4486,14 +4495,20 @@ function renderAdminListInner(){
   else if(adminActiveTab==='classrooms'){
     const gradeLabel = GRADE_LABELS;
     const items = db.classrooms.filter(r=> matchesSearch(r.name));
-    el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (items.map(r=>{
+    const isSearching = !!(adminSearchQuery && adminSearchQuery.trim());
+    // نجمع المجموعات حسب المرحلة، بنفس ترتيب GRADE_LABELS، وأي مرحلة غير معرّفة (احتياطي) بتتجمع تحت "أخرى"
+    const gradesOrder = Object.keys(gradeLabel);
+    const byGrade = {};
+    items.forEach(r=>{ const g = gradesOrder.includes(r.grade) ? r.grade : '__OTHER__'; (byGrade[g] = byGrade[g]||[]).push(r); });
+    const orderedGrades = [...gradesOrder, '__OTHER__'].filter(g=> byGrade[g] && byGrade[g].length);
+    const rowHtml = r=>{
       const teacherNames = db.teachers.filter(t=>t.classroomIds.includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
       const kidCount = db.children.filter(c=>(c.classroomIds||[]).includes(r.id)).length;
       return `<div class="list-row">
         <div class="list-row-main">
           <div class="list-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706);">🏫</div>
           <div class="list-info">
-            <div class="list-name">${r.name} <span class="badge">${gradeLabel[r.grade]||r.grade}</span></div>
+            <div class="list-name">${r.name}</div>
             <div class="list-sub">${teacherNames} · ${kidCount} طالب · ${r.monthlyFee||0} جنيه/شهر</div>
           </div>
         </div>
@@ -4502,7 +4517,22 @@ function renderAdminListInner(){
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('classrooms','${r.id}')">حذف</button>
         </div>
       </div>`;
-    }).join('') || '<div class="empty">لا يوجد نتائج</div>');
+    };
+    el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+      const list = byGrade[g];
+      const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
+      const isOpen = isSearching || expandedGradeSections.has(g);
+      return `<div class="grade-section" style="margin-bottom:10px;">
+        <div class="list-row" style="cursor:pointer; background:rgba(255,255,255,.03);" onclick="toggleGradeSection('${g}')">
+          <div class="list-row-main">
+            <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#b3893f);">🎓</div>
+            <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+          </div>
+          <div style="color:var(--muted); font-size:16px;">${isOpen?'▾':'◂'}</div>
+        </div>
+        ${isOpen ? `<div style="padding-inline-start:10px;">${list.map(rowHtml).join('')}</div>` : ''}
+      </div>`;
+    }).join('') : '<div class="empty">لا يوجد نتائج</div>');
   }
   else if(adminActiveTab==='subjects'){
     const gradeLabel = {ALL:'كل المراحل', ...GRADE_LABELS};
