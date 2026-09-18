@@ -5358,7 +5358,11 @@ function renderAdminModalFields(id){
   }
   else if(type==='classrooms'){
     const item = id ? db.classrooms.find(r=>r.id===id) : {};
+    const enrolledCount = id ? (db.enrollments||[]).filter(e=>e.classroomId===id).length : 0;
+    const wantsMonthlyDefault = !item.paymentModes || item.paymentModes.includes('monthly');
+    const wantsSessionDefault = item.paymentModes && item.paymentModes.includes('session');
     el.innerHTML = `
+      <div class="section-title" style="margin:4px 0;"><span class="form-step-badge">1</span>البيانات الأساسية</div>
       <input type="text" id="f-name" placeholder="اسم المجموعة" value="${item.name||''}">
       <select id="f-grade">
         <option value="PREP1" ${item.grade==='PREP1'?'selected':''}>أولى إعدادي</option>
@@ -5368,18 +5372,22 @@ function renderAdminModalFields(id){
         <option value="SEC2" ${item.grade==='SEC2'?'selected':''}>تانية ثانوي</option>
         <option value="SEC3" ${item.grade==='SEC3'?'selected':''}>تالتة ثانوي</option>
       </select>
-      <input type="text" id="f-classroom-fee" placeholder="اشتراك المجموعة الشهري (جنيه)" value="${item.monthlyFee||''}">
-      <div class="section-title" style="margin:4px 0;">طريقة الدفع المسموحة في المجموعة دي</div>
+      ${id ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">👥 عدد الطلاب المسجلين في المجموعة دي حاليًا: <b style="color:var(--text);">${enrolledCount}</b>${enrolledCount>0?' — أي تعديل في طريقة الدفع أو السعر هيأثر عليهم':''}</div>` : ''}
+      <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">2</span>طريقة الدفع المسموحة في المجموعة دي</div>
       <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
-        <input type="checkbox" id="f-classroom-pm-monthly" ${!item.paymentModes||item.paymentModes.includes('monthly')?'checked':''}> اشتراك شهري
+        <input type="checkbox" id="f-classroom-pm-monthly" ${wantsMonthlyDefault?'checked':''} onchange="document.getElementById('f-classroom-fee-wrap').style.display=this.checked?'block':'none';"> اشتراك شهري
       </label>
+      <div id="f-classroom-fee-wrap" style="display:${wantsMonthlyDefault?'block':'none'}; margin-inline-start:26px;">
+        <input type="text" id="f-classroom-fee" placeholder="اشتراك المجموعة الشهري (جنيه)" value="${item.monthlyFee||''}">
+      </div>
       <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
-        <input type="checkbox" id="f-classroom-pm-session" ${item.paymentModes&&item.paymentModes.includes('session')?'checked':''} onchange="document.getElementById('f-classroom-session-fee-wrap').style.display=this.checked?'block':'none';"> بالحصة
+        <input type="checkbox" id="f-classroom-pm-session" ${wantsSessionDefault?'checked':''} onchange="document.getElementById('f-classroom-session-fee-wrap').style.display=this.checked?'block':'none';"> بالحصة
       </label>
-      <div id="f-classroom-session-fee-wrap" style="display:${item.paymentModes&&item.paymentModes.includes('session')?'block':'none'};">
+      <div id="f-classroom-session-fee-wrap" style="display:${wantsSessionDefault?'block':'none'}; margin-inline-start:26px;">
         <input type="text" id="f-classroom-session-fee" placeholder="سعر الحصة الواحدة (جنيه)" value="${item.sessionFee||''}">
       </div>
-      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 لازم تسيب طريقة واحدة على الأقل مفعّلة</div>`;
+      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 لازم تسيب طريقة واحدة على الأقل مفعّلة، ولازم يكون لها سعر أكبر من صفر</div>
+      ${enrolledCount>0 ? `<div class="admin-alert-card warn static" style="margin-top:6px;"><span class="alert-ico">⚠️</span><div><div class="alert-title">في ${enrolledCount} طالب مسجّل هنا فعلاً</div><div class="alert-sub">لو ألغيت طريقة دفع مستخدمة بالفعل، اشتراكات الطلاب اللي عليها مش هتتحدّث تلقائيًا — راجعهم من تاب المدفوعات بعد الحفظ</div></div></div>` : ''}`;
   }
   else if(type==='subjects'){
     const item = id ? db.subjects.find(s=>s.id===id) : {};
@@ -5752,12 +5760,15 @@ async function saveAdminModal(){
   }
   else if(type==='classrooms'){
     const grade = document.getElementById('f-grade').value;
-    const feeRaw = document.getElementById('f-classroom-fee').value.trim();
-    if(feeRaw && (!/^\d+(\.\d+)?$/.test(feeRaw))){ showToast('اشتراك المجموعة لازم يكون رقم موجب'); return; }
-    const monthlyFee = parseFloat(feeRaw) || 0;
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
     const wantsSession = document.getElementById('f-classroom-pm-session').checked;
     if(!wantsMonthly && !wantsSession){ showToast('لازم تختار طريقة دفع واحدة على الأقل'); return; }
+    let monthlyFee = 0;
+    if(wantsMonthly){
+      const feeRaw = document.getElementById('f-classroom-fee').value.trim();
+      if(!/^\d+(\.\d+)?$/.test(feeRaw) || parseFloat(feeRaw)<=0){ showToast('اشتراك المجموعة الشهري لازم يكون رقم أكبر من صفر'); return; }
+      monthlyFee = parseFloat(feeRaw);
+    }
     const paymentModes = [...(wantsMonthly?['monthly']:[]), ...(wantsSession?['session']:[])];
     let sessionFee = 0;
     if(wantsSession){
