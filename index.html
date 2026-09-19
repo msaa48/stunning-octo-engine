@@ -6093,7 +6093,10 @@ async function deleteAdminItem(type, id){
         supabaseClient.from('schedule').delete().eq('classroom_id', id),
         supabaseClient.from('schedule_settings_by_classroom').delete().eq('classroom_id', id),
         supabaseClient.from('enrollments').delete().eq('classroom_id', id),
-        supabaseClient.from('subscriptions').delete().eq('classroom_id', id)
+        supabaseClient.from('subscriptions').delete().eq('classroom_id', id),
+        supabaseClient.from('attendance').delete().eq('classroom_id', id),
+        supabaseClient.from('attendance_exceptions').delete().eq('classroom_id', id),
+        supabaseClient.from('events').delete().eq('classroom_id', id)
       ]);
     } else if(type==='subjects'){
       await Promise.all([
@@ -6157,6 +6160,9 @@ async function deleteAdminItem(type, id){
     delete db.scheduleSettingsByClassroom[id];
     db.enrollments = (db.enrollments||[]).filter(e=>e.classroomId!==id);
     db.subscriptions = (db.subscriptions||[]).filter(s=>s.classroomId!==id);
+    db.attendance = (db.attendance||[]).filter(a=>a.classroomId!==id);
+    db.attendanceExceptions = (db.attendanceExceptions||[]).filter(a=>a.classroomId!==id);
+    db.events = (db.events||[]).filter(e=>e.classroomId!==id);
   }
   else if(type==='subjects'){
     db.subjects = db.subjects.filter(s=>s.id!==id);
