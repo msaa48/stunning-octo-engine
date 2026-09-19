@@ -5853,7 +5853,8 @@ async function saveAdminModal(){
     }
     if(ageStatus && ageStatus.status==='under_tolerance'){
       const msg = checkAgeGradeMismatch(dob, grade);
-      if(!confirm(msg + '\n\nمتأكد إنك عايز تحفظ برغم كده؟')) return;
+      const ok = await confirmActionAsync(msg + '\n\nمتأكد إنك عايز تحفظ برغم كده؟');
+      if(!ok) return;
     }
     const classroomIds = Array.from(document.querySelectorAll('.f-classroom-chk:checked')).map(x=>x.value);
     const paymentModeByClassroom = {};
@@ -6415,7 +6416,8 @@ async function saveAdjustPayout(){
 }
 
 async function approvePayout(payoutId){
-  if(!confirm('اعتماد الكشف ده؟ هيظهر للمدرّس في شاشته بعد كده.')) return;
+  const ok = await confirmActionAsync('اعتماد الكشف ده؟ هيظهر للمدرّس في شاشته بعد كده.');
+  if(!ok) return;
   try{
     const { error } = await supabaseClient.from('teacher_payouts').update({ status:'approved' }).eq('id', payoutId);
     if(error){ showToast('حصل خطأ في الاعتماد'); console.error(error); return; }
@@ -6426,7 +6428,8 @@ async function approvePayout(payoutId){
 }
 
 async function markPayoutPaid(payoutId){
-  if(!confirm('تعليم الكشف ده كمدفوع؟')) return;
+  const ok = await confirmActionAsync('تعليم الكشف ده كمدفوع؟');
+  if(!ok) return;
   try{
     const { error } = await supabaseClient.from('teacher_payouts').update({ status:'paid' }).eq('id', payoutId);
     if(error){ showToast('حصل خطأ في التعليم كمدفوع'); console.error(error); return; }
