@@ -1129,7 +1129,7 @@
     <div style="font-size:34px; margin-bottom:6px;">⚠️</div>
     <p id="confirm-modal-text" style="font-size:15px; margin:0 0 16px;"></p>
     <div style="display:flex; gap:8px;">
-      <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('confirm-modal-bg')">إلغاء</button>
+      <button class="btn block" id="confirm-modal-cancel" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('confirm-modal-bg')">إلغاء</button>
       <button class="btn block" id="confirm-modal-ok" style="background:var(--danger); color:#fff;">تأكيد</button>
     </div>
   </div>
@@ -1672,7 +1672,7 @@ function confirmActionAsync(message){
     const okBtn = document.getElementById('confirm-modal-ok');
     const newOkBtn = okBtn.cloneNode(true);
     okBtn.parentNode.replaceChild(newOkBtn, okBtn);
-    const cancelBtn = modalBg.querySelector('.btn[onclick*="closeModal(\'confirm-modal-bg\')"]');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
     const newCancelBtn = cancelBtn.cloneNode(true);
     newCancelBtn.removeAttribute('onclick');
     cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
@@ -5832,6 +5832,7 @@ function renderAgeGradeWarning(){
 }
 
 async function saveAdminModal(){
+ try{
   if(adminModalMode==='schedule'){ await saveScheduleCell(); return; }
   if(adminModalMode==='subscription-add'){ saveNewSubscription(); return; }
   const db = loadDB();
@@ -6070,6 +6071,10 @@ async function saveAdminModal(){
   showToast('تم الحفظ ✓');
   renderAdminStats(); renderAdminAlerts();
   renderAdminList();
+ } catch(e){
+   console.error('خطأ غير متوقع أثناء الحفظ', e);
+   showToast('⚠️ حصل خطأ غير متوقع أثناء الحفظ — ' + (e && e.message ? e.message : 'حاول تاني أو راجع الفورم'));
+ }
 }
 
 async function deleteAdminItem(type, id){
