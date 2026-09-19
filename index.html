@@ -187,7 +187,7 @@
   }
   .section-title{font-size:13px; color:var(--gold); font-weight:700; margin:20px 0 10px; text-transform:uppercase; letter-spacing:.06em; font-family:'Cairo',sans-serif;}
   select, input[type=text], input[type=number], textarea{width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); font-size:15px; font-family:inherit; background:var(--input-bg); color:var(--ink);}
-  .link-pick-list{max-height:180px; overflow-y:auto; border:1px solid var(--border); border-radius:12px; margin-top:-6px; background:var(--input-bg);}
+  .link-pick-list{max-height:180px; overflow-y:auto; overscroll-behavior:contain; border:1px solid var(--border); border-radius:12px; margin-top:-6px; background:var(--input-bg);}
   .link-pick-row{padding:10px 14px; font-size:14px; cursor:pointer; border-bottom:1px solid var(--border);}
   .link-pick-row:last-child{border-bottom:none;}
   .link-pick-row:active{background:var(--shadow-2);}
@@ -286,7 +286,7 @@
 
   .modal-bg{position:fixed; inset:0; background:var(--modal-scrim); display:none; align-items:flex-end; z-index:40;}
   .modal-bg.show{display:flex;}
-  .modal{background:var(--card); width:100%; max-width:480px; margin:0 auto; border-radius:22px 22px 0 0; padding:22px; max-height:80vh; overflow-y:auto;}
+  .modal{background:var(--card); width:100%; max-width:480px; margin:0 auto; border-radius:22px 22px 0 0; padding:22px; max-height:80vh; overflow-y:auto; overscroll-behavior:contain;}
   .modal h3{margin-top:0; font-family:'Cairo',sans-serif;}
 
   /* ===== Schedule ===== */
@@ -372,7 +372,7 @@
   .modal-bg.drawer-side{ align-items:stretch; justify-content:flex-start; }
   .modal-bg.drawer-side .modal{
     width:280px; max-width:82vw; height:100%; max-height:100%; margin:0; border-radius:0;
-    padding:0; overflow-y:auto; transform: translateX(100%); box-shadow:-8px 0 30px var(--shadow-2);
+    padding:0; overflow-y:auto; overscroll-behavior:contain; transform: translateX(100%); box-shadow:-8px 0 30px var(--shadow-2);
   }
   .modal-bg.drawer-side.show .modal{ transform: translateX(0); }
   .drawer-header{ position:sticky; top:0; background:var(--card); z-index:1; display:flex; justify-content:space-between; align-items:center; padding:18px 18px 12px; border-bottom:1px solid var(--border); }
@@ -394,7 +394,7 @@
   #admin-global-search-box .search-ico{ color:#fff; opacity:.85; }
   #admin-global-search-box input{ background:transparent; border:none; outline:none; color:#fff; font-family:inherit; font-size:13px; width:100%; }
   #admin-global-search-box input::placeholder{ color:rgba(255,255,255,.75); }
-  #admin-global-search-results{ position:absolute; top:100%; inset-inline:0; z-index:30; background:var(--card); border-bottom:1px solid var(--border); box-shadow:0 10px 24px var(--shadow-2); max-height:70vh; overflow-y:auto; padding:8px 14px; }
+  #admin-global-search-results{ position:absolute; top:100%; inset-inline:0; z-index:30; background:var(--card); border-bottom:1px solid var(--border); box-shadow:0 10px 24px var(--shadow-2); max-height:70vh; overflow-y:auto; overscroll-behavior:contain; padding:8px 14px; }
 
   /* Toast: gentle rise with slight bounce settle */
   .toast{ animation: toastIn .45s var(--ease-spring); }
@@ -956,7 +956,7 @@
       <h3>🎭 دخول بأي حساب — <span id="sa-quickjump-center-name"></span></h3>
       <input type="text" id="sa-quickjump-search" placeholder="دوّر بالاسم..." oninput="renderQuickJumpList()" style="margin-bottom:10px;">
       <div id="sa-quickjump-tabs" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>
-      <div id="sa-quickjump-list" style="max-height:50vh; overflow-y:auto;"></div>
+      <div id="sa-quickjump-list" style="max-height:50vh; overflow-y:auto; overscroll-behavior:contain;"></div>
       <button class="btn block" style="margin-top:12px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('sa-quickjump-modal-bg')">إغلاق</button>
     </div>
   </div>
@@ -1025,7 +1025,7 @@
 <div class="modal-bg" id="subject-tasks-modal-bg">
   <div class="modal">
     <h3 id="subject-tasks-modal-title">مهام المادة</h3>
-    <div id="subject-tasks-list" style="display:flex; flex-direction:column; gap:0; margin-bottom:10px; max-height:260px; overflow-y:auto;"></div>
+    <div id="subject-tasks-list" style="display:flex; flex-direction:column; gap:0; margin-bottom:10px; max-height:260px; overflow-y:auto; overscroll-behavior:contain;"></div>
     <div style="display:flex; gap:8px;">
       <input type="text" id="subject-task-new-name" placeholder="اسم مهمة جديدة (مثلاً: تسليم الواجب)" style="flex:1;">
       <button class="btn admin" onclick="addSubjectTask()">+ إضافة</button>
@@ -1141,7 +1141,7 @@
       <h3 style="margin:0; font-size:16px;">🔔 الإشعارات</h3>
       <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeModal('notif-modal-bg')">✕</button>
     </div>
-    <div id="notif-list" style="max-height:60vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+    <div id="notif-list" style="max-height:60vh; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:8px;"></div>
   </div>
 </div>
 
@@ -1285,7 +1285,7 @@ function getSystemNow(){ return new Date(Date.now() + simulatedTimeOffsetMs); }
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
   const db = seedData(); // نبدأ بشكل افتراضي كامل، وبعدين نستبدل كل جزء بيانات حقيقية جاية من Supabase
-  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee), paymentModes:r.payment_modes||['monthly'], sessionFee:Number(r.session_fee||0)}));
+  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee), paymentModes:r.payment_modes||['monthly'], sessionFee:Number(r.session_fee||0), meetingTimes:r.meeting_times||[], subjectId:r.subject_id||null}));
   db.subjects = rows.subjects.map(r=>({id:r.id, name:r.name, color:r.color, grade:r.grade}));
   db.teachers = rows.teachers.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, classroomIds:r.classroom_ids||[], paymentType:r.payment_type||'salary', percentageRate:r.percentage_rate!=null?Number(r.percentage_rate):null, baseSalary:r.base_salary!=null?Number(r.base_salary):null}));
   db.assistants = rows.assistants.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by,
@@ -1296,7 +1296,7 @@ function rowsToDB(rows){
   db.taskCompletions = (rows.taskCompletions||[]).map(r=>({id:r.id, childId:r.child_id, subjectId:r.subject_id, taskId:r.task_id, teacherId:r.teacher_id, date:r.completion_date, done:r.done}));
   db.schedule = rows.schedule.map(r=>({id:r.id, classroomId:r.classroom_id, day:r.day, period:r.period, subjectId:r.subject_id, teacherId:r.teacher_id}));
   db.scheduleSettingsByClassroom = {};
-  rows.scheduleSettingsByClassroom.forEach(r=>{ db.scheduleSettingsByClassroom[r.classroom_id] = {days:r.days, periods:r.periods, periodTimes:r.period_times||{}}; });
+  rows.scheduleSettingsByClassroom.forEach(r=>{ db.scheduleSettingsByClassroom[r.classroom_id] = {days:r.days, periods:r.periods, periodTimes:r.period_times||{}, periodEndTimes:r.period_end_times||{}}; });
   db.calendarEvents = rows.calendarEvents.map(r=>({id:r.id, title:r.title, date:r.date, note:r.note}));
   db.events = rows.events.map(r=>({...r.payload, id:r.id}));
   db.complaints = rows.complaints.map(r=>({...r.payload, id:r.id}));
@@ -1562,7 +1562,7 @@ async function pushDBToSupabase(db){
   if(!centerId) return {ok:true, skipped:true}; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
   try{
     const results = await Promise.all([
-      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, center_id:centerId}))),
+      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, meeting_times:c.meetingTimes||[], subject_id:c.subjectId||null, center_id:centerId}))),
       supabaseClient.from('enrollments').upsert((db.enrollments||[]).map(e=>({id:e.id, child_id:e.childId, classroom_id:e.classroomId, payment_mode:e.paymentMode, center_id:centerId}))),
       supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, center_id:centerId}))),
       supabaseClient.from('subjects').upsert(db.subjects.map(s=>({id:s.id, name:s.name, color:s.color, grade:s.grade, center_id:centerId}))),
@@ -1577,7 +1577,7 @@ async function pushDBToSupabase(db){
       supabaseClient.from('subject_tasks').upsert((db.subjectTasks||[]).map(t=>({id:t.id, subject_id:t.subjectId, name:t.name, sort_order:t.sortOrder||0, center_id:centerId}))),
       supabaseClient.from('task_completions').upsert((db.taskCompletions||[]).map(t=>({id:t.id, child_id:t.childId, subject_id:t.subjectId, task_id:t.taskId, teacher_id:t.teacherId, completion_date:t.date, done:t.done, center_id:centerId}))),
       supabaseClient.from('schedule').upsert(db.schedule.map(s=>({id:s.id, classroom_id:s.classroomId, day:s.day, period:s.period, subject_id:s.subjectId, teacher_id:s.teacherId, center_id:centerId}))),
-      supabaseClient.from('schedule_settings_by_classroom').upsert(Object.entries(db.scheduleSettingsByClassroom).map(([cid,v])=>({classroom_id:cid, days:v.days, periods:v.periods, period_times:v.periodTimes||{}}))),
+      supabaseClient.from('schedule_settings_by_classroom').upsert(Object.entries(db.scheduleSettingsByClassroom).map(([cid,v])=>({classroom_id:cid, days:v.days, periods:v.periods, period_times:v.periodTimes||{}, period_end_times:v.periodEndTimes||{}}))),
       supabaseClient.from('calendar_events').upsert(db.calendarEvents.map(c=>({id:c.id, title:c.title, date:c.date, note:c.note, center_id:centerId}))),
       supabaseClient.from('events').upsert(db.events.map(e=>({id:e.id, child_id:e.childId||null, classroom_id:e.classroomId||null, payload:e, center_id:centerId}))),
       supabaseClient.from('complaints').upsert(db.complaints.map(c=>({id:c.id, parent_id:c.parentId||null, child_id:c.childId||null, payload:c, center_id:centerId}))),
@@ -1749,6 +1749,8 @@ const MOOD_META = {
 };
 // المراحل الدراسية المتاحة في النظام — مستخدمة في المجموعات والمواد ودلوقتي في الطالب نفسه (خانة "المرحلة")
 const GRADE_LABELS = {PREP1:'أولى إعدادي', PREP2:'تانية إعدادي', PREP3:'تالتة إعدادي', SEC1:'أولى ثانوي', SEC2:'تانية ثانوي', SEC3:'تالتة ثانوي'};
+const CLASSROOM_WEEK_DAYS = ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
+const CLASSROOM_DEFAULT_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
 // السن المتوقع لكل مرحلة (بنظام التعليم المصري: 6 سنوات ابتدائي + 3 إعدادي + 3 ثانوي)
 // محسوب كعمر الطالب في أول أكتوبر (بداية السنة الدراسية)، مع هامش سنة تحت وفوق
 // لمراعاة حالات الرسوب/التقديم المبكر أو المتأخر — ده تحذير إرشادي مش قيد صارم.
@@ -3972,12 +3974,22 @@ function getChildrenWithoutGuardian(db){
   return db.children.filter(c=> !db.parents.some(p=> p.childIds.includes(c.id)));
 }
 
-// أول معاد حصة مسجّل للمدرّس ده النهاردة (حسب الجدول الفعلي لكل مجموعة + الوقت المحفوظ لكل حصة)، أو null لو مفيش
+// أول معاد حصة مسجّل للمدرّس ده النهاردة — بيجمع من مصدرين: معاد كل يوم المحفوظ على المجموعة نفسها (الطريقة السريعة)،
+// وكمان نظام "الجدول الأسبوعي" التفصيلي القديم بالحصص لو حد لسه بيستخدمه — وبياخد الأبكر من الاتنين
 const WEEKDAY_AR_BY_JS_INDEX = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 function getTeacherFirstClassTimeToday(teacherId){
   const db = loadDB();
   const todayName = WEEKDAY_AR_BY_JS_INDEX[getSystemNow().getDay()];
   let earliest = null;
+  const teacher = db.teachers.find(t=>t.id===teacherId);
+  (teacher ? (teacher.classroomIds||[]) : []).forEach(classroomId=>{
+    const room = db.classrooms.find(r=>r.id===classroomId);
+    if(!room) return;
+    (room.meetingTimes||[]).forEach(m=>{
+      if(m.day!==todayName || !m.start) return;
+      if(!earliest || m.start<earliest) earliest = m.start;
+    });
+  });
   db.schedule.forEach(s=>{
     if(s.teacherId!==teacherId) return;
     const settings = db.scheduleSettingsByClassroom[s.classroomId];
@@ -4170,6 +4182,7 @@ function openAdminSection(tab){
   adminActiveTab = tab;
   adminSearchQuery = '';
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
+  if(tab==='classrooms'){ expandedGradeSections = new Set(); expandedSubjectSections = new Set(); classroomsGradeView = null; }
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
   document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions') ? 'none' : 'block';
   const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
@@ -4229,6 +4242,41 @@ function renderAdminList(){
     const input = document.getElementById('admin-search-input');
     if(input){ input.focus(); input.setSelectionRange(caretPos, caretPos); }
   }
+}
+
+// أقسام المراحل العمرية المفتوحة في شاشة "المجموعات" — بتتصفّر لما تدخل التاب من جديد (openAdminSection)
+let expandedGradeSections = new Set();
+function toggleGradeSection(grade){
+  if(expandedGradeSections.has(grade)) expandedGradeSections.delete(grade);
+  else expandedGradeSections.add(grade);
+  renderAdminList();
+}
+// أقسام المواد المفتوحة جوّه كل مرحلة (مفتاح = "المرحلة|اسم المادة") — بتتصفّر برضو لما تدخل التاب من جديد
+let expandedSubjectSections = new Set();
+function toggleSubjectSection(key){
+  if(expandedSubjectSections.has(key)) expandedSubjectSections.delete(key);
+  else expandedSubjectSections.add(key);
+  renderAdminList();
+}
+// شاشة "المجموعات": null = قايمة المراحل، أو كود مرحلة = صفحة المرحلة دي لوحدها (المواد وجواها المجموعات)
+let classroomsGradeView = null;
+function openClassroomGradeView(grade){
+  classroomsGradeView = grade;
+  expandedSubjectSections = new Set();
+  adminSearchQuery = '';
+  updateClassroomsAddButtonLabel();
+  renderAdminList();
+}
+function backToGradesList(){
+  classroomsGradeView = null;
+  adminSearchQuery = '';
+  updateClassroomsAddButtonLabel();
+  renderAdminList();
+}
+function updateClassroomsAddButtonLabel(){
+  const btn = document.getElementById('admin-add-btn');
+  if(!btn || adminActiveTab!=='classrooms') return;
+  btn.textContent = classroomsGradeView ? `+ إضافة مجموعة لـ ${GRADE_LABELS[classroomsGradeView] || 'المرحلة دي'}` : '+ إضافة مجموعة';
 }
 
 let expandedChildIds = new Set();
@@ -4486,15 +4534,36 @@ function renderAdminListInner(){
   else if(adminActiveTab==='classrooms'){
     const gradeLabel = GRADE_LABELS;
     const items = db.classrooms.filter(r=> matchesSearch(r.name));
-    el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (items.map(r=>{
+    const isSearching = !!(adminSearchQuery && adminSearchQuery.trim());
+    // نجمع المجموعات حسب المرحلة، بنفس ترتيب GRADE_LABELS، وأي مرحلة غير معرّفة (احتياطي) بتتجمع تحت "أخرى"
+    const gradesOrder = Object.keys(gradeLabel);
+    const byGrade = {};
+    items.forEach(r=>{ const g = gradesOrder.includes(r.grade) ? r.grade : '__OTHER__'; (byGrade[g] = byGrade[g]||[]).push(r); });
+    const orderedGrades = [...gradesOrder, '__OTHER__'].filter(g=> byGrade[g] && byGrade[g].length);
+    // دلوقتي عندنا subject_id حقيقي (بعد الـmigration) — نستخدمه أول حاجة، ونرجع للتخمين النصي القديم بس
+    // للمجموعات اللي اتعملت قبل إضافة العمود ده ولسه محدش عدّلها فتاخد قيمة subjectId
+    function subjectLabelFor(r){
+      if(r.subjectId){ const s = db.subjects.find(x=>x.id===r.subjectId); if(s) return s.name; }
+      const found = db.subjects.find(s=> r.name.includes(s.name));
+      if(found) return found.name;
+      const m = r.name.match(/^مجموعة\s+(.+?)\s*—/);
+      if(m) return m[1].trim();
+      return 'أخرى';
+    }
+    const rowHtml = r=>{
       const teacherNames = db.teachers.filter(t=>t.classroomIds.includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
       const kidCount = db.children.filter(c=>(c.classroomIds||[]).includes(r.id)).length;
+      const meetings = r.meetingTimes || [];
+      const scheduleLine = meetings.length
+        ? '🗓️ ' + meetings.map(m=> m.day + (m.start ? ` (${m.start}${m.end?'-'+m.end:''})` : '')).join('، ')
+        : '🗓️ لسه مفيش معاد محدد';
       return `<div class="list-row">
         <div class="list-row-main">
           <div class="list-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706);">🏫</div>
           <div class="list-info">
-            <div class="list-name">${r.name} <span class="badge">${gradeLabel[r.grade]||r.grade}</span></div>
+            <div class="list-name">${r.name}</div>
             <div class="list-sub">${teacherNames} · ${kidCount} طالب · ${r.monthlyFee||0} جنيه/شهر</div>
+            <div class="list-sub">${scheduleLine}</div>
           </div>
         </div>
         <div class="list-actions">
@@ -4502,7 +4571,72 @@ function renderAdminListInner(){
           <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('classrooms','${r.id}')">حذف</button>
         </div>
       </div>`;
-    }).join('') || '<div class="empty">لا يوجد نتائج</div>');
+    };
+    // بناء HTML للمواد وجوّاها المجموعات، لمرحلة واحدة — كل مادة قابلة للطي لوحدها
+    const subjectsBlockHtml = (list, gradeKey)=>{
+      const bySubject = {};
+      list.forEach(r=>{ const sub = subjectLabelFor(r); (bySubject[sub]=bySubject[sub]||[]).push(r); });
+      const subjectNames = Object.keys(bySubject).sort((a,b)=> a==='أخرى'?1:(b==='أخرى'?-1:a.localeCompare(b,'ar')));
+      return subjectNames.map(sub=>{
+        const subKey = gradeKey+'|'+sub;
+        const subOpen = isSearching || expandedSubjectSections.has(subKey);
+        return `
+        <div class="list-row" style="cursor:pointer; padding:8px 4px; background:transparent;" onclick="toggleSubjectSection('${subKey.replace(/'/g,"\\'")}')">
+          <div class="list-row-main">
+            <div style="font-size:12px; font-weight:700; color:var(--muted); display:flex; align-items:center; gap:6px;">
+              <span>📚 ${sub}</span><span class="badge" style="font-size:10px;">${bySubject[sub].length}</span>
+            </div>
+          </div>
+          <div style="color:var(--muted); font-size:14px;">${subOpen?'▾':'◂'}</div>
+        </div>
+        ${subOpen ? bySubject[sub].map(rowHtml).join('') : ''}
+      `;
+      }).join('');
+    };
+    if(!isSearching && classroomsGradeView && byGrade[classroomsGradeView]){
+      // ============ صفحة مرحلة واحدة بس (بعد الدخول من قايمة المراحل) ============
+      const g = classroomsGradeView;
+      const list = byGrade[g];
+      const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
+      el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + `
+        <div class="list-row" style="cursor:pointer; background:rgba(255,255,255,.03); margin-bottom:10px;" onclick="backToGradesList()">
+          <div class="list-row-main">
+            <div style="font-size:20px;">‹</div>
+            <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+          </div>
+        </div>
+        ${subjectsBlockHtml(list, g)}
+      `;
+    } else if(isSearching){
+      // ============ وضع البحث: كل النتائج المطابقة مبسوطة زي ما هي، بغض النظر عن أي صفحة إنت فيها ============
+      el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+        const list = byGrade[g];
+        const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
+        return `<div class="grade-section" style="margin-bottom:10px;">
+          <div class="list-row" style="background:rgba(255,255,255,.03);">
+            <div class="list-row-main">
+              <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#b3893f);">🎓</div>
+              <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+            </div>
+          </div>
+          <div style="padding-inline-start:10px;">${subjectsBlockHtml(list, g)}</div>
+        </div>`;
+      }).join('') : '<div class="empty">لا يوجد نتائج</div>');
+      return;
+    } else {
+      // ============ قايمة المراحل (الشاشة الرئيسية للمجموعات) ============
+      el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+        const list = byGrade[g];
+        const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
+        return `<div class="list-row" style="cursor:pointer;" onclick="openClassroomGradeView('${g}')">
+          <div class="list-row-main">
+            <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#b3893f);">🎓</div>
+            <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+          </div>
+          <div style="color:var(--muted); font-size:18px;">‹</div>
+        </div>`;
+      }).join('') : '<div class="empty">لا يوجد نتائج</div>');
+    }
   }
   else if(adminActiveTab==='subjects'){
     const gradeLabel = {ALL:'كل المراحل', ...GRADE_LABELS};
@@ -4695,6 +4829,15 @@ async function setPeriodTime(classroomId, period, timeValue){
   if(!result.ok){ showToast('⚠️ فشل حفظ معاد الحصة على السيرفر'); return; }
   showToast('اتسجّل معاد الحصة ✓');
 }
+async function setPeriodEndTime(classroomId, period, timeValue){
+  const db = loadDB();
+  const settings = db.scheduleSettingsByClassroom[classroomId];
+  if(!settings.periodEndTimes) settings.periodEndTimes = {};
+  if(timeValue) settings.periodEndTimes[period] = timeValue; else delete settings.periodEndTimes[period];
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ معاد نهاية الحصة على السيرفر'); return; }
+  showToast('اتسجّل معاد نهاية الحصة ✓');
+}
 async function addSchedulePeriod(classroomId){
   const db = loadDB();
   const settings = db.scheduleSettingsByClassroom[classroomId];
@@ -4781,8 +4924,11 @@ function renderAdminSchedulePanel(el){
   html += `<div style="overflow-x:auto;"><table class="schedule-table"><thead><tr><th></th>${days.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>`;
   periods.forEach(period=>{
     const pTime = (settingsObj.periodTimes && settingsObj.periodTimes[period]) || '';
+    const pEndTime = (settingsObj.periodEndTimes && settingsObj.periodEndTimes[period]) || '';
     html += `<tr><th>حصة ${period}
       <input type="time" value="${pTime}" onchange="setPeriodTime('${adminScheduleClassroomId}',${period},this.value)" style="display:block; margin-top:4px; font-size:11px; padding:3px; width:90px;">
+      <span style="font-size:10px; color:var(--muted);">إلى</span>
+      <input type="time" value="${pEndTime}" onchange="setPeriodEndTime('${adminScheduleClassroomId}',${period},this.value)" style="display:block; margin-top:2px; font-size:11px; padding:3px; width:90px;">
     </th>`;
     days.forEach((_,dayIdx)=>{
       const slot = db.schedule.find(s=> s.classroomId===adminScheduleClassroomId && s.day===dayIdx && s.period===period);
@@ -4880,7 +5026,9 @@ function renderScheduleTableReadonly(classroomId){
   let html = `<div style="overflow-x:auto;"><table class="schedule-table"><thead><tr><th></th>${days.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>`;
   periods.forEach(period=>{
     const pTime = (settings.periodTimes && settings.periodTimes[period]) || '';
-    html += `<tr><th>حصة ${period}${pTime?`<div style="font-size:10px; color:var(--muted); font-weight:400;">${pTime}</div>`:''}</th>`;
+    const pEndTime = (settings.periodEndTimes && settings.periodEndTimes[period]) || '';
+    const timeLabel = pTime ? (pEndTime ? `${pTime} – ${pEndTime}` : pTime) : '';
+    html += `<tr><th>حصة ${period}${timeLabel?`<div style="font-size:10px; color:var(--muted); font-weight:400;">${timeLabel}</div>`:''}</th>`;
     days.forEach((_,dayIdx)=>{
       const slot = db.schedule.find(s=> s.classroomId===classroomId && s.day===dayIdx && s.period===period);
       if(slot){
@@ -5358,6 +5506,9 @@ function renderAdminModalFields(id){
   }
   else if(type==='classrooms'){
     const item = id ? db.classrooms.find(r=>r.id===id) : {};
+    // لو بندخل مودال "إضافة" من جوه صفحة مرحلة معينة (مش من قايمة المراحل)، بنحدد المرحلة تلقائي بدل الافتراضي
+    const presetGrade = (!id && classroomsGradeView && classroomsGradeView!=='__OTHER__') ? classroomsGradeView : null;
+    const selectedGrade = item.grade || presetGrade;
     const enrollmentsHere = id ? (db.enrollments||[]).filter(e=>e.classroomId===id) : [];
     const monthlyCount = enrollmentsHere.filter(e=>e.paymentMode!=='session').length;
     const sessionCount = enrollmentsHere.filter(e=>e.paymentMode==='session').length;
@@ -5368,16 +5519,23 @@ function renderAdminModalFields(id){
     const enrollmentBreakdown = enrolledCount===0 ? '' : (supportsBoth
       ? `👥 عدد الطلاب المسجلين حاليًا: <b style="color:var(--text);">${enrolledCount}</b> — شهري: <b style="color:var(--text);">${monthlyCount}</b>، بالحصة: <b style="color:var(--text);">${sessionCount}</b>`
       : `👥 عدد الطلاب المسجلين حاليًا: <b style="color:var(--text);">${enrolledCount}</b>`);
+    const currentTeacher = id ? db.teachers.find(t=> (t.classroomIds||[]).includes(id)) : null;
     el.innerHTML = `
       <div class="section-title" style="margin:4px 0;"><span class="form-step-badge">1</span>البيانات الأساسية</div>
-      <input type="text" id="f-name" placeholder="اسم المجموعة" value="${item.name||''}">
-      <select id="f-grade">
-        <option value="PREP1" ${item.grade==='PREP1'?'selected':''}>أولى إعدادي</option>
-        <option value="PREP2" ${item.grade==='PREP2'?'selected':''}>تانية إعدادي</option>
-        <option value="PREP3" ${(!item.grade||item.grade==='PREP3')?'selected':''}>تالتة إعدادي</option>
-        <option value="SEC1" ${item.grade==='SEC1'?'selected':''}>أولى ثانوي</option>
-        <option value="SEC2" ${item.grade==='SEC2'?'selected':''}>تانية ثانوي</option>
-        <option value="SEC3" ${item.grade==='SEC3'?'selected':''}>تالتة ثانوي</option>
+      <select id="f-grade" onchange="renderClassroomSubjectOptions();">
+        <option value="PREP1" ${selectedGrade==='PREP1'?'selected':''}>أولى إعدادي</option>
+        <option value="PREP2" ${selectedGrade==='PREP2'?'selected':''}>تانية إعدادي</option>
+        <option value="PREP3" ${(!selectedGrade||selectedGrade==='PREP3')?'selected':''}>تالتة إعدادي</option>
+        <option value="SEC1" ${selectedGrade==='SEC1'?'selected':''}>أولى ثانوي</option>
+        <option value="SEC2" ${selectedGrade==='SEC2'?'selected':''}>تانية ثانوي</option>
+        <option value="SEC3" ${selectedGrade==='SEC3'?'selected':''}>تالتة ثانوي</option>
+      </select>
+      ${presetGrade ? `<div style="font-size:12px; color:var(--muted);">💡 اتحددت تلقائي لأنك داخل صفحة "${GRADE_LABELS[presetGrade]}" — تقدر تغيّرها لو عايز</div>` : ''}
+      <select id="f-classroom-subject" data-current="${item.subjectId||''}"></select>
+      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 المجموعة بتتعرف بالمادة والمرحلة، فمحتاجناش اسم منفصل نكتبه</div>
+      <select id="f-classroom-teacher">
+        <option value="">بدون مدرّس محدد</option>
+        ${db.teachers.map(t=> `<option value="${t.id}" ${currentTeacher&&currentTeacher.id===t.id?'selected':''}>${t.name}</option>`).join('')}
       </select>
       ${id ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">${enrollmentBreakdown || '👥 مفيش طلاب مسجلين في المجموعة دي لسه'}${enrolledCount>0?' — أي تعديل في طريقة الدفع أو السعر هيأثر عليهم':''}</div>` : ''}
       <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">2</span>طريقة الدفع المسموحة في المجموعة دي</div>
@@ -5395,7 +5553,32 @@ function renderAdminModalFields(id){
         <input type="text" id="f-classroom-session-fee" placeholder="سعر الحصة الواحدة (جنيه)" value="${item.sessionFee||''}">
       </div>
       <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 لازم تسيب طريقة واحدة على الأقل مفعّلة، ولازم يكون لها سعر أكبر من صفر</div>
-      ${enrolledCount>0 ? `<div class="admin-alert-card warn static" style="margin-top:6px;"><span class="alert-ico">⚠️</span><div><div class="alert-title">في ${enrolledCount} طالب مسجّل هنا فعلاً${supportsBoth?` (${monthlyCount} شهري، ${sessionCount} بالحصة)`:''}</div><div class="alert-sub">لو ألغيت طريقة دفع مستخدمة بالفعل، اشتراكات الطلاب اللي عليها مش هتتحدّث تلقائيًا — راجعهم من تاب المدفوعات بعد الحفظ</div></div></div>` : ''}`;
+      ${enrolledCount>0 ? `<div class="admin-alert-card warn static" style="margin-top:6px;"><span class="alert-ico">⚠️</span><div><div class="alert-title">في ${enrolledCount} طالب مسجّل هنا فعلاً${supportsBoth?` (${monthlyCount} شهري، ${sessionCount} بالحصة)`:''}</div><div class="alert-sub">لو ألغيت طريقة دفع مستخدمة بالفعل، اشتراكات الطلاب اللي عليها مش هتتحدّث تلقائيًا — راجعهم من تاب المدفوعات بعد الحفظ</div></div></div>` : ''}
+      <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">3</span>معاد المجموعة الأسبوعي</div>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">اختار الأيام اللي المجموعة بتقابل فيها، ولكل يوم حدد وقته لوحده (ممكن يختلف الوقت من يوم للتاني تمامًا — مش شرط كل الأيام بنفس المعاد)</div>
+      ${(()=>{
+        const existingByDay = {};
+        (item.meetingTimes||[]).forEach(m=> existingByDay[m.day] = m);
+        const defaultCheckedDays = id ? Object.keys(existingByDay) : CLASSROOM_DEFAULT_DAYS;
+        return `<div style="display:flex; flex-direction:column; gap:6px;">
+          ${CLASSROOM_WEEK_DAYS.map((d,i)=>{
+            const checked = defaultCheckedDays.includes(d);
+            const ex = existingByDay[d] || {};
+            return `
+            <div style="border:1px solid var(--border); border-radius:8px; padding:6px 8px;">
+              <label style="display:flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
+                <input type="checkbox" class="f-classroom-day-chk" data-day="${d}" ${checked?'checked':''} onchange="document.getElementById('classroom-day-time-${i}').style.display=this.checked?'flex':'none';"> ${d}
+              </label>
+              <div id="classroom-day-time-${i}" style="display:${checked?'flex':'none'}; gap:8px; margin-top:4px; padding-inline-start:22px; align-items:center;">
+                <input type="time" class="f-classroom-day-start" data-day="${d}" value="${ex.start||''}" style="flex:1;">
+                <span style="font-size:12px; color:var(--muted);">إلى</span>
+                <input type="time" class="f-classroom-day-end" data-day="${d}" value="${ex.end||''}" style="flex:1;">
+              </div>
+            </div>`;
+          }).join('')}
+        </div>`;
+      })()}`;
+    renderClassroomSubjectOptions();
   }
   else if(type==='subjects'){
     const item = id ? db.subjects.find(s=>s.id===id) : {};
@@ -5518,6 +5701,21 @@ function updateGeneratedEmailPreview(){
 // تانية بالغلط). لو الطالب كان أصلاً متسجّل في مجموعة من مرحلة مختلفة
 // (بيانات قديمة قبل الإصلاح ده)، بنسيبها ظاهرة ومتعلّمة مع تنبيه، عشان
 // الأدمن يشوفها ويصلّحها بنفسه بدل ما تتشال منه فجأة من غير ما ياخد باله
+// بيملى قائمة المواد في فورم المجموعة حسب المرحلة المختارة (المادة إما لكل المراحل "ALL" أو لمرحلة واحدة بس)
+function renderClassroomSubjectOptions(){
+  const db = loadDB();
+  const sel = document.getElementById('f-classroom-subject');
+  if(!sel) return;
+  const grade = document.getElementById('f-grade').value;
+  const currentId = sel.dataset.current || '';
+  const matching = db.subjects.filter(s=> s.grade==='ALL' || s.grade===grade);
+  if(!matching.length){
+    sel.innerHTML = `<option value="">مفيش مواد لسه — أضف واحدة من تاب "المواد"</option>`;
+    return;
+  }
+  sel.innerHTML = `<option value="">اختر المادة</option>` + matching.map(s=> `<option value="${s.id}" ${s.id===currentId?'selected':''}>${s.name}</option>`).join('');
+}
+
 function renderChildClassroomChecks(){
   const db = loadDB();
   const wrap = document.getElementById('f-classroom-checks');
@@ -5623,11 +5821,7 @@ async function saveAdminModal(){
   if(type==='payments'){ await saveAdminPayment(db); return; }
   if(type==='links'){ await saveAdminLink(db); return; }
   const name = document.getElementById('f-name') ? document.getElementById('f-name').value.trim() : '';
-  if(!name){
-    const fieldLabelByType = {classrooms:'اسم المجموعة', subjects:'اسم المادة', children:'اسم الطالب', teachers:'اسم المدرّس', assistants:'اسم الأسيستنت', parents:'اسم ولي الأمر', calendar:'عنوان الحدث'};
-    showToast('لازم تكتب ' + (fieldLabelByType[type] || 'الاسم') + ' الأول');
-    return;
-  }
+  if(!name && type!=='classrooms'){ showToast('اكتب الاسم الأول'); return; }
 
   if(type==='children'){
     const dob = document.getElementById('f-dob').value.trim();
@@ -5772,6 +5966,10 @@ async function saveAdminModal(){
   }
   else if(type==='classrooms'){
     const grade = document.getElementById('f-grade').value;
+    const subjectId = document.getElementById('f-classroom-subject').value;
+    if(!subjectId){ showToast('لازم تختار المادة'); return; }
+    const subject = db.subjects.find(s=>s.id===subjectId);
+    const teacherId = document.getElementById('f-classroom-teacher').value || null;
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
     const wantsSession = document.getElementById('f-classroom-pm-session').checked;
     if(!wantsMonthly && !wantsSession){ showToast('لازم تختار طريقة دفع واحدة على الأقل'); return; }
@@ -5788,14 +5986,30 @@ async function saveAdminModal(){
       if(!/^\d+(\.\d+)?$/.test(sfRaw) || parseFloat(sfRaw)<=0){ showToast('سعر الحصة لازم يكون رقم أكبر من صفر'); return; }
       sessionFee = parseFloat(sfRaw);
     }
+    // اسم المجموعة بيتولّد تلقائي من المادة + المرحلة، مش بيتكتب يدويًا (المجموعة بتتعرف بتفاصيلها)
+    const name = `مجموعة ${subject.name} — ${GRADE_LABELS[grade]||grade}`;
+    // نجمع معاد كل يوم لوحده (ممكن يختلف الوقت من يوم للتاني تمامًا) — مستقل عن نظام "الجدول الأسبوعي" القديم بالحصص عمدًا
+    const meetingTimes = Array.from(document.querySelectorAll('.f-classroom-day-chk:checked')).map(chk=>{
+      const day = chk.dataset.day;
+      const startEl = document.querySelector(`.f-classroom-day-start[data-day="${day}"]`);
+      const endEl = document.querySelector(`.f-classroom-day-end[data-day="${day}"]`);
+      return {day, start: startEl ? startEl.value : '', end: endEl ? endEl.value : ''};
+    });
+    let classroomId;
     if(adminModalMode==='add'){
-      const newId = uid('c');
-      db.classrooms.push({id:newId, name, grade, monthlyFee, paymentModes, sessionFee});
-      db.scheduleSettingsByClassroom[newId] = {days:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'], periods:[1,2,3,4], periodTimes:{}};
+      classroomId = uid('c');
+      db.classrooms.push({id:classroomId, name, grade, monthlyFee, paymentModes, sessionFee, meetingTimes, subjectId});
     } else {
-      const item = db.classrooms.find(r=>r.id===adminModalEditId);
-      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee;
+      classroomId = adminModalEditId;
+      const item = db.classrooms.find(r=>r.id===classroomId);
+      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee; item.meetingTimes = meetingTimes; item.subjectId = subjectId;
     }
+    // مزامنة المدرّس: نشيل المجموعة دي من أي مدرّس تاني كان متسجل بيها، ونضيفها بس للمدرّس المختار دلوقتي
+    db.teachers.forEach(t=>{
+      const has = (t.classroomIds||[]).includes(classroomId);
+      if(t.id===teacherId && !has) t.classroomIds = [...(t.classroomIds||[]), classroomId];
+      else if(t.id!==teacherId && has) t.classroomIds = t.classroomIds.filter(cid=>cid!==classroomId);
+    });
   }
   else if(type==='subjects'){
     const color = document.getElementById('f-color').value;
