@@ -4258,6 +4258,7 @@ function openAdminSection(tab){
   adminSearchQuery = '';
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
   if(tab==='classrooms'){ expandedGradeSections = new Set(); expandedSubjectSections = new Set(); classroomsGradeView = null; }
+  if(tab==='subjects'){ subjectsGradeView = null; }
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
   document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions') ? 'none' : 'block';
   const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
@@ -4333,7 +4334,18 @@ function toggleSubjectSection(key){
   else expandedSubjectSections.add(key);
   renderAdminList();
 }
-// شاشة "المجموعات": null = قايمة المراحل، أو كود مرحلة = صفحة المرحلة دي لوحدها (المواد وجواها المجموعات)
+// شاشة "المواد": null = قايمة المراحل، أو كود مرحلة = صفحة المرحلة دي لوحدها (مواد المرحلة)
+let subjectsGradeView = null;
+function openSubjectsGradeView(grade){
+  subjectsGradeView = grade;
+  adminSearchQuery = '';
+  renderAdminList();
+}
+function backToSubjectsGradesList(){
+  subjectsGradeView = null;
+  adminSearchQuery = '';
+  renderAdminList();
+}
 let classroomsGradeView = null;
 function openClassroomGradeView(grade){
   classroomsGradeView = grade;
@@ -4717,14 +4729,69 @@ function renderAdminListInner(){
     }
   }
   else if(adminActiveTab==='subjects'){
-    const gradeLabel = {ALL:'كل المراحل', ...GRADE_LABELS};
-    el.innerHTML = `<div style="display:flex; flex-wrap:wrap;">` + db.subjects.map(s=>`
-      <span class="subject-chip" style="background:${s.color};">
-        ${s.name} <span style="opacity:.8; font-size:10px;">(${gradeLabel[s.grade]||s.grade})</span>
-        <span onclick="openSubjectTasksModal('${s.id}')" style="cursor:pointer;" title="مهام المادة">🗒️</span>
-        <span onclick="openAdminEditModal('subjects','${s.id}')" style="cursor:pointer;">✎</span>
-        <span onclick="deleteAdminItem('subjects','${s.id}')" style="cursor:pointer;">✕</span>
-      </span>`).join('') + `</div>` || '<div class="empty">لا يوجد مواد</div>';
+    const items = db.subjects.filter(s=> matchesSearch(s.name));
+    const isSearching = !!(adminSearchQuery && adminSearchQuery.trim());
+    const gradesOrder = Object.keys(GRADE_LABELS);
+    const byGrade = {};
+    items.forEach(s=>{ const g = gradesOrder.includes(s.grade) ? s.grade : '__OTHER__'; (byGrade[g]=byGrade[g]||[]).push(s); });
+    const orderedGrades = [...gradesOrder, '__OTHER__'].filter(g=> byGrade[g] && byGrade[g].length);
+    const rowHtml = s=>{
+      const classroomCount = db.classrooms.filter(c=>c.subjectId===s.id).length;
+      return `<div class="list-row">
+        <div class="list-row-main">
+          <div class="list-avatar" style="background:${s.color};">📖</div>
+          <div class="list-info">
+            <div class="list-name">${s.name}</div>
+            <div class="list-sub">${classroomCount} مجموعة مرتبطة بالمادة دي</div>
+          </div>
+        </div>
+        <div class="list-actions">
+          <button class="badge" onclick="openSubjectTasksModal('${s.id}')" title="مهام المادة">🗒️ مهام</button>
+          <button class="badge" onclick="openAdminEditModal('subjects','${s.id}')">تعديل</button>
+          <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('subjects','${s.id}')">حذف</button>
+        </div>
+      </div>`;
+    };
+    if(!isSearching && subjectsGradeView && byGrade[subjectsGradeView]){
+      const g = subjectsGradeView;
+      const list = byGrade[g];
+      const label = g==='__OTHER__' ? 'أخرى' : (GRADE_LABELS[g]||g);
+      el.innerHTML = searchBoxHtml('دور باسم مادة...') + `
+        <div class="list-row" style="cursor:pointer; background:rgba(255,255,255,.03); margin-bottom:10px;" onclick="backToSubjectsGradesList()">
+          <div class="list-row-main">
+            <div style="font-size:20px;">‹</div>
+            <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+          </div>
+        </div>
+        ${list.map(rowHtml).join('')}
+      `;
+    } else if(isSearching){
+      el.innerHTML = searchBoxHtml('دور باسم مادة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+        const list = byGrade[g];
+        const label = g==='__OTHER__' ? 'أخرى' : (GRADE_LABELS[g]||g);
+        return `<div style="margin-bottom:10px;">
+          <div class="list-row" style="background:rgba(255,255,255,.03);">
+            <div class="list-row-main">
+              <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#b3893f);">🎓</div>
+              <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+            </div>
+          </div>
+          <div style="padding-inline-start:10px;">${list.map(rowHtml).join('')}</div>
+        </div>`;
+      }).join('') : '<div class="empty">لا يوجد نتائج</div>');
+    } else {
+      el.innerHTML = searchBoxHtml('دور باسم مادة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+        const list = byGrade[g];
+        const label = g==='__OTHER__' ? 'أخرى' : (GRADE_LABELS[g]||g);
+        return `<div class="list-row" style="cursor:pointer;" onclick="openSubjectsGradeView('${g}')">
+          <div class="list-row-main">
+            <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#b3893f);">🎓</div>
+            <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+          </div>
+          <div style="color:var(--muted); font-size:18px;">‹</div>
+        </div>`;
+      }).join('') : '<div class="empty">لا يوجد مواد</div>');
+    }
   }
   else if(adminActiveTab==='schedule'){
     renderAdminSchedulePanel(el);
@@ -5665,11 +5732,10 @@ function renderAdminModalFields(id){
     el.innerHTML = `
       <input type="text" id="f-name" placeholder="اسم المادة" value="${item.name||''}">
       <select id="f-subject-grade">
-        <option value="ALL" ${(!item.grade||item.grade==='ALL')?'selected':''}>كل المراحل</option>
-        <option value="PREP3" ${item.grade==='PREP3'?'selected':''}>تالتة إعدادي بس</option>
-        <option value="SEC1" ${item.grade==='SEC1'?'selected':''}>أولى ثانوي بس</option>
-        <option value="SEC2" ${item.grade==='SEC2'?'selected':''}>تانية ثانوي بس</option>
+        <option value="" ${!item.grade?'selected disabled':''}>اختار المرحلة</option>
+        ${Object.entries(GRADE_LABELS).map(([g,label])=>`<option value="${g}" ${item.grade===g?'selected':''}>${label}</option>`).join('')}
       </select>
+      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 كل مادة لازم تتبع مرحلة واحدة بالظبط (مفيش "كل المراحل") — لو نفس المادة بتتدرّس في أكتر من مرحلة، ضيفها كذا مرة منفصلة، مرة لكل مرحلة</div>
       <div style="display:flex; align-items:center; gap:10px;">
         <label style="font-size:13px; color:var(--muted);">اللون</label>
         <input type="color" id="f-color" value="${item.color||'#4a3d7a'}" style="width:60px; height:36px; border:none; padding:0; cursor:pointer;">
@@ -6107,6 +6173,7 @@ async function saveAdminModal(){
   else if(type==='subjects'){
     const color = document.getElementById('f-color').value;
     const grade = document.getElementById('f-subject-grade').value;
+    if(!grade){ showToast('لازم تختار المرحلة'); return; }
     if(adminModalMode==='add'){
       db.subjects.push({id:uid('s'), name, color, grade});
     } else {
