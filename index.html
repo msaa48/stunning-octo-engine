@@ -5970,6 +5970,9 @@ async function saveAdminModal(){
     if(!subjectId){ showToast('لازم تختار المادة'); return; }
     const subject = db.subjects.find(s=>s.id===subjectId);
     const teacherId = document.getElementById('f-classroom-teacher').value || null;
+    if(!teacherId){
+      if(!confirm('مفيش مدرّس محدد للمجموعة دي — متأكد إنك عايز تحفظ من غيره؟ تقدر تحددّه بعدين من تعديل المجموعة')) return;
+    }
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
     const wantsSession = document.getElementById('f-classroom-pm-session').checked;
     if(!wantsMonthly && !wantsSession){ showToast('لازم تختار طريقة دفع واحدة على الأقل'); return; }
