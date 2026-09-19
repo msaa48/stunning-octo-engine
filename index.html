@@ -1285,7 +1285,7 @@ function getSystemNow(){ return new Date(Date.now() + simulatedTimeOffsetMs); }
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
   const db = seedData(); // نبدأ بشكل افتراضي كامل، وبعدين نستبدل كل جزء بيانات حقيقية جاية من Supabase
-  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee), paymentModes:r.payment_modes||['monthly'], sessionFee:Number(r.session_fee||0)}));
+  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee), paymentModes:r.payment_modes||['monthly'], sessionFee:Number(r.session_fee||0), meetingTimes:r.meeting_times||[]}));
   db.subjects = rows.subjects.map(r=>({id:r.id, name:r.name, color:r.color, grade:r.grade}));
   db.teachers = rows.teachers.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, classroomIds:r.classroom_ids||[], paymentType:r.payment_type||'salary', percentageRate:r.percentage_rate!=null?Number(r.percentage_rate):null, baseSalary:r.base_salary!=null?Number(r.base_salary):null}));
   db.assistants = rows.assistants.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by,
@@ -1562,7 +1562,7 @@ async function pushDBToSupabase(db){
   if(!centerId) return {ok:true, skipped:true}; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
   try{
     const results = await Promise.all([
-      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, center_id:centerId}))),
+      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, meeting_times:c.meetingTimes||[], center_id:centerId}))),
       supabaseClient.from('enrollments').upsert((db.enrollments||[]).map(e=>({id:e.id, child_id:e.childId, classroom_id:e.classroomId, payment_mode:e.paymentMode, center_id:centerId}))),
       supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, center_id:centerId}))),
       supabaseClient.from('subjects').upsert(db.subjects.map(s=>({id:s.id, name:s.name, color:s.color, grade:s.grade, center_id:centerId}))),
@@ -3974,12 +3974,22 @@ function getChildrenWithoutGuardian(db){
   return db.children.filter(c=> !db.parents.some(p=> p.childIds.includes(c.id)));
 }
 
-// أول معاد حصة مسجّل للمدرّس ده النهاردة (حسب الجدول الفعلي لكل مجموعة + الوقت المحفوظ لكل حصة)، أو null لو مفيش
+// أول معاد حصة مسجّل للمدرّس ده النهاردة — بيجمع من مصدرين: معاد كل يوم المحفوظ على المجموعة نفسها (الطريقة السريعة)،
+// وكمان نظام "الجدول الأسبوعي" التفصيلي القديم بالحصص لو حد لسه بيستخدمه — وبياخد الأبكر من الاتنين
 const WEEKDAY_AR_BY_JS_INDEX = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 function getTeacherFirstClassTimeToday(teacherId){
   const db = loadDB();
   const todayName = WEEKDAY_AR_BY_JS_INDEX[getSystemNow().getDay()];
   let earliest = null;
+  const teacher = db.teachers.find(t=>t.id===teacherId);
+  (teacher ? (teacher.classroomIds||[]) : []).forEach(classroomId=>{
+    const room = db.classrooms.find(r=>r.id===classroomId);
+    if(!room) return;
+    (room.meetingTimes||[]).forEach(m=>{
+      if(m.day!==todayName || !m.start) return;
+      if(!earliest || m.start<earliest) earliest = m.start;
+    });
+  });
   db.schedule.forEach(s=>{
     if(s.teacherId!==teacherId) return;
     const settings = db.scheduleSettingsByClassroom[s.classroomId];
@@ -4542,11 +4552,9 @@ function renderAdminListInner(){
     const rowHtml = r=>{
       const teacherNames = db.teachers.filter(t=>t.classroomIds.includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
       const kidCount = db.children.filter(c=>(c.classroomIds||[]).includes(r.id)).length;
-      const sched = db.scheduleSettingsByClassroom[r.id] || {};
-      const t1 = sched.periodTimes && sched.periodTimes[1];
-      const t1end = sched.periodEndTimes && sched.periodEndTimes[1];
-      const scheduleLine = (sched.days && sched.days.length)
-        ? `🗓️ ${sched.days.join('، ')}${t1?` — ${t1}${t1end?'-'+t1end:''}`:''}`
+      const meetings = r.meetingTimes || [];
+      const scheduleLine = meetings.length
+        ? '🗓️ ' + meetings.map(m=> m.day + (m.start ? ` (${m.start}${m.end?'-'+m.end:''})` : '')).join('، ')
         : '🗓️ لسه مفيش معاد محدد';
       return `<div class="list-row">
         <div class="list-row-main">
@@ -5540,28 +5548,27 @@ function renderAdminModalFields(id){
       <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 لازم تسيب طريقة واحدة على الأقل مفعّلة، ولازم يكون لها سعر أكبر من صفر</div>
       ${enrolledCount>0 ? `<div class="admin-alert-card warn static" style="margin-top:6px;"><span class="alert-ico">⚠️</span><div><div class="alert-title">في ${enrolledCount} طالب مسجّل هنا فعلاً${supportsBoth?` (${monthlyCount} شهري، ${sessionCount} بالحصة)`:''}</div><div class="alert-sub">لو ألغيت طريقة دفع مستخدمة بالفعل، اشتراكات الطلاب اللي عليها مش هتتحدّث تلقائيًا — راجعهم من تاب المدفوعات بعد الحفظ</div></div></div>` : ''}
       <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">3</span>معاد المجموعة الأسبوعي</div>
-      ${!id ? `
-      <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">اختار الأيام اللي المجموعة بتقابل فيها الأسبوع، ومن الساعة كام للساعة كام (اختياري — تقدر تعدّله بعدين من تاب "الجدول الأسبوعي")</div>
-      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-        ${CLASSROOM_WEEK_DAYS.map(d=>`<label style="display:flex; gap:4px; align-items:center; font-size:13px; background:var(--paper); border:1px solid var(--border); border-radius:8px; padding:4px 8px;">
-          <input type="checkbox" class="f-classroom-day-chk" value="${d}" ${CLASSROOM_DEFAULT_DAYS.includes(d)?'checked':''}> ${d}
-        </label>`).join('')}
-      </div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <input type="time" id="f-classroom-start-time" style="flex:1;">
-        <span style="font-size:12px; color:var(--muted);">إلى</span>
-        <input type="time" id="f-classroom-end-time" style="flex:1;">
-      </div>
-      ` : (()=>{
-        const sched = db.scheduleSettingsByClassroom[id] || {};
-        const t1 = sched.periodTimes && sched.periodTimes[1];
-        const t1end = sched.periodEndTimes && sched.periodEndTimes[1];
-        const summary = (sched.days && sched.days.length)
-          ? `📅 الأيام: ${sched.days.join('، ')}${t1?` — من ${t1}${t1end?' إلى '+t1end:''}`:' (لسه مفيش وقت محدد)'}`
-          : 'لسه مفيش أيام أو معاد محدد لهذا المجموعة';
-        return `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-          <span>${summary}</span>
-          <button type="button" class="badge" onclick="adminScheduleClassroomId='${id}'; closeModal('admin-modal-bg'); openAdminSection('schedule');">عدّل من تاب الجدول</button>
+      <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">اختار الأيام اللي المجموعة بتقابل فيها، ولكل يوم حدد وقته لوحده (ممكن يختلف الوقت من يوم للتاني تمامًا — مش شرط كل الأيام بنفس المعاد)</div>
+      ${(()=>{
+        const existingByDay = {};
+        (item.meetingTimes||[]).forEach(m=> existingByDay[m.day] = m);
+        const defaultCheckedDays = id ? Object.keys(existingByDay) : CLASSROOM_DEFAULT_DAYS;
+        return `<div style="display:flex; flex-direction:column; gap:6px;">
+          ${CLASSROOM_WEEK_DAYS.map((d,i)=>{
+            const checked = defaultCheckedDays.includes(d);
+            const ex = existingByDay[d] || {};
+            return `
+            <div style="border:1px solid var(--border); border-radius:8px; padding:6px 8px;">
+              <label style="display:flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
+                <input type="checkbox" class="f-classroom-day-chk" data-day="${d}" ${checked?'checked':''} onchange="document.getElementById('classroom-day-time-${i}').style.display=this.checked?'flex':'none';"> ${d}
+              </label>
+              <div id="classroom-day-time-${i}" style="display:${checked?'flex':'none'}; gap:8px; margin-top:4px; padding-inline-start:22px; align-items:center;">
+                <input type="time" class="f-classroom-day-start" data-day="${d}" value="${ex.start||''}" style="flex:1;">
+                <span style="font-size:12px; color:var(--muted);">إلى</span>
+                <input type="time" class="f-classroom-day-end" data-day="${d}" value="${ex.end||''}" style="flex:1;">
+              </div>
+            </div>`;
+          }).join('')}
         </div>`;
       })()}`;
   }
@@ -5952,24 +5959,19 @@ async function saveAdminModal(){
       if(!/^\d+(\.\d+)?$/.test(sfRaw) || parseFloat(sfRaw)<=0){ showToast('سعر الحصة لازم يكون رقم أكبر من صفر'); return; }
       sessionFee = parseFloat(sfRaw);
     }
+    // نجمع معاد كل يوم لوحده (ممكن يختلف الوقت من يوم للتاني تمامًا) — مستقل عن نظام "الجدول الأسبوعي" القديم بالحصص عمدًا
+    const meetingTimes = Array.from(document.querySelectorAll('.f-classroom-day-chk:checked')).map(chk=>{
+      const day = chk.dataset.day;
+      const startEl = document.querySelector(`.f-classroom-day-start[data-day="${day}"]`);
+      const endEl = document.querySelector(`.f-classroom-day-end[data-day="${day}"]`);
+      return {day, start: startEl ? startEl.value : '', end: endEl ? endEl.value : ''};
+    });
     if(adminModalMode==='add'){
       const newId = uid('c');
-      db.classrooms.push({id:newId, name, grade, monthlyFee, paymentModes, sessionFee});
-      const checkedDayValues = Array.from(document.querySelectorAll('.f-classroom-day-chk:checked')).map(x=>x.value);
-      const chosenDays = CLASSROOM_WEEK_DAYS.filter(d=> checkedDayValues.includes(d));
-      const startTimeEl = document.getElementById('f-classroom-start-time');
-      const endTimeEl = document.getElementById('f-classroom-end-time');
-      const startTime = startTimeEl ? startTimeEl.value : '';
-      const endTime = endTimeEl ? endTimeEl.value : '';
-      db.scheduleSettingsByClassroom[newId] = {
-        days: chosenDays.length ? chosenDays : CLASSROOM_DEFAULT_DAYS,
-        periods: [1],
-        periodTimes: startTime ? {1:startTime} : {},
-        periodEndTimes: endTime ? {1:endTime} : {}
-      };
+      db.classrooms.push({id:newId, name, grade, monthlyFee, paymentModes, sessionFee, meetingTimes});
     } else {
       const item = db.classrooms.find(r=>r.id===adminModalEditId);
-      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee;
+      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee; item.meetingTimes = meetingTimes;
     }
   }
   else if(type==='subjects'){
