@@ -4170,7 +4170,7 @@ function openAdminSection(tab){
   adminActiveTab = tab;
   adminSearchQuery = '';
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
-  if(tab==='classrooms'){ expandedGradeSections = new Set(); expandedSubjectSections = new Set(); }
+  if(tab==='classrooms'){ expandedGradeSections = new Set(); expandedSubjectSections = new Set(); classroomsGradeView = null; }
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
   document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions') ? 'none' : 'block';
   const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
@@ -4245,6 +4245,26 @@ function toggleSubjectSection(key){
   if(expandedSubjectSections.has(key)) expandedSubjectSections.delete(key);
   else expandedSubjectSections.add(key);
   renderAdminList();
+}
+// شاشة "المجموعات": null = قايمة المراحل، أو كود مرحلة = صفحة المرحلة دي لوحدها (المواد وجواها المجموعات)
+let classroomsGradeView = null;
+function openClassroomGradeView(grade){
+  classroomsGradeView = grade;
+  expandedSubjectSections = new Set();
+  adminSearchQuery = '';
+  updateClassroomsAddButtonLabel();
+  renderAdminList();
+}
+function backToGradesList(){
+  classroomsGradeView = null;
+  adminSearchQuery = '';
+  updateClassroomsAddButtonLabel();
+  renderAdminList();
+}
+function updateClassroomsAddButtonLabel(){
+  const btn = document.getElementById('admin-add-btn');
+  if(!btn || adminActiveTab!=='classrooms') return;
+  btn.textContent = classroomsGradeView ? `+ إضافة مجموعة لـ ${GRADE_LABELS[classroomsGradeView] || 'المرحلة دي'}` : '+ إضافة مجموعة';
 }
 
 let expandedChildIds = new Set();
@@ -4555,21 +4575,50 @@ function renderAdminListInner(){
       `;
       }).join('');
     };
-    el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+    if(!isSearching && classroomsGradeView && byGrade[classroomsGradeView]){
+      // ============ صفحة مرحلة واحدة بس (بعد الدخول من قايمة المراحل) ============
+      const g = classroomsGradeView;
       const list = byGrade[g];
       const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
-      const isOpen = isSearching || expandedGradeSections.has(g);
-      return `<div class="grade-section" style="margin-bottom:10px;">
-        <div class="list-row" style="cursor:pointer; background:rgba(255,255,255,.03);" onclick="toggleGradeSection('${g}')">
+      el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + `
+        <div class="list-row" style="cursor:pointer; background:rgba(255,255,255,.03); margin-bottom:10px;" onclick="backToGradesList()">
+          <div class="list-row-main">
+            <div style="font-size:20px;">‹</div>
+            <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+          </div>
+        </div>
+        ${subjectsBlockHtml(list, g)}
+      `;
+    } else if(isSearching){
+      // ============ وضع البحث: كل النتائج المطابقة مبسوطة زي ما هي، بغض النظر عن أي صفحة إنت فيها ============
+      el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+        const list = byGrade[g];
+        const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
+        return `<div class="grade-section" style="margin-bottom:10px;">
+          <div class="list-row" style="background:rgba(255,255,255,.03);">
+            <div class="list-row-main">
+              <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#b3893f);">🎓</div>
+              <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
+            </div>
+          </div>
+          <div style="padding-inline-start:10px;">${subjectsBlockHtml(list, g)}</div>
+        </div>`;
+      }).join('') : '<div class="empty">لا يوجد نتائج</div>');
+      return;
+    } else {
+      // ============ قايمة المراحل (الشاشة الرئيسية للمجموعات) ============
+      el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
+        const list = byGrade[g];
+        const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
+        return `<div class="list-row" style="cursor:pointer;" onclick="openClassroomGradeView('${g}')">
           <div class="list-row-main">
             <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#b3893f);">🎓</div>
             <div class="list-info"><div class="list-name">${label} <span class="badge">${list.length}</span></div></div>
           </div>
-          <div style="color:var(--muted); font-size:16px;">${isOpen?'▾':'◂'}</div>
-        </div>
-        ${isOpen ? `<div style="padding-inline-start:10px;">${subjectsBlockHtml(list, g)}</div>` : ''}
-      </div>`;
-    }).join('') : '<div class="empty">لا يوجد نتائج</div>');
+          <div style="color:var(--muted); font-size:18px;">‹</div>
+        </div>`;
+      }).join('') : '<div class="empty">لا يوجد نتائج</div>');
+    }
   }
   else if(adminActiveTab==='subjects'){
     const gradeLabel = {ALL:'كل المراحل', ...GRADE_LABELS};
@@ -5425,6 +5474,9 @@ function renderAdminModalFields(id){
   }
   else if(type==='classrooms'){
     const item = id ? db.classrooms.find(r=>r.id===id) : {};
+    // لو بندخل مودال "إضافة" من جوه صفحة مرحلة معينة (مش من قايمة المراحل)، بنحدد المرحلة تلقائي بدل الافتراضي
+    const presetGrade = (!id && classroomsGradeView && classroomsGradeView!=='__OTHER__') ? classroomsGradeView : null;
+    const selectedGrade = item.grade || presetGrade;
     const enrollmentsHere = id ? (db.enrollments||[]).filter(e=>e.classroomId===id) : [];
     const monthlyCount = enrollmentsHere.filter(e=>e.paymentMode!=='session').length;
     const sessionCount = enrollmentsHere.filter(e=>e.paymentMode==='session').length;
@@ -5439,13 +5491,14 @@ function renderAdminModalFields(id){
       <div class="section-title" style="margin:4px 0;"><span class="form-step-badge">1</span>البيانات الأساسية</div>
       <input type="text" id="f-name" placeholder="اسم المجموعة" value="${item.name||''}">
       <select id="f-grade">
-        <option value="PREP1" ${item.grade==='PREP1'?'selected':''}>أولى إعدادي</option>
-        <option value="PREP2" ${item.grade==='PREP2'?'selected':''}>تانية إعدادي</option>
-        <option value="PREP3" ${(!item.grade||item.grade==='PREP3')?'selected':''}>تالتة إعدادي</option>
-        <option value="SEC1" ${item.grade==='SEC1'?'selected':''}>أولى ثانوي</option>
-        <option value="SEC2" ${item.grade==='SEC2'?'selected':''}>تانية ثانوي</option>
-        <option value="SEC3" ${item.grade==='SEC3'?'selected':''}>تالتة ثانوي</option>
+        <option value="PREP1" ${selectedGrade==='PREP1'?'selected':''}>أولى إعدادي</option>
+        <option value="PREP2" ${selectedGrade==='PREP2'?'selected':''}>تانية إعدادي</option>
+        <option value="PREP3" ${(!selectedGrade||selectedGrade==='PREP3')?'selected':''}>تالتة إعدادي</option>
+        <option value="SEC1" ${selectedGrade==='SEC1'?'selected':''}>أولى ثانوي</option>
+        <option value="SEC2" ${selectedGrade==='SEC2'?'selected':''}>تانية ثانوي</option>
+        <option value="SEC3" ${selectedGrade==='SEC3'?'selected':''}>تالتة ثانوي</option>
       </select>
+      ${presetGrade ? `<div style="font-size:12px; color:var(--muted);">💡 اتحددت تلقائي لأنك داخل صفحة "${GRADE_LABELS[presetGrade]}" — تقدر تغيّرها لو عايز</div>` : ''}
       ${id ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">${enrollmentBreakdown || '👥 مفيش طلاب مسجلين في المجموعة دي لسه'}${enrolledCount>0?' — أي تعديل في طريقة الدفع أو السعر هيأثر عليهم':''}</div>` : ''}
       <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">2</span>طريقة الدفع المسموحة في المجموعة دي</div>
       <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
