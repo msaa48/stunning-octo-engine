@@ -1577,7 +1577,7 @@ async function pushDBToSupabase(db){
       supabaseClient.from('subject_tasks').upsert((db.subjectTasks||[]).map(t=>({id:t.id, subject_id:t.subjectId, name:t.name, sort_order:t.sortOrder||0, center_id:centerId}))),
       supabaseClient.from('task_completions').upsert((db.taskCompletions||[]).map(t=>({id:t.id, child_id:t.childId, subject_id:t.subjectId, task_id:t.taskId, teacher_id:t.teacherId, completion_date:t.date, done:t.done, center_id:centerId}))),
       supabaseClient.from('schedule').upsert(db.schedule.map(s=>({id:s.id, classroom_id:s.classroomId, day:s.day, period:s.period, subject_id:s.subjectId, teacher_id:s.teacherId, center_id:centerId}))),
-      supabaseClient.from('schedule_settings_by_classroom').upsert(Object.entries(db.scheduleSettingsByClassroom).map(([cid,v])=>({classroom_id:cid, days:v.days, periods:v.periods, period_times:v.periodTimes||{}, period_end_times:v.periodEndTimes||{}}))),
+      supabaseClient.from('schedule_settings_by_classroom').upsert(Object.entries(db.scheduleSettingsByClassroom).map(([cid,v])=>({classroom_id:cid, days:v.days, periods:v.periods, period_times:v.periodTimes||{}, period_end_times:v.periodEndTimes||{}, center_id:centerId}))),
       supabaseClient.from('calendar_events').upsert(db.calendarEvents.map(c=>({id:c.id, title:c.title, date:c.date, note:c.note, center_id:centerId}))),
       supabaseClient.from('events').upsert(db.events.map(e=>({id:e.id, child_id:e.childId||null, classroom_id:e.classroomId||null, payload:e, center_id:centerId}))),
       supabaseClient.from('complaints').upsert(db.complaints.map(c=>({id:c.id, parent_id:c.parentId||null, child_id:c.childId||null, payload:c, center_id:centerId}))),
