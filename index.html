@@ -5974,7 +5974,8 @@ async function saveAdminModal(){
       if(!confirm('مفيش مدرّس محدد للمجموعة دي — متأكد إنك عايز تحفظ من غيره؟ تقدر تحددّه بعدين من تعديل المجموعة')) return;
     }
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
-    const wantsSession = document.getElementById('f-classroom-pm-session').checked;
+    const wantsSessionChk = document.getElementById('f-classroom-pm-session');
+    const wantsSession = !!(wantsSessionChk && wantsSessionChk.checked);
     if(!wantsMonthly && !wantsSession){ showToast('لازم تختار طريقة دفع واحدة على الأقل'); return; }
     let monthlyFee = 0;
     if(wantsMonthly){
@@ -5985,7 +5986,9 @@ async function saveAdminModal(){
     const paymentModes = [...(wantsMonthly?['monthly']:[]), ...(wantsSession?['session']:[])];
     let sessionFee = 0;
     if(wantsSession){
-      const sfRaw = document.getElementById('f-classroom-session-fee').value.trim();
+      const sessionFeeEl = document.getElementById('f-classroom-session-fee');
+      const sfRaw = sessionFeeEl ? sessionFeeEl.value.trim() : '';
+      if(!sfRaw){ showToast('اخترت "بالحصة" — لازم تكتب سعر الحصة الواحدة قبل الحفظ'); return; }
       if(!/^\d+(\.\d+)?$/.test(sfRaw) || parseFloat(sfRaw)<=0){ showToast('سعر الحصة لازم يكون رقم أكبر من صفر'); return; }
       sessionFee = parseFloat(sfRaw);
     }
