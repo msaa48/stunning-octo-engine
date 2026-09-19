@@ -1664,6 +1664,24 @@ function confirmAction(message, onConfirm){
   };
   document.getElementById('confirm-modal-bg').classList.add('show');
 }
+// نسخة بترجع Promise<boolean> عشان نقدر نستخدم await طبيعي جوه دوال async (بدل confirm() الأصلي بتاع المتصفح اللي شكله غريب عن باقي التصميم)
+function confirmActionAsync(message){
+  return new Promise(resolve=>{
+    document.getElementById('confirm-modal-text').textContent = message;
+    const modalBg = document.getElementById('confirm-modal-bg');
+    const okBtn = document.getElementById('confirm-modal-ok');
+    const newOkBtn = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+    const cancelBtn = modalBg.querySelector('.btn[onclick*="closeModal(\'confirm-modal-bg\')"]');
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    newCancelBtn.removeAttribute('onclick');
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+    let settled = false;
+    newOkBtn.onclick = function(){ if(settled) return; settled=true; closeModal('confirm-modal-bg'); resolve(true); };
+    newCancelBtn.onclick = function(){ if(settled) return; settled=true; closeModal('confirm-modal-bg'); resolve(false); };
+    modalBg.classList.add('show');
+  });
+}
 const SUPABASE_URL = 'https://gqevqyduncfnyyfyxreh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZXZxeWR1bmNmbnl5Znl4cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjIzOTgsImV4cCI6MjEwMjg5ODM5OH0.dJwydh3CNyyBnQG6M-Wm6WU37gXwFj2wlhC6p9MWDzY';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -5971,7 +5989,8 @@ async function saveAdminModal(){
     const subject = db.subjects.find(s=>s.id===subjectId);
     const teacherId = document.getElementById('f-classroom-teacher').value || null;
     if(!teacherId){
-      if(!confirm('مفيش مدرّس محدد للمجموعة دي — متأكد إنك عايز تحفظ من غيره؟ تقدر تحددّه بعدين من تعديل المجموعة')) return;
+      const ok = await confirmActionAsync('مفيش مدرّس محدد للمجموعة دي — متأكد إنك عايز تحفظ من غيره؟ تقدر تحددّه بعدين من تعديل المجموعة');
+      if(!ok) return;
     }
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
     const wantsSessionChk = document.getElementById('f-classroom-pm-session');
