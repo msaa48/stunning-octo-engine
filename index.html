@@ -1285,7 +1285,7 @@ function getSystemNow(){ return new Date(Date.now() + simulatedTimeOffsetMs); }
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
   const db = seedData(); // نبدأ بشكل افتراضي كامل، وبعدين نستبدل كل جزء بيانات حقيقية جاية من Supabase
-  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee), paymentModes:r.payment_modes||['monthly'], sessionFee:Number(r.session_fee||0), meetingTimes:r.meeting_times||[]}));
+  db.classrooms = rows.classrooms.map(r=>({id:r.id, name:r.name, grade:r.grade, monthlyFee:Number(r.monthly_fee), paymentModes:r.payment_modes||['monthly'], sessionFee:Number(r.session_fee||0), meetingTimes:r.meeting_times||[], subjectId:r.subject_id||null}));
   db.subjects = rows.subjects.map(r=>({id:r.id, name:r.name, color:r.color, grade:r.grade}));
   db.teachers = rows.teachers.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by, classroomIds:r.classroom_ids||[], paymentType:r.payment_type||'salary', percentageRate:r.percentage_rate!=null?Number(r.percentage_rate):null, baseSalary:r.base_salary!=null?Number(r.base_salary):null}));
   db.assistants = rows.assistants.map(r=>({id:r.id, name:r.name, phone:r.phone, email:r.email, claimedBy:r.claimed_by,
@@ -1562,7 +1562,7 @@ async function pushDBToSupabase(db){
   if(!centerId) return {ok:true, skipped:true}; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
   try{
     const results = await Promise.all([
-      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, meeting_times:c.meetingTimes||[], center_id:centerId}))),
+      supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, meeting_times:c.meetingTimes||[], subject_id:c.subjectId||null, center_id:centerId}))),
       supabaseClient.from('enrollments').upsert((db.enrollments||[]).map(e=>({id:e.id, child_id:e.childId, classroom_id:e.classroomId, payment_mode:e.paymentMode, center_id:centerId}))),
       supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, center_id:centerId}))),
       supabaseClient.from('subjects').upsert(db.subjects.map(s=>({id:s.id, name:s.name, color:s.color, grade:s.grade, center_id:centerId}))),
@@ -4540,12 +4540,13 @@ function renderAdminListInner(){
     const byGrade = {};
     items.forEach(r=>{ const g = gradesOrder.includes(r.grade) ? r.grade : '__OTHER__'; (byGrade[g] = byGrade[g]||[]).push(r); });
     const orderedGrades = [...gradesOrder, '__OTHER__'].filter(g=> byGrade[g] && byGrade[g].length);
-    // استخراج اسم المادة من اسم المجموعة نفسه (لسه مفيش عمود subject_id في classrooms) —
-    // بنطابق أول اسم مادة من جدول subjects بيظهر جوه اسم المجموعة، ولو مفيش تطابق بنستخرج النص بين "مجموعة" و"—"
-    function subjectLabelFor(name){
-      const found = db.subjects.find(s=> name.includes(s.name));
+    // دلوقتي عندنا subject_id حقيقي (بعد الـmigration) — نستخدمه أول حاجة، ونرجع للتخمين النصي القديم بس
+    // للمجموعات اللي اتعملت قبل إضافة العمود ده ولسه محدش عدّلها فتاخد قيمة subjectId
+    function subjectLabelFor(r){
+      if(r.subjectId){ const s = db.subjects.find(x=>x.id===r.subjectId); if(s) return s.name; }
+      const found = db.subjects.find(s=> r.name.includes(s.name));
       if(found) return found.name;
-      const m = name.match(/^مجموعة\s+(.+?)\s*—/);
+      const m = r.name.match(/^مجموعة\s+(.+?)\s*—/);
       if(m) return m[1].trim();
       return 'أخرى';
     }
@@ -4574,7 +4575,7 @@ function renderAdminListInner(){
     // بناء HTML للمواد وجوّاها المجموعات، لمرحلة واحدة — كل مادة قابلة للطي لوحدها
     const subjectsBlockHtml = (list, gradeKey)=>{
       const bySubject = {};
-      list.forEach(r=>{ const sub = subjectLabelFor(r.name); (bySubject[sub]=bySubject[sub]||[]).push(r); });
+      list.forEach(r=>{ const sub = subjectLabelFor(r); (bySubject[sub]=bySubject[sub]||[]).push(r); });
       const subjectNames = Object.keys(bySubject).sort((a,b)=> a==='أخرى'?1:(b==='أخرى'?-1:a.localeCompare(b,'ar')));
       return subjectNames.map(sub=>{
         const subKey = gradeKey+'|'+sub;
@@ -5518,10 +5519,10 @@ function renderAdminModalFields(id){
     const enrollmentBreakdown = enrolledCount===0 ? '' : (supportsBoth
       ? `👥 عدد الطلاب المسجلين حاليًا: <b style="color:var(--text);">${enrolledCount}</b> — شهري: <b style="color:var(--text);">${monthlyCount}</b>، بالحصة: <b style="color:var(--text);">${sessionCount}</b>`
       : `👥 عدد الطلاب المسجلين حاليًا: <b style="color:var(--text);">${enrolledCount}</b>`);
+    const currentTeacher = id ? db.teachers.find(t=> (t.classroomIds||[]).includes(id)) : null;
     el.innerHTML = `
       <div class="section-title" style="margin:4px 0;"><span class="form-step-badge">1</span>البيانات الأساسية</div>
-      <input type="text" id="f-name" placeholder="اسم المجموعة" value="${item.name||''}">
-      <select id="f-grade">
+      <select id="f-grade" onchange="renderClassroomSubjectOptions();">
         <option value="PREP1" ${selectedGrade==='PREP1'?'selected':''}>أولى إعدادي</option>
         <option value="PREP2" ${selectedGrade==='PREP2'?'selected':''}>تانية إعدادي</option>
         <option value="PREP3" ${(!selectedGrade||selectedGrade==='PREP3')?'selected':''}>تالتة إعدادي</option>
@@ -5530,6 +5531,12 @@ function renderAdminModalFields(id){
         <option value="SEC3" ${selectedGrade==='SEC3'?'selected':''}>تالتة ثانوي</option>
       </select>
       ${presetGrade ? `<div style="font-size:12px; color:var(--muted);">💡 اتحددت تلقائي لأنك داخل صفحة "${GRADE_LABELS[presetGrade]}" — تقدر تغيّرها لو عايز</div>` : ''}
+      <select id="f-classroom-subject" data-current="${item.subjectId||''}"></select>
+      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 المجموعة بتتعرف بالمادة والمرحلة، فمحتاجناش اسم منفصل نكتبه</div>
+      <select id="f-classroom-teacher">
+        <option value="">بدون مدرّس محدد</option>
+        ${db.teachers.map(t=> `<option value="${t.id}" ${currentTeacher&&currentTeacher.id===t.id?'selected':''}>${t.name}</option>`).join('')}
+      </select>
       ${id ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">${enrollmentBreakdown || '👥 مفيش طلاب مسجلين في المجموعة دي لسه'}${enrolledCount>0?' — أي تعديل في طريقة الدفع أو السعر هيأثر عليهم':''}</div>` : ''}
       <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">2</span>طريقة الدفع المسموحة في المجموعة دي</div>
       <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
@@ -5571,6 +5578,7 @@ function renderAdminModalFields(id){
           }).join('')}
         </div>`;
       })()}`;
+    renderClassroomSubjectOptions();
   }
   else if(type==='subjects'){
     const item = id ? db.subjects.find(s=>s.id===id) : {};
@@ -5693,6 +5701,21 @@ function updateGeneratedEmailPreview(){
 // تانية بالغلط). لو الطالب كان أصلاً متسجّل في مجموعة من مرحلة مختلفة
 // (بيانات قديمة قبل الإصلاح ده)، بنسيبها ظاهرة ومتعلّمة مع تنبيه، عشان
 // الأدمن يشوفها ويصلّحها بنفسه بدل ما تتشال منه فجأة من غير ما ياخد باله
+// بيملى قائمة المواد في فورم المجموعة حسب المرحلة المختارة (المادة إما لكل المراحل "ALL" أو لمرحلة واحدة بس)
+function renderClassroomSubjectOptions(){
+  const db = loadDB();
+  const sel = document.getElementById('f-classroom-subject');
+  if(!sel) return;
+  const grade = document.getElementById('f-grade').value;
+  const currentId = sel.dataset.current || '';
+  const matching = db.subjects.filter(s=> s.grade==='ALL' || s.grade===grade);
+  if(!matching.length){
+    sel.innerHTML = `<option value="">مفيش مواد لسه — أضف واحدة من تاب "المواد"</option>`;
+    return;
+  }
+  sel.innerHTML = `<option value="">اختر المادة</option>` + matching.map(s=> `<option value="${s.id}" ${s.id===currentId?'selected':''}>${s.name}</option>`).join('');
+}
+
 function renderChildClassroomChecks(){
   const db = loadDB();
   const wrap = document.getElementById('f-classroom-checks');
@@ -5798,7 +5821,7 @@ async function saveAdminModal(){
   if(type==='payments'){ await saveAdminPayment(db); return; }
   if(type==='links'){ await saveAdminLink(db); return; }
   const name = document.getElementById('f-name') ? document.getElementById('f-name').value.trim() : '';
-  if(!name){ showToast('اكتب الاسم الأول'); return; }
+  if(!name && type!=='classrooms'){ showToast('اكتب الاسم الأول'); return; }
 
   if(type==='children'){
     const dob = document.getElementById('f-dob').value.trim();
@@ -5943,6 +5966,10 @@ async function saveAdminModal(){
   }
   else if(type==='classrooms'){
     const grade = document.getElementById('f-grade').value;
+    const subjectId = document.getElementById('f-classroom-subject').value;
+    if(!subjectId){ showToast('لازم تختار المادة'); return; }
+    const subject = db.subjects.find(s=>s.id===subjectId);
+    const teacherId = document.getElementById('f-classroom-teacher').value || null;
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
     const wantsSession = document.getElementById('f-classroom-pm-session').checked;
     if(!wantsMonthly && !wantsSession){ showToast('لازم تختار طريقة دفع واحدة على الأقل'); return; }
@@ -5959,6 +5986,8 @@ async function saveAdminModal(){
       if(!/^\d+(\.\d+)?$/.test(sfRaw) || parseFloat(sfRaw)<=0){ showToast('سعر الحصة لازم يكون رقم أكبر من صفر'); return; }
       sessionFee = parseFloat(sfRaw);
     }
+    // اسم المجموعة بيتولّد تلقائي من المادة + المرحلة، مش بيتكتب يدويًا (المجموعة بتتعرف بتفاصيلها)
+    const name = `مجموعة ${subject.name} — ${GRADE_LABELS[grade]||grade}`;
     // نجمع معاد كل يوم لوحده (ممكن يختلف الوقت من يوم للتاني تمامًا) — مستقل عن نظام "الجدول الأسبوعي" القديم بالحصص عمدًا
     const meetingTimes = Array.from(document.querySelectorAll('.f-classroom-day-chk:checked')).map(chk=>{
       const day = chk.dataset.day;
@@ -5966,13 +5995,21 @@ async function saveAdminModal(){
       const endEl = document.querySelector(`.f-classroom-day-end[data-day="${day}"]`);
       return {day, start: startEl ? startEl.value : '', end: endEl ? endEl.value : ''};
     });
+    let classroomId;
     if(adminModalMode==='add'){
-      const newId = uid('c');
-      db.classrooms.push({id:newId, name, grade, monthlyFee, paymentModes, sessionFee, meetingTimes});
+      classroomId = uid('c');
+      db.classrooms.push({id:classroomId, name, grade, monthlyFee, paymentModes, sessionFee, meetingTimes, subjectId});
     } else {
-      const item = db.classrooms.find(r=>r.id===adminModalEditId);
-      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee; item.meetingTimes = meetingTimes;
+      classroomId = adminModalEditId;
+      const item = db.classrooms.find(r=>r.id===classroomId);
+      item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee; item.meetingTimes = meetingTimes; item.subjectId = subjectId;
     }
+    // مزامنة المدرّس: نشيل المجموعة دي من أي مدرّس تاني كان متسجل بيها، ونضيفها بس للمدرّس المختار دلوقتي
+    db.teachers.forEach(t=>{
+      const has = (t.classroomIds||[]).includes(classroomId);
+      if(t.id===teacherId && !has) t.classroomIds = [...(t.classroomIds||[]), classroomId];
+      else if(t.id!==teacherId && has) t.classroomIds = t.classroomIds.filter(cid=>cid!==classroomId);
+    });
   }
   else if(type==='subjects'){
     const color = document.getElementById('f-color').value;
