@@ -4626,17 +4626,20 @@ function renderAdminListInner(){
       return 'أخرى';
     }
     const rowHtml = r=>{
+      const hasTeacher = db.teachers.some(t=>t.classroomIds.includes(r.id));
       const teacherNames = db.teachers.filter(t=>t.classroomIds.includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
       const kidCount = db.children.filter(c=>(c.classroomIds||[]).includes(r.id)).length;
       const meetings = r.meetingTimes || [];
       const scheduleLine = meetings.length
         ? '🗓️ ' + meetings.map(m=> m.day + (m.start ? ` (${m.start}${m.end?'-'+m.end:''})` : '')).join('، ')
         : '🗓️ لسه مفيش معاد محدد';
-      return `<div class="list-row">
+      // مجموعة "ناقصة بيانات" = بدون مدرّس أو بدون معاد أسبوعي — مش خطأ يمنع الحفظ، بس مفيد نفكّر بيه بشكل هادي هنا
+      const isIncomplete = !hasTeacher || meetings.length===0;
+      return `<div class="list-row" style="${isIncomplete?'border-inline-start:3px solid #f59e0b;':''}">
         <div class="list-row-main">
           <div class="list-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706);">🏫</div>
           <div class="list-info">
-            <div class="list-name">${r.name}</div>
+            <div class="list-name">${r.name}${isIncomplete?' <span style="font-size:11px; font-weight:400; color:#f59e0b;">⚠️ ناقصة بيانات</span>':''}</div>
             <div class="list-sub">${teacherNames} · ${kidCount} طالب · ${r.monthlyFee||0} جنيه/شهر</div>
             <div class="list-sub">${scheduleLine}</div>
           </div>
@@ -6046,15 +6049,11 @@ async function saveAdminModal(){
     setPersonEmail('parents', parentId, email);
   }
   else if(type==='classrooms'){
+    // ===== HARD: حاجات أساسية لازم تكتمل قبل الحفظ (بنفس ترتيب ظهورها في الفورم من فوق لتحت) =====
     const grade = document.getElementById('f-grade').value;
     const subjectId = document.getElementById('f-classroom-subject').value;
     if(!subjectId){ showToast('لازم تختار المادة'); return; }
     const subject = db.subjects.find(s=>s.id===subjectId);
-    const teacherId = document.getElementById('f-classroom-teacher').value || null;
-    if(!teacherId){
-      const ok = await confirmActionAsync('مفيش مدرّس محدد للمجموعة دي — متأكد إنك عايز تحفظ من غيره؟ تقدر تحددّه بعدين من تعديل المجموعة');
-      if(!ok) return;
-    }
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
     const wantsSessionChk = document.getElementById('f-classroom-pm-session');
     const wantsSession = !!(wantsSessionChk && wantsSessionChk.checked);
@@ -6074,20 +6073,21 @@ async function saveAdminModal(){
       if(!/^\d+(\.\d+)?$/.test(sfRaw) || parseFloat(sfRaw)<=0){ showToast('سعر الحصة لازم يكون رقم أكبر من صفر'); return; }
       sessionFee = parseFloat(sfRaw);
     }
-    // اسم المجموعة بيتولّد تلقائي من المادة + المرحلة، مش بيتكتب يدويًا (المجموعة بتتعرف بتفاصيلها)
-    const name = `مجموعة ${subject.name} — ${GRADE_LABELS[grade]||grade}`;
-    // نجمع معاد كل يوم لوحده (ممكن يختلف الوقت من يوم للتاني تمامًا) — مستقل عن نظام "الجدول الأسبوعي" القديم بالحصص عمدًا
+    // معاد المجموعة: اختياري بالكامل تمام (ممكن تتحدد بعدين) — لكن لو بدأت تكتب وقت ليوم، لازم يكتمل ويكون منطقي (ده خطأ بيانات مش نقص)
     const meetingTimes = Array.from(document.querySelectorAll('.f-classroom-day-chk:checked')).map(chk=>{
       const day = chk.dataset.day;
       const startEl = document.querySelector(`.f-classroom-day-start[data-day="${day}"]`);
       const endEl = document.querySelector(`.f-classroom-day-end[data-day="${day}"]`);
       return {day, start: startEl ? startEl.value : '', end: endEl ? endEl.value : ''};
     });
-    if(meetingTimes.length===0){ showToast('لازم تحدد يوم واحد على الأقل تقابل فيه المجموعة'); return; }
-    const dayMissingTime = meetingTimes.find(m=> !m.start || !m.end);
-    if(dayMissingTime){ showToast(`لازم تحدد وقت البداية والنهاية ليوم "${dayMissingTime.day}"`); return; }
-    const dayInvalidRange = meetingTimes.find(m=> m.start >= m.end);
-    if(dayInvalidRange){ showToast(`وقت النهاية لازم يكون بعد وقت البداية ليوم "${dayInvalidRange.day}"`); return; }
+    const partialTimeDay = meetingTimes.find(m=> (m.start && !m.end) || (!m.start && m.end));
+    if(partialTimeDay){ showToast(`يوم "${partialTimeDay.day}" مكتوب له وقت واحد بس — اكتب البداية والنهاية مع بعض أو سيبهم فاضيين`); return; }
+    const invalidRangeDay = meetingTimes.find(m=> m.start && m.end && m.start>=m.end);
+    if(invalidRangeDay){ showToast(`وقت النهاية لازم يكون بعد وقت البداية ليوم "${invalidRangeDay.day}"`); return; }
+    // ===== SOFT: حاجات مفيدة بس مش أساسية — تتسجل زي ما هي، وهتبان كتنبيه بسيط في القايمة الرئيسية بعد الحفظ =====
+    const teacherId = document.getElementById('f-classroom-teacher').value || null;
+    // اسم المجموعة بيتولّد تلقائي من المادة + المرحلة، مش بيتكتب يدويًا (المجموعة بتتعرف بتفاصيلها)
+    const name = `مجموعة ${subject.name} — ${GRADE_LABELS[grade]||grade}`;
     let classroomId;
     if(adminModalMode==='add'){
       classroomId = uid('c');
