@@ -1296,7 +1296,7 @@ function rowsToDB(rows){
   db.taskCompletions = (rows.taskCompletions||[]).map(r=>({id:r.id, childId:r.child_id, subjectId:r.subject_id, taskId:r.task_id, teacherId:r.teacher_id, date:r.completion_date, done:r.done}));
   db.schedule = rows.schedule.map(r=>({id:r.id, classroomId:r.classroom_id, day:r.day, period:r.period, subjectId:r.subject_id, teacherId:r.teacher_id}));
   db.scheduleSettingsByClassroom = {};
-  rows.scheduleSettingsByClassroom.forEach(r=>{ db.scheduleSettingsByClassroom[r.classroom_id] = {days:r.days, periods:r.periods, periodTimes:r.period_times||{}}; });
+  rows.scheduleSettingsByClassroom.forEach(r=>{ db.scheduleSettingsByClassroom[r.classroom_id] = {days:r.days, periods:r.periods, periodTimes:r.period_times||{}, periodEndTimes:r.period_end_times||{}}; });
   db.calendarEvents = rows.calendarEvents.map(r=>({id:r.id, title:r.title, date:r.date, note:r.note}));
   db.events = rows.events.map(r=>({...r.payload, id:r.id}));
   db.complaints = rows.complaints.map(r=>({...r.payload, id:r.id}));
@@ -1577,7 +1577,7 @@ async function pushDBToSupabase(db){
       supabaseClient.from('subject_tasks').upsert((db.subjectTasks||[]).map(t=>({id:t.id, subject_id:t.subjectId, name:t.name, sort_order:t.sortOrder||0, center_id:centerId}))),
       supabaseClient.from('task_completions').upsert((db.taskCompletions||[]).map(t=>({id:t.id, child_id:t.childId, subject_id:t.subjectId, task_id:t.taskId, teacher_id:t.teacherId, completion_date:t.date, done:t.done, center_id:centerId}))),
       supabaseClient.from('schedule').upsert(db.schedule.map(s=>({id:s.id, classroom_id:s.classroomId, day:s.day, period:s.period, subject_id:s.subjectId, teacher_id:s.teacherId, center_id:centerId}))),
-      supabaseClient.from('schedule_settings_by_classroom').upsert(Object.entries(db.scheduleSettingsByClassroom).map(([cid,v])=>({classroom_id:cid, days:v.days, periods:v.periods, period_times:v.periodTimes||{}}))),
+      supabaseClient.from('schedule_settings_by_classroom').upsert(Object.entries(db.scheduleSettingsByClassroom).map(([cid,v])=>({classroom_id:cid, days:v.days, periods:v.periods, period_times:v.periodTimes||{}, period_end_times:v.periodEndTimes||{}}))),
       supabaseClient.from('calendar_events').upsert(db.calendarEvents.map(c=>({id:c.id, title:c.title, date:c.date, note:c.note, center_id:centerId}))),
       supabaseClient.from('events').upsert(db.events.map(e=>({id:e.id, child_id:e.childId||null, classroom_id:e.classroomId||null, payload:e, center_id:centerId}))),
       supabaseClient.from('complaints').upsert(db.complaints.map(c=>({id:c.id, parent_id:c.parentId||null, child_id:c.childId||null, payload:c, center_id:centerId}))),
@@ -1749,6 +1749,8 @@ const MOOD_META = {
 };
 // المراحل الدراسية المتاحة في النظام — مستخدمة في المجموعات والمواد ودلوقتي في الطالب نفسه (خانة "المرحلة")
 const GRADE_LABELS = {PREP1:'أولى إعدادي', PREP2:'تانية إعدادي', PREP3:'تالتة إعدادي', SEC1:'أولى ثانوي', SEC2:'تانية ثانوي', SEC3:'تالتة ثانوي'};
+const CLASSROOM_WEEK_DAYS = ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
+const CLASSROOM_DEFAULT_DAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'];
 // السن المتوقع لكل مرحلة (بنظام التعليم المصري: 6 سنوات ابتدائي + 3 إعدادي + 3 ثانوي)
 // محسوب كعمر الطالب في أول أكتوبر (بداية السنة الدراسية)، مع هامش سنة تحت وفوق
 // لمراعاة حالات الرسوب/التقديم المبكر أو المتأخر — ده تحذير إرشادي مش قيد صارم.
@@ -4540,12 +4542,19 @@ function renderAdminListInner(){
     const rowHtml = r=>{
       const teacherNames = db.teachers.filter(t=>t.classroomIds.includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
       const kidCount = db.children.filter(c=>(c.classroomIds||[]).includes(r.id)).length;
+      const sched = db.scheduleSettingsByClassroom[r.id] || {};
+      const t1 = sched.periodTimes && sched.periodTimes[1];
+      const t1end = sched.periodEndTimes && sched.periodEndTimes[1];
+      const scheduleLine = (sched.days && sched.days.length)
+        ? `🗓️ ${sched.days.join('، ')}${t1?` — ${t1}${t1end?'-'+t1end:''}`:''}`
+        : '🗓️ لسه مفيش معاد محدد';
       return `<div class="list-row">
         <div class="list-row-main">
           <div class="list-avatar" style="background:linear-gradient(135deg,#f59e0b,#d97706);">🏫</div>
           <div class="list-info">
             <div class="list-name">${r.name}</div>
             <div class="list-sub">${teacherNames} · ${kidCount} طالب · ${r.monthlyFee||0} جنيه/شهر</div>
+            <div class="list-sub">${scheduleLine}</div>
           </div>
         </div>
         <div class="list-actions">
@@ -4811,6 +4820,15 @@ async function setPeriodTime(classroomId, period, timeValue){
   if(!result.ok){ showToast('⚠️ فشل حفظ معاد الحصة على السيرفر'); return; }
   showToast('اتسجّل معاد الحصة ✓');
 }
+async function setPeriodEndTime(classroomId, period, timeValue){
+  const db = loadDB();
+  const settings = db.scheduleSettingsByClassroom[classroomId];
+  if(!settings.periodEndTimes) settings.periodEndTimes = {};
+  if(timeValue) settings.periodEndTimes[period] = timeValue; else delete settings.periodEndTimes[period];
+  const result = await saveDB(db);
+  if(!result.ok){ showToast('⚠️ فشل حفظ معاد نهاية الحصة على السيرفر'); return; }
+  showToast('اتسجّل معاد نهاية الحصة ✓');
+}
 async function addSchedulePeriod(classroomId){
   const db = loadDB();
   const settings = db.scheduleSettingsByClassroom[classroomId];
@@ -4897,8 +4915,11 @@ function renderAdminSchedulePanel(el){
   html += `<div style="overflow-x:auto;"><table class="schedule-table"><thead><tr><th></th>${days.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>`;
   periods.forEach(period=>{
     const pTime = (settingsObj.periodTimes && settingsObj.periodTimes[period]) || '';
+    const pEndTime = (settingsObj.periodEndTimes && settingsObj.periodEndTimes[period]) || '';
     html += `<tr><th>حصة ${period}
       <input type="time" value="${pTime}" onchange="setPeriodTime('${adminScheduleClassroomId}',${period},this.value)" style="display:block; margin-top:4px; font-size:11px; padding:3px; width:90px;">
+      <span style="font-size:10px; color:var(--muted);">إلى</span>
+      <input type="time" value="${pEndTime}" onchange="setPeriodEndTime('${adminScheduleClassroomId}',${period},this.value)" style="display:block; margin-top:2px; font-size:11px; padding:3px; width:90px;">
     </th>`;
     days.forEach((_,dayIdx)=>{
       const slot = db.schedule.find(s=> s.classroomId===adminScheduleClassroomId && s.day===dayIdx && s.period===period);
@@ -4996,7 +5017,9 @@ function renderScheduleTableReadonly(classroomId){
   let html = `<div style="overflow-x:auto;"><table class="schedule-table"><thead><tr><th></th>${days.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>`;
   periods.forEach(period=>{
     const pTime = (settings.periodTimes && settings.periodTimes[period]) || '';
-    html += `<tr><th>حصة ${period}${pTime?`<div style="font-size:10px; color:var(--muted); font-weight:400;">${pTime}</div>`:''}</th>`;
+    const pEndTime = (settings.periodEndTimes && settings.periodEndTimes[period]) || '';
+    const timeLabel = pTime ? (pEndTime ? `${pTime} – ${pEndTime}` : pTime) : '';
+    html += `<tr><th>حصة ${period}${timeLabel?`<div style="font-size:10px; color:var(--muted); font-weight:400;">${timeLabel}</div>`:''}</th>`;
     days.forEach((_,dayIdx)=>{
       const slot = db.schedule.find(s=> s.classroomId===classroomId && s.day===dayIdx && s.period===period);
       if(slot){
@@ -5515,7 +5538,32 @@ function renderAdminModalFields(id){
         <input type="text" id="f-classroom-session-fee" placeholder="سعر الحصة الواحدة (جنيه)" value="${item.sessionFee||''}">
       </div>
       <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 لازم تسيب طريقة واحدة على الأقل مفعّلة، ولازم يكون لها سعر أكبر من صفر</div>
-      ${enrolledCount>0 ? `<div class="admin-alert-card warn static" style="margin-top:6px;"><span class="alert-ico">⚠️</span><div><div class="alert-title">في ${enrolledCount} طالب مسجّل هنا فعلاً${supportsBoth?` (${monthlyCount} شهري، ${sessionCount} بالحصة)`:''}</div><div class="alert-sub">لو ألغيت طريقة دفع مستخدمة بالفعل، اشتراكات الطلاب اللي عليها مش هتتحدّث تلقائيًا — راجعهم من تاب المدفوعات بعد الحفظ</div></div></div>` : ''}`;
+      ${enrolledCount>0 ? `<div class="admin-alert-card warn static" style="margin-top:6px;"><span class="alert-ico">⚠️</span><div><div class="alert-title">في ${enrolledCount} طالب مسجّل هنا فعلاً${supportsBoth?` (${monthlyCount} شهري، ${sessionCount} بالحصة)`:''}</div><div class="alert-sub">لو ألغيت طريقة دفع مستخدمة بالفعل، اشتراكات الطلاب اللي عليها مش هتتحدّث تلقائيًا — راجعهم من تاب المدفوعات بعد الحفظ</div></div></div>` : ''}
+      <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">3</span>معاد المجموعة الأسبوعي</div>
+      ${!id ? `
+      <div style="font-size:12px; color:var(--muted); margin-bottom:6px;">اختار الأيام اللي المجموعة بتقابل فيها الأسبوع، ومن الساعة كام للساعة كام (اختياري — تقدر تعدّله بعدين من تاب "الجدول الأسبوعي")</div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+        ${CLASSROOM_WEEK_DAYS.map(d=>`<label style="display:flex; gap:4px; align-items:center; font-size:13px; background:var(--paper); border:1px solid var(--border); border-radius:8px; padding:4px 8px;">
+          <input type="checkbox" class="f-classroom-day-chk" value="${d}" ${CLASSROOM_DEFAULT_DAYS.includes(d)?'checked':''}> ${d}
+        </label>`).join('')}
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="time" id="f-classroom-start-time" style="flex:1;">
+        <span style="font-size:12px; color:var(--muted);">إلى</span>
+        <input type="time" id="f-classroom-end-time" style="flex:1;">
+      </div>
+      ` : (()=>{
+        const sched = db.scheduleSettingsByClassroom[id] || {};
+        const t1 = sched.periodTimes && sched.periodTimes[1];
+        const t1end = sched.periodEndTimes && sched.periodEndTimes[1];
+        const summary = (sched.days && sched.days.length)
+          ? `📅 الأيام: ${sched.days.join('، ')}${t1?` — من ${t1}${t1end?' إلى '+t1end:''}`:' (لسه مفيش وقت محدد)'}`
+          : 'لسه مفيش أيام أو معاد محدد لهذا المجموعة';
+        return `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span>${summary}</span>
+          <button type="button" class="badge" onclick="adminScheduleClassroomId='${id}'; closeModal('admin-modal-bg'); openAdminSection('schedule');">عدّل من تاب الجدول</button>
+        </div>`;
+      })()}`;
   }
   else if(type==='subjects'){
     const item = id ? db.subjects.find(s=>s.id===id) : {};
@@ -5907,7 +5955,18 @@ async function saveAdminModal(){
     if(adminModalMode==='add'){
       const newId = uid('c');
       db.classrooms.push({id:newId, name, grade, monthlyFee, paymentModes, sessionFee});
-      db.scheduleSettingsByClassroom[newId] = {days:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس'], periods:[1,2,3,4], periodTimes:{}};
+      const checkedDayValues = Array.from(document.querySelectorAll('.f-classroom-day-chk:checked')).map(x=>x.value);
+      const chosenDays = CLASSROOM_WEEK_DAYS.filter(d=> checkedDayValues.includes(d));
+      const startTimeEl = document.getElementById('f-classroom-start-time');
+      const endTimeEl = document.getElementById('f-classroom-end-time');
+      const startTime = startTimeEl ? startTimeEl.value : '';
+      const endTime = endTimeEl ? endTimeEl.value : '';
+      db.scheduleSettingsByClassroom[newId] = {
+        days: chosenDays.length ? chosenDays : CLASSROOM_DEFAULT_DAYS,
+        periods: [1],
+        periodTimes: startTime ? {1:startTime} : {},
+        periodEndTimes: endTime ? {1:endTime} : {}
+      };
     } else {
       const item = db.classrooms.find(r=>r.id===adminModalEditId);
       item.name = name; item.grade = grade; item.monthlyFee = monthlyFee; item.paymentModes = paymentModes; item.sessionFee = sessionFee;
