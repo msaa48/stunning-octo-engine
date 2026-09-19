@@ -195,6 +195,17 @@
   .link-pick-row.empty{color:var(--muted); cursor:default; text-align:center;}
   select:focus, input[type=text]:focus, textarea:focus{outline:2px solid var(--gold); outline-offset:1px; border-color:var(--gold);}
   textarea{resize:vertical; min-height:70px;}
+  /* ===== Custom select (بديل شكل select الأصلي بتاع المتصفح/الموبايل عشان يتماشى مع باقي التصميم) ===== */
+  .custom-select-wrap{position:relative;}
+  .custom-select-btn{display:flex; justify-content:space-between; align-items:center; width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); font-size:15px; font-family:inherit; background:var(--input-bg); color:var(--ink); cursor:pointer;}
+  .custom-select-btn .cs-arrow{font-size:11px; color:var(--muted); transition:transform .2s;}
+  .custom-select-btn.open .cs-arrow{transform:rotate(180deg);}
+  .custom-select-list{display:none; position:absolute; inset-inline:0; top:calc(100% + 4px); z-index:15; max-height:220px; overflow-y:auto; overscroll-behavior:contain; border:1px solid var(--border); border-radius:12px; background:var(--card); box-shadow:0 10px 24px var(--shadow-2);}
+  .custom-select-list.show{display:block;}
+  .custom-select-row{padding:11px 14px; font-size:14px; cursor:pointer; border-bottom:1px solid var(--border);}
+  .custom-select-row:last-child{border-bottom:none;}
+  .custom-select-row:active{background:var(--shadow-2);}
+  .custom-select-row.selected{background:var(--admin-1); color:#fff; font-weight:700;}
 
   .child-select-row{display:flex; align-items:center; gap:10px; margin-bottom:16px;}
   .child-avatar{width:44px; height:44px; border-radius:50%; background:var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0;}
@@ -1682,6 +1693,52 @@ function confirmActionAsync(message){
     modalBg.classList.add('show');
   });
 }
+// نظام قائمة اختيار مخصصة (بديل شكل select الأصلي بتاع المتصفح/الموبايل الغريب عن باقي تصميم التطبيق).
+// بيحتفظ بـ hidden input بنفس الـ id القديم عشان أي كود موجود بيقرا .value أو بيسمع onchange يفضل شغال من غير أي تعديل.
+// options: [{value, label}], onChange: اسم دالة (كـ string) تتنده بعد أي اختيار، زي onchange القديم.
+function renderCustomSelect(id, options, selectedValue, placeholder, onChangeFnName){
+  const safePlaceholder = placeholder || 'اختر...';
+  const selected = options.find(o=> String(o.value)===String(selectedValue||''));
+  return `
+    <div class="custom-select-wrap" id="${id}-wrap">
+      <input type="hidden" id="${id}" value="${selectedValue||''}" data-onchange="${onChangeFnName||''}">
+      <div class="custom-select-btn" onclick="toggleCustomSelect('${id}')">
+        <span>${selected ? selected.label : safePlaceholder}</span>
+        <span class="cs-arrow">▾</span>
+      </div>
+      <div class="custom-select-list" id="${id}-list">
+        ${options.map(o=> `<div class="custom-select-row ${String(o.value)===String(selectedValue||'')?'selected':''}" onclick="pickCustomSelectOption('${id}','${o.value}')">${o.label}</div>`).join('')}
+      </div>
+    </div>`;
+}
+function toggleCustomSelect(id){
+  const list = document.getElementById(id+'-list');
+  const btn = document.querySelector(`#${id}-wrap .custom-select-btn`);
+  const isOpen = list.classList.contains('show');
+  // نقفل أي custom select تاني مفتوح قبل ما نفتح ده
+  document.querySelectorAll('.custom-select-list.show').forEach(l=> l.classList.remove('show'));
+  document.querySelectorAll('.custom-select-btn.open').forEach(b=> b.classList.remove('open'));
+  if(!isOpen){ list.classList.add('show'); btn.classList.add('open'); }
+}
+function pickCustomSelectOption(id, value){
+  const input = document.getElementById(id);
+  const wrap = document.getElementById(id+'-wrap');
+  const btn = wrap.querySelector('.custom-select-btn span');
+  const row = wrap.querySelector(`.custom-select-row[onclick*="'${id}','${value}'"]`);
+  input.value = value;
+  wrap.querySelectorAll('.custom-select-row').forEach(r=> r.classList.remove('selected'));
+  if(row){ row.classList.add('selected'); btn.textContent = row.textContent; }
+  document.getElementById(id+'-list').classList.remove('show');
+  wrap.querySelector('.custom-select-btn').classList.remove('open');
+  const onChangeFn = input.dataset.onchange;
+  if(onChangeFn){ (new Function(onChangeFn))(); }
+}
+// قفل أي custom select مفتوح لو المستخدم ضغط برّه
+document.addEventListener('click', function(e){
+  if(e.target.closest('.custom-select-wrap')) return;
+  document.querySelectorAll('.custom-select-list.show').forEach(l=> l.classList.remove('show'));
+  document.querySelectorAll('.custom-select-btn.open').forEach(b=> b.classList.remove('open'));
+});
 const SUPABASE_URL = 'https://gqevqyduncfnyyfyxreh.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxZXZxeWR1bmNmbnl5Znl4cmVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODczMjIzOTgsImV4cCI6MjEwMjg5ODM5OH0.dJwydh3CNyyBnQG6M-Wm6WU37gXwFj2wlhC6p9MWDzY';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -5540,21 +5597,23 @@ function renderAdminModalFields(id){
     const currentTeacher = id ? db.teachers.find(t=> (t.classroomIds||[]).includes(id)) : null;
     el.innerHTML = `
       <div class="section-title" style="margin:4px 0;"><span class="form-step-badge">1</span>البيانات الأساسية</div>
-      <select id="f-grade" onchange="renderClassroomSubjectOptions();">
-        <option value="PREP1" ${selectedGrade==='PREP1'?'selected':''}>أولى إعدادي</option>
-        <option value="PREP2" ${selectedGrade==='PREP2'?'selected':''}>تانية إعدادي</option>
-        <option value="PREP3" ${(!selectedGrade||selectedGrade==='PREP3')?'selected':''}>تالتة إعدادي</option>
-        <option value="SEC1" ${selectedGrade==='SEC1'?'selected':''}>أولى ثانوي</option>
-        <option value="SEC2" ${selectedGrade==='SEC2'?'selected':''}>تانية ثانوي</option>
-        <option value="SEC3" ${selectedGrade==='SEC3'?'selected':''}>تالتة ثانوي</option>
-      </select>
+      ${renderCustomSelect('f-grade', [
+        {value:'PREP1', label:'أولى إعدادي'},
+        {value:'PREP2', label:'تانية إعدادي'},
+        {value:'PREP3', label:'تالتة إعدادي'},
+        {value:'SEC1', label:'أولى ثانوي'},
+        {value:'SEC2', label:'تانية ثانوي'},
+        {value:'SEC3', label:'تالتة ثانوي'}
+      ], selectedGrade||'PREP3', 'اختر المرحلة', 'renderClassroomSubjectOptions()')}
       ${presetGrade ? `<div style="font-size:12px; color:var(--muted);">💡 اتحددت تلقائي لأنك داخل صفحة "${GRADE_LABELS[presetGrade]}" — تقدر تغيّرها لو عايز</div>` : ''}
-      <select id="f-classroom-subject" data-current="${item.subjectId||''}"></select>
+      <div class="custom-select-wrap" id="f-classroom-subject-wrap">
+        <input type="hidden" id="f-classroom-subject" value="${item.subjectId||''}" data-current="${item.subjectId||''}">
+      </div>
       <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 المجموعة بتتعرف بالمادة والمرحلة، فمحتاجناش اسم منفصل نكتبه</div>
-      <select id="f-classroom-teacher">
-        <option value="">بدون مدرّس محدد</option>
-        ${db.teachers.map(t=> `<option value="${t.id}" ${currentTeacher&&currentTeacher.id===t.id?'selected':''}>${t.name}</option>`).join('')}
-      </select>
+      ${renderCustomSelect('f-classroom-teacher', [
+        {value:'', label:'بدون مدرّس محدد'},
+        ...db.teachers.map(t=>({value:t.id, label:t.name}))
+      ], currentTeacher?currentTeacher.id:'', 'بدون مدرّس محدد', '')}
       ${id ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">${enrollmentBreakdown || '👥 مفيش طلاب مسجلين في المجموعة دي لسه'}${enrolledCount>0?' — أي تعديل في طريقة الدفع أو السعر هيأثر عليهم':''}</div>` : ''}
       <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">2</span>طريقة الدفع المسموحة في المجموعة دي</div>
       <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
@@ -5722,16 +5781,18 @@ function updateGeneratedEmailPreview(){
 // بيملى قائمة المواد في فورم المجموعة حسب المرحلة المختارة (المادة إما لكل المراحل "ALL" أو لمرحلة واحدة بس)
 function renderClassroomSubjectOptions(){
   const db = loadDB();
-  const sel = document.getElementById('f-classroom-subject');
-  if(!sel) return;
-  const grade = document.getElementById('f-grade').value;
-  const currentId = sel.dataset.current || '';
+  const wrap = document.getElementById('f-classroom-subject-wrap');
+  if(!wrap) return;
+  const gradeInput = document.getElementById('f-grade');
+  const grade = gradeInput ? gradeInput.value : '';
+  const currentInput = document.getElementById('f-classroom-subject');
+  const currentId = (currentInput && currentInput.dataset.current) || (currentInput ? currentInput.value : '') || '';
   const matching = db.subjects.filter(s=> s.grade==='ALL' || s.grade===grade);
   if(!matching.length){
-    sel.innerHTML = `<option value="">مفيش مواد لسه — أضف واحدة من تاب "المواد"</option>`;
+    wrap.outerHTML = renderCustomSelect('f-classroom-subject', [], '', 'مفيش مواد لسه — أضف واحدة من تاب "المواد"', '');
     return;
   }
-  sel.innerHTML = `<option value="">اختر المادة</option>` + matching.map(s=> `<option value="${s.id}" ${s.id===currentId?'selected':''}>${s.name}</option>`).join('');
+  wrap.outerHTML = renderCustomSelect('f-classroom-subject', matching.map(s=>({value:s.id, label:s.name})), currentId, 'اختر المادة', '');
 }
 
 function renderChildClassroomChecks(){
