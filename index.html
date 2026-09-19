@@ -6022,6 +6022,11 @@ async function saveAdminModal(){
       const endEl = document.querySelector(`.f-classroom-day-end[data-day="${day}"]`);
       return {day, start: startEl ? startEl.value : '', end: endEl ? endEl.value : ''};
     });
+    if(meetingTimes.length===0){ showToast('لازم تحدد يوم واحد على الأقل تقابل فيه المجموعة'); return; }
+    const dayMissingTime = meetingTimes.find(m=> !m.start || !m.end);
+    if(dayMissingTime){ showToast(`لازم تحدد وقت البداية والنهاية ليوم "${dayMissingTime.day}"`); return; }
+    const dayInvalidRange = meetingTimes.find(m=> m.start >= m.end);
+    if(dayInvalidRange){ showToast(`وقت النهاية لازم يكون بعد وقت البداية ليوم "${dayInvalidRange.day}"`); return; }
     let classroomId;
     if(adminModalMode==='add'){
       classroomId = uid('c');
