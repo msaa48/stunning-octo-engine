@@ -4501,6 +4501,15 @@ function renderAdminListInner(){
     const byGrade = {};
     items.forEach(r=>{ const g = gradesOrder.includes(r.grade) ? r.grade : '__OTHER__'; (byGrade[g] = byGrade[g]||[]).push(r); });
     const orderedGrades = [...gradesOrder, '__OTHER__'].filter(g=> byGrade[g] && byGrade[g].length);
+    // استخراج اسم المادة من اسم المجموعة نفسه (لسه مفيش عمود subject_id في classrooms) —
+    // بنطابق أول اسم مادة من جدول subjects بيظهر جوه اسم المجموعة، ولو مفيش تطابق بنستخرج النص بين "مجموعة" و"—"
+    function subjectLabelFor(name){
+      const found = db.subjects.find(s=> name.includes(s.name));
+      if(found) return found.name;
+      const m = name.match(/^مجموعة\s+(.+?)\s*—/);
+      if(m) return m[1].trim();
+      return 'أخرى';
+    }
     const rowHtml = r=>{
       const teacherNames = db.teachers.filter(t=>t.classroomIds.includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
       const kidCount = db.children.filter(c=>(c.classroomIds||[]).includes(r.id)).length;
@@ -4518,6 +4527,18 @@ function renderAdminListInner(){
         </div>
       </div>`;
     };
+    // بناء HTML للمواد وجوّاها المجموعات، لمرحلة واحدة
+    const subjectsBlockHtml = list=>{
+      const bySubject = {};
+      list.forEach(r=>{ const sub = subjectLabelFor(r.name); (bySubject[sub]=bySubject[sub]||[]).push(r); });
+      const subjectNames = Object.keys(bySubject).sort((a,b)=> a==='أخرى'?1:(b==='أخرى'?-1:a.localeCompare(b,'ar')));
+      return subjectNames.map(sub=>`
+        <div style="margin:8px 0 4px; padding:0 4px; font-size:12px; font-weight:700; color:var(--muted); display:flex; align-items:center; gap:6px;">
+          <span>📚 ${sub}</span><span class="badge" style="font-size:10px;">${bySubject[sub].length}</span>
+        </div>
+        ${bySubject[sub].map(rowHtml).join('')}
+      `).join('');
+    };
     el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
       const list = byGrade[g];
       const label = g==='__OTHER__' ? 'أخرى' : (gradeLabel[g]||g);
@@ -4530,7 +4551,7 @@ function renderAdminListInner(){
           </div>
           <div style="color:var(--muted); font-size:16px;">${isOpen?'▾':'◂'}</div>
         </div>
-        ${isOpen ? `<div style="padding-inline-start:10px;">${list.map(rowHtml).join('')}</div>` : ''}
+        ${isOpen ? `<div style="padding-inline-start:10px;">${subjectsBlockHtml(list)}</div>` : ''}
       </div>`;
     }).join('') : '<div class="empty">لا يوجد نتائج</div>');
   }
