@@ -34,7 +34,7 @@
     color-scheme: dark;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  body{margin:0; font-family:'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; transition: background-color .4s cubic-bezier(.22,1,.36,1), color .4s cubic-bezier(.22,1,.36,1);}
+  body{margin:0; font-family:'Tajawal', 'Segoe UI', Tahoma, Arial, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; transition: background-color .4s cubic-bezier(.22,1,.36,1), color .4s cubic-bezier(.22,1,.36,1); overscroll-behavior-y:none;}
   h1,h2,h3,.title,.brand h1{font-family:'Cairo', 'Tajawal', sans-serif;}
 
   .theme-toggle{position:fixed; top:16px; right:16px; z-index:60; width:42px; height:42px; border-radius:50%; border:1px solid var(--border); background:var(--card); color:var(--ink); display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; box-shadow:0 4px 14px var(--shadow-2); transition: transform .3s cubic-bezier(.34,1.56,.64,1), background .3s ease, box-shadow .3s ease;}
@@ -187,7 +187,7 @@
   }
   .section-title{font-size:13px; color:var(--gold); font-weight:700; margin:20px 0 10px; text-transform:uppercase; letter-spacing:.06em; font-family:'Cairo',sans-serif;}
   select, input[type=text], input[type=number], textarea{width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); font-size:15px; font-family:inherit; background:var(--input-bg); color:var(--ink);}
-  .link-pick-list{max-height:180px; overflow-y:auto; border:1px solid var(--border); border-radius:12px; margin-top:-6px; background:var(--input-bg);}
+  .link-pick-list{max-height:180px; overflow-y:auto; overscroll-behavior:contain; border:1px solid var(--border); border-radius:12px; margin-top:-6px; background:var(--input-bg);}
   .link-pick-row{padding:10px 14px; font-size:14px; cursor:pointer; border-bottom:1px solid var(--border);}
   .link-pick-row:last-child{border-bottom:none;}
   .link-pick-row:active{background:var(--shadow-2);}
@@ -286,7 +286,7 @@
 
   .modal-bg{position:fixed; inset:0; background:var(--modal-scrim); display:none; align-items:flex-end; z-index:40;}
   .modal-bg.show{display:flex;}
-  .modal{background:var(--card); width:100%; max-width:480px; margin:0 auto; border-radius:22px 22px 0 0; padding:22px; max-height:80vh; overflow-y:auto;}
+  .modal{background:var(--card); width:100%; max-width:480px; margin:0 auto; border-radius:22px 22px 0 0; padding:22px; max-height:80vh; overflow-y:auto; overscroll-behavior:contain;}
   .modal h3{margin-top:0; font-family:'Cairo',sans-serif;}
 
   /* ===== Schedule ===== */
@@ -372,7 +372,7 @@
   .modal-bg.drawer-side{ align-items:stretch; justify-content:flex-start; }
   .modal-bg.drawer-side .modal{
     width:280px; max-width:82vw; height:100%; max-height:100%; margin:0; border-radius:0;
-    padding:0; overflow-y:auto; transform: translateX(100%); box-shadow:-8px 0 30px var(--shadow-2);
+    padding:0; overflow-y:auto; overscroll-behavior:contain; transform: translateX(100%); box-shadow:-8px 0 30px var(--shadow-2);
   }
   .modal-bg.drawer-side.show .modal{ transform: translateX(0); }
   .drawer-header{ position:sticky; top:0; background:var(--card); z-index:1; display:flex; justify-content:space-between; align-items:center; padding:18px 18px 12px; border-bottom:1px solid var(--border); }
@@ -394,7 +394,7 @@
   #admin-global-search-box .search-ico{ color:#fff; opacity:.85; }
   #admin-global-search-box input{ background:transparent; border:none; outline:none; color:#fff; font-family:inherit; font-size:13px; width:100%; }
   #admin-global-search-box input::placeholder{ color:rgba(255,255,255,.75); }
-  #admin-global-search-results{ position:absolute; top:100%; inset-inline:0; z-index:30; background:var(--card); border-bottom:1px solid var(--border); box-shadow:0 10px 24px var(--shadow-2); max-height:70vh; overflow-y:auto; padding:8px 14px; }
+  #admin-global-search-results{ position:absolute; top:100%; inset-inline:0; z-index:30; background:var(--card); border-bottom:1px solid var(--border); box-shadow:0 10px 24px var(--shadow-2); max-height:70vh; overflow-y:auto; overscroll-behavior:contain; padding:8px 14px; }
 
   /* Toast: gentle rise with slight bounce settle */
   .toast{ animation: toastIn .45s var(--ease-spring); }
@@ -956,7 +956,7 @@
       <h3>🎭 دخول بأي حساب — <span id="sa-quickjump-center-name"></span></h3>
       <input type="text" id="sa-quickjump-search" placeholder="دوّر بالاسم..." oninput="renderQuickJumpList()" style="margin-bottom:10px;">
       <div id="sa-quickjump-tabs" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;"></div>
-      <div id="sa-quickjump-list" style="max-height:50vh; overflow-y:auto;"></div>
+      <div id="sa-quickjump-list" style="max-height:50vh; overflow-y:auto; overscroll-behavior:contain;"></div>
       <button class="btn block" style="margin-top:12px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('sa-quickjump-modal-bg')">إغلاق</button>
     </div>
   </div>
@@ -1025,7 +1025,7 @@
 <div class="modal-bg" id="subject-tasks-modal-bg">
   <div class="modal">
     <h3 id="subject-tasks-modal-title">مهام المادة</h3>
-    <div id="subject-tasks-list" style="display:flex; flex-direction:column; gap:0; margin-bottom:10px; max-height:260px; overflow-y:auto;"></div>
+    <div id="subject-tasks-list" style="display:flex; flex-direction:column; gap:0; margin-bottom:10px; max-height:260px; overflow-y:auto; overscroll-behavior:contain;"></div>
     <div style="display:flex; gap:8px;">
       <input type="text" id="subject-task-new-name" placeholder="اسم مهمة جديدة (مثلاً: تسليم الواجب)" style="flex:1;">
       <button class="btn admin" onclick="addSubjectTask()">+ إضافة</button>
@@ -1141,7 +1141,7 @@
       <h3 style="margin:0; font-size:16px;">🔔 الإشعارات</h3>
       <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeModal('notif-modal-bg')">✕</button>
     </div>
-    <div id="notif-list" style="max-height:60vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+    <div id="notif-list" style="max-height:60vh; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:8px;"></div>
   </div>
 </div>
 
