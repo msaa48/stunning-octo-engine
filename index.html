@@ -4170,7 +4170,7 @@ function openAdminSection(tab){
   adminActiveTab = tab;
   adminSearchQuery = '';
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
-  if(tab==='classrooms') expandedGradeSections = new Set();
+  if(tab==='classrooms'){ expandedGradeSections = new Set(); expandedSubjectSections = new Set(); }
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
   document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions') ? 'none' : 'block';
   const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
@@ -4237,6 +4237,13 @@ let expandedGradeSections = new Set();
 function toggleGradeSection(grade){
   if(expandedGradeSections.has(grade)) expandedGradeSections.delete(grade);
   else expandedGradeSections.add(grade);
+  renderAdminList();
+}
+// أقسام المواد المفتوحة جوّه كل مرحلة (مفتاح = "المرحلة|اسم المادة") — بتتصفّر برضو لما تدخل التاب من جديد
+let expandedSubjectSections = new Set();
+function toggleSubjectSection(key){
+  if(expandedSubjectSections.has(key)) expandedSubjectSections.delete(key);
+  else expandedSubjectSections.add(key);
   renderAdminList();
 }
 
@@ -4527,17 +4534,26 @@ function renderAdminListInner(){
         </div>
       </div>`;
     };
-    // بناء HTML للمواد وجوّاها المجموعات، لمرحلة واحدة
-    const subjectsBlockHtml = list=>{
+    // بناء HTML للمواد وجوّاها المجموعات، لمرحلة واحدة — كل مادة قابلة للطي لوحدها
+    const subjectsBlockHtml = (list, gradeKey)=>{
       const bySubject = {};
       list.forEach(r=>{ const sub = subjectLabelFor(r.name); (bySubject[sub]=bySubject[sub]||[]).push(r); });
       const subjectNames = Object.keys(bySubject).sort((a,b)=> a==='أخرى'?1:(b==='أخرى'?-1:a.localeCompare(b,'ar')));
-      return subjectNames.map(sub=>`
-        <div style="margin:8px 0 4px; padding:0 4px; font-size:12px; font-weight:700; color:var(--muted); display:flex; align-items:center; gap:6px;">
-          <span>📚 ${sub}</span><span class="badge" style="font-size:10px;">${bySubject[sub].length}</span>
+      return subjectNames.map(sub=>{
+        const subKey = gradeKey+'|'+sub;
+        const subOpen = isSearching || expandedSubjectSections.has(subKey);
+        return `
+        <div class="list-row" style="cursor:pointer; padding:8px 4px; background:transparent;" onclick="toggleSubjectSection('${subKey.replace(/'/g,"\\'")}')">
+          <div class="list-row-main">
+            <div style="font-size:12px; font-weight:700; color:var(--muted); display:flex; align-items:center; gap:6px;">
+              <span>📚 ${sub}</span><span class="badge" style="font-size:10px;">${bySubject[sub].length}</span>
+            </div>
+          </div>
+          <div style="color:var(--muted); font-size:14px;">${subOpen?'▾':'◂'}</div>
         </div>
-        ${bySubject[sub].map(rowHtml).join('')}
-      `).join('');
+        ${subOpen ? bySubject[sub].map(rowHtml).join('') : ''}
+      `;
+      }).join('');
     };
     el.innerHTML = searchBoxHtml('دور على اسم مجموعة...') + (orderedGrades.length ? orderedGrades.map(g=>{
       const list = byGrade[g];
@@ -4551,7 +4567,7 @@ function renderAdminListInner(){
           </div>
           <div style="color:var(--muted); font-size:16px;">${isOpen?'▾':'◂'}</div>
         </div>
-        ${isOpen ? `<div style="padding-inline-start:10px;">${subjectsBlockHtml(list)}</div>` : ''}
+        ${isOpen ? `<div style="padding-inline-start:10px;">${subjectsBlockHtml(list, g)}</div>` : ''}
       </div>`;
     }).join('') : '<div class="empty">لا يوجد نتائج</div>');
   }
