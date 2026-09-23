@@ -1313,7 +1313,7 @@ function rowsToDB(rows){
   db.complaints = rows.complaints.map(r=>({...r.payload, id:r.id}));
   db.payments = rows.payments.map(r=>({...r.payload, id:r.id}));
   db.enrollments = (rows.enrollments||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode}));
-  db.subscriptions = (rows.subscriptions||[]).map(r=>({id:r.id, enrollmentId:r.enrollment_id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode, periodStart:r.period_start, periodEnd:r.period_end, amount:Number(r.amount), status:r.status}));
+  db.subscriptions = (rows.subscriptions||[]).map(r=>({id:r.id, enrollmentId:r.enrollment_id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode, periodStart:r.period_start, periodEnd:r.period_end, amount:Number(r.amount), status:r.status, paymentMethod:r.payment_method||'cash', sessionsCount:r.sessions_count||null, paymentLink:r.payment_link||null}));
   // attendance/attendance_exceptions للقراءة والعرض بس — الكتابة بتتم مباشرة على Supabase (مش عن طريق pushDBToSupabase) عشان الـtrigger يشتغل صح لحظيًا
   db.attendance = (rows.attendance||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, sessionDate:r.session_date, teacherId:r.teacher_id, exceptionId:r.exception_id}));
   db.attendanceExceptions = (rows.attendanceExceptions||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, requestedBy:r.requested_by, grantedByRole:r.granted_by_role, grantedBy:r.granted_by, status:r.status, reason:r.reason, flaggedUnjustified:r.flagged_unjustified, flaggedNote:r.flagged_note, consumed:r.consumed, createdAt:r.created_at}));
@@ -1575,7 +1575,7 @@ async function pushDBToSupabase(db){
     const results = await Promise.all([
       supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, meeting_times:c.meetingTimes||[], subject_id:c.subjectId||null, center_id:centerId}))),
       supabaseClient.from('enrollments').upsert((db.enrollments||[]).map(e=>({id:e.id, child_id:e.childId, classroom_id:e.classroomId, payment_mode:e.paymentMode, center_id:centerId}))),
-      supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, center_id:centerId}))),
+      supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, payment_method:s.paymentMethod||'cash', sessions_count:s.sessionsCount||null, payment_link:s.paymentLink||null, center_id:centerId}))),
       supabaseClient.from('subjects').upsert(db.subjects.map(s=>({id:s.id, name:s.name, color:s.color, grade:s.grade, center_id:centerId}))),
       // ملحوظة: email و claimed_by مقصودين خارج الـ upsert ده عشان منمسحش ربط الحساب الحقيقي بتاع المدرّس/ولي الأمر
       // ملحوظة أمان: بيانات المدرّسين (فيها راتب/نسبة) بتتبعت بس لو اللي بيحفظ هو الأدمن — مفيش داعي إن مدرّس أو حد تاني يبعت الجدول ده أصلًا حتى لو الحماية على الداتابيز بترفض أي تعديل فعلي
@@ -4470,41 +4470,64 @@ function renderAdminListInner(){
       const roomsWithMode = rooms.map(r=>{
         const enrollment = (db.enrollments||[]).find(e=> e.childId===c.id && e.classroomId===r.id);
         const mode = enrollment ? enrollment.paymentMode : ((r.paymentModes&&r.paymentModes[0]) || 'monthly');
-        return {room:r, mode};
+        const sub = getLatestSubscription(db, c.id, r.id);
+        return {room:r, mode, sub};
       });
       const monthlyRooms = roomsWithMode.filter(x=>x.mode==='monthly');
       const sessionRooms = roomsWithMode.filter(x=>x.mode==='session');
       const monthlyTotal = monthlyRooms.reduce((s,x)=> s + (parseFloat(x.room.monthlyFee)||0), 0);
-      const roomsLabel = rooms.length
-        ? roomsWithMode.map(x=> `${x.room.name} (${x.mode==='session'?'بالحصة':'شهري'})`).join('، ')
-        : 'بدون مجموعات';
+      const pendingInvoices = roomsWithMode.filter(x=> x.sub && x.sub.status==='pending');
       const linkedParents = db.parents.filter(p=> p.childIds.includes(c.id));
       const parentsLabel = linkedParents.length
         ? linkedParents.map(p=> p.id===c.primaryParentId ? `⭐${p.name}` : p.name).join('، ')
         : 'بدون ولي أمر مرتبط';
       const isExpanded = expandedChildIds.has(c.id);
       const problem = isProblem(c);
-      return `<div class="list-row" style="flex-direction:column; align-items:stretch; padding:8px 14px; ${problem?'border-color:var(--danger);':''}">
+      const paymentRowHtml = x => {
+        const label = x.mode==='session' ? `${x.room.name} — ${x.room.sessionFee||0} ج/حصة${x.sub?.sessionsCount?` × ${x.sub.sessionsCount} حصة`:''}` : `${x.room.name} — ${x.room.monthlyFee||0} ج/شهر`;
+        const methodBadge = x.sub
+          ? (x.sub.paymentMethod==='online'
+              ? (x.sub.status==='pending'
+                  ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 في انتظار الدفع</span>`
+                  : `<span class="badge" style="background:#3b82f6; color:#fff; font-size:10px; padding:2px 7px;">🔗 مدفوع أونلاين</span>`)
+              : `<span class="badge" style="background:#22c55e; color:#0a1a0f; font-size:10px; padding:2px 7px;">💵 نقدي</span>`)
+          : `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:2px 7px;">⚠️ بدون اشتراك</span>`;
+        return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:5px 0; border-bottom:1px dashed var(--border);">
+          <div style="font-size:12.5px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${label}</span>${methodBadge}</div>
+          <div style="display:flex; gap:5px; flex-wrap:wrap;">
+            ${x.sub && x.sub.status==='pending' ? `<button class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:3px 7px;" onclick="event.stopPropagation(); copySubscriptionPaymentLink('${x.sub.paymentLink}')">📋 نسخ رابط الدفع</button>
+            <button class="badge" style="background:#22c55e; color:#0a1a0f; font-size:10px; padding:3px 7px;" onclick="event.stopPropagation(); confirmOnlineSubscriptionPaid('${x.sub.id}')">✅ تأكيد استلام الدفع</button>` : ''}
+            <button class="badge" style="font-size:10px; padding:3px 7px;" onclick="event.stopPropagation(); openRegisterSubscriptionModal('${c.id}','${x.room.id}')">💰 تسجيل دفعة</button>
+          </div>
+        </div>`;
+      };
+      return `<div class="list-row" style="flex-direction:column; align-items:stretch; padding:10px 14px; border-radius:14px; ${problem?'border-color:var(--danger);':''} ${pendingInvoices.length?'border-color:#f59e0b;':''}">
         <div class="list-row-main" style="cursor:pointer; align-items:center; gap:10px; flex:0 0 auto;" onclick="toggleChildExpand('${c.id}')">
-          <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:32px; height:32px; font-size:14px;">🧑‍🎓</div>
+          <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:36px; height:36px; font-size:16px; box-shadow:0 2px 8px rgba(0,0,0,.25);">🧑‍🎓</div>
           <div class="list-info">
-            <div class="list-name">${c.name} ${problem?'<span style="color:var(--danger); font-size:12px; font-weight:700;">⚠️</span>':''}</div>
+            <div class="list-name" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span>${c.name}</span>
+              ${problem?'<span style="color:var(--danger); font-size:12px; font-weight:700;">⚠️</span>':''}
+              ${pendingInvoices.length?`<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 ${pendingInvoices.length} فاتورة معلّقة</span>`:''}
+            </div>
           </div>
           ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff; flex-shrink:0;" onclick="event.stopPropagation(); quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
           <span style="font-size:16px; transform:rotate(${isExpanded?90:0}deg); transition:transform .15s;">◀</span>
         </div>
         ${isExpanded ? `
-        <div class="list-info" style="margin-top:10px; display:flex; flex-direction:column; gap:7px;">
+        <div class="list-info" style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
           <div class="list-sub" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
             <span>🎓 ${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'}</span>
             ${c.dob ? `<span style="opacity:.6;">·</span><span>🎂 ${c.dob}</span>` : ''}
             ${(()=>{ const s=getGradeAgeStatus(c.dob,c.grade); if(!s) return ''; if(s.status==='over_repeat') return '<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:2px 8px; font-size:11px;">🔁 يبدو معيد (سنة)</span>'; if(s.status==='over_reject'||s.status==='under_reject') return '<span class="badge" style="background:var(--danger); color:#fff; padding:2px 8px; font-size:11px;">⛔ عمر غير منطقي للمرحلة</span>'; return ''; })()}
           </div>
-          <div class="list-sub">📚 ${roomsLabel}</div>
-          <div style="border-top:1px solid var(--border); margin:2px 0;"></div>
-          ${monthlyRooms.length ? `<div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 الاشتراك الشهري الثابت: ${monthlyTotal} جنيه/شهر</div>` : ''}
-          ${sessionRooms.length ? `<div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 ${monthlyRooms.length?'+ ':''}بالحصة: ${sessionRooms.map(x=> `${x.room.name} (${x.room.sessionFee||0} ج/حصة)`).join('، ')}</div>` : ''}
-          ${(!monthlyRooms.length && !sessionRooms.length) ? `<div class="list-sub" style="color:#4ade80; font-weight:700; font-size:15px;">💰 إجمالي الاشتراك: 0 جنيه/شهر</div>` : ''}
+          <div style="background:var(--paper); border-radius:10px; padding:8px 10px;">
+            <div style="font-weight:700; font-size:13px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+              <span>💰 الاشتراكات وطرق الدفع</span>
+              ${monthlyTotal ? `<span style="color:#4ade80; font-size:12px; font-weight:700; margin-inline-start:auto;">إجمالي الشهري: ${monthlyTotal} ج/شهر</span>` : ''}
+            </div>
+            ${roomsWithMode.length ? roomsWithMode.map(paymentRowHtml).join('') : '<div class="list-sub">بدون مجموعات</div>'}
+          </div>
           <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">👤 ${parentsLabel}</div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap; margin-top:10px;">
@@ -5307,17 +5330,41 @@ function openRegisterSubscriptionModal(childId, classroomId){
   subscriptionModalContext = {childId, classroomId};
   const today = getSystemNow().toISOString().slice(0,10);
   const isSession = enrollment.paymentMode==='session';
-  const defaultAmount = isSession ? (room.sessionFee||0) : (room.monthlyFee||0);
+  const perSession = room.sessionFee||0;
+  const defaultAmount = isSession ? perSession : (room.monthlyFee||0);
   const el = document.getElementById('admin-modal-fields');
   document.getElementById('admin-modal-title').textContent = `تسجيل دفعة — ${child.name} (${room.name})`;
   el.innerHTML = `
-    <div style="font-size:13px; color:var(--muted);">طريقة الدفع لهذا الطالب في المجموعة دي: <b>${isSession?'بالحصة':'شهري'}</b></div>
-    <input type="text" id="f-sub-start" placeholder="تاريخ بداية ${isSession?'الحصة':'الاشتراك'} (YYYY-MM-DD)" value="${today}">
-    ${isSession ? '' : `<div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 هيغطي شهر كامل من التاريخ ده</div>`}
+    <div style="font-size:13px; color:var(--muted);">طريقة اشتراك هذا الطالب في المجموعة دي: <b>${isSession?'بالحصة':'شهري'}</b></div>
+    <div style="display:flex; gap:8px;">
+      <label style="flex:1; display:flex; align-items:center; gap:6px; border:1.5px solid var(--border); border-radius:10px; padding:8px; cursor:pointer;">
+        <input type="radio" name="f-sub-method" value="cash" checked onchange="onSubscriptionMethodChange()"> 💵 نقدي وقت الحصة
+      </label>
+      <label style="flex:1; display:flex; align-items:center; gap:6px; border:1.5px solid var(--border); border-radius:10px; padding:8px; cursor:pointer;">
+        <input type="radio" name="f-sub-method" value="online" onchange="onSubscriptionMethodChange()"> 🔗 رابط دفع أونلاين
+      </label>
+    </div>
+    <input type="text" id="f-sub-start" placeholder="تاريخ بداية ${isSession?'أول حصة مدفوعة':'الاشتراك'} (YYYY-MM-DD)" value="${today}">
+    ${isSession ? `
+      <input type="number" min="1" id="f-sub-sessions-count" placeholder="عدد الحصص المدفوعة مقدمًا" value="1" oninput="onSubscriptionSessionsCountChange(${perSession})">
+      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 يقفل تغطية زمنية كافية (30 يوم لكل حصة) عشان الطالب يقدر يحضر لحد ما الحصص المدفوعة تخلص</div>
+    ` : `<div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 هيغطي شهر كامل من التاريخ ده</div>`}
     <input type="text" id="f-sub-amount" placeholder="المبلغ بالجنيه" value="${defaultAmount}">
+    <div id="f-sub-online-note" style="display:none; font-size:12px; color:var(--muted);">هيتسجل الاشتراك كـ"في انتظار الدفع" ويتولّد رابط دفع تقدر تشاركه مع ولي الأمر. لما الدفع يتأكد، هتضغط "تأكيد استلام الدفع" من كارت الطالب.</div>
   `;
   adminModalMode = 'subscription-add'; adminModalEditId = null;
   document.getElementById('admin-modal-bg').classList.add('show');
+}
+function onSubscriptionMethodChange(){
+  const online = document.querySelector('input[name="f-sub-method"]:checked')?.value === 'online';
+  const note = document.getElementById('f-sub-online-note');
+  if(note) note.style.display = online ? 'block' : 'none';
+}
+function onSubscriptionSessionsCountChange(perSession){
+  const countEl = document.getElementById('f-sub-sessions-count');
+  const amountEl = document.getElementById('f-sub-amount');
+  const count = parseInt(countEl.value)||1;
+  amountEl.value = (perSession * count).toString();
 }
 async function saveNewSubscription(){
   const db = loadDB();
@@ -5327,37 +5374,65 @@ async function saveNewSubscription(){
   if(!enrollment){ showToast('الطالب مش مسجّل في المجموعة دي'); return; }
   const startRaw = document.getElementById('f-sub-start').value.trim();
   const amountRaw = document.getElementById('f-sub-amount').value.trim();
+  const method = document.querySelector('input[name="f-sub-method"]:checked')?.value || 'cash';
   if(!/^\d{4}-\d{2}-\d{2}$/.test(startRaw)){ showToast('صيغة التاريخ لازم تكون YYYY-MM-DD'); return; }
   if(!/^\d+(\.\d+)?$/.test(amountRaw) || parseFloat(amountRaw)<=0){ showToast('المبلغ لازم يكون رقم أكبر من صفر'); return; }
   const isSession = enrollment.paymentMode==='session';
+  let sessionsCount = null;
   let periodEnd;
   if(isSession){
-    periodEnd = startRaw; // الدفعة بالحصة بتغطي يوم الحصة نفسه بس
+    sessionsCount = parseInt(document.getElementById('f-sub-sessions-count')?.value)||1;
+    if(sessionsCount<1){ showToast('عدد الحصص لازم يكون 1 على الأقل'); return; }
+    const d = new Date(startRaw+'T00:00:00');
+    d.setDate(d.getDate() + sessionsCount*30); // تغطية زمنية آمنة بدل عداد حصص فعلي — راجع ملاحظة الحقل
+    periodEnd = d.toISOString().slice(0,10);
   } else {
     const d = new Date(startRaw+'T00:00:00');
     d.setMonth(d.getMonth()+1);
     periodEnd = d.toISOString().slice(0,10);
   }
+  const status = method==='online' ? 'pending' : 'active';
+  const paymentLink = method==='online' ? `https://pay.masar-centers.app/i/${crypto.randomUUID().slice(0,8)}` : null;
   // إدخال مباشر (insert) بدل الحفظ العام (saveDB/pushDBToSupabase) — عشان بلوك upsert
   // الشامل لكل الاشتراكات القديمة مايتصدمش مع صلاحيات الأسيستنت (INSERT بس، من غير UPDATE)
   const { data, error } = await supabaseClient.from('subscriptions').insert({
     enrollment_id: enrollment.id, child_id: childId, classroom_id: classroomId,
     payment_mode: enrollment.paymentMode, period_start: startRaw, period_end: periodEnd,
-    amount: parseFloat(amountRaw), status: 'active', center_id: session.centerId
+    amount: parseFloat(amountRaw), status, payment_method: method, sessions_count: sessionsCount,
+    payment_link: paymentLink, center_id: session.centerId
   }).select().single();
   if(error){ showToast('تعذّر تسجيل الدفعة: ' + (error.message||'حصل خطأ غير متوقع')); return; }
   db.subscriptions = db.subscriptions || [];
   db.subscriptions.push({
     id: data.id, enrollmentId: enrollment.id, childId, classroomId,
     paymentMode: enrollment.paymentMode, periodStart: startRaw, periodEnd,
-    amount: parseFloat(amountRaw), status: 'active'
+    amount: parseFloat(amountRaw), status, paymentMethod: method, sessionsCount, paymentLink
   });
   dbCache = db;
   try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   closeModal('admin-modal-bg');
   subscriptionModalContext = null;
-  showToast('تم تسجيل الدفعة ✓ — الطالب يقدر يحضر لحد ' + periodEnd);
+  if(method==='online'){
+    showToast('تم إصدار الفاتورة 🔗 — انسخ رابط الدفع من كارت الطالب وشاركه مع ولي الأمر');
+  } else {
+    showToast('تم تسجيل الدفعة ✓ — الطالب يقدر يحضر لحد ' + periodEnd);
+  }
   renderAdminList();
+}
+async function confirmOnlineSubscriptionPaid(subId){
+  const db = loadDB();
+  const sub = (db.subscriptions||[]).find(s=>s.id===subId);
+  if(!sub) return;
+  const { error } = await supabaseClient.from('subscriptions').update({ status:'active' }).eq('id', subId);
+  if(error){ showToast('تعذّر تأكيد الدفع: ' + (error.message||'حصل خطأ غير متوقع')); return; }
+  sub.status = 'active';
+  dbCache = db;
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
+  showToast('تم تأكيد استلام الدفع ✓');
+  renderAdminList();
+}
+function copySubscriptionPaymentLink(link){
+  navigator.clipboard?.writeText(link).then(()=> showToast('تم نسخ رابط الدفع 📋')).catch(()=> showToast(link));
 }
 
 async function flagExceptionUnjustified(exceptionId){
