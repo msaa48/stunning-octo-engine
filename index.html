@@ -986,6 +986,18 @@
   </div>
 </div>
 
+<!-- ============ ADMIN STUDENT DETAIL SCREEN (صفحة منفصلة لكل طالب) ============ -->
+<div id="admin-student-detail-screen" class="screen">
+  <div class="topbar admin">
+    <button class="back-link" style="color:#fff; font-size:20px; padding:0 6px;" onclick="showScreen('admin-section-screen')">→</button>
+    <div class="title" id="admin-student-detail-title">الطالب</div>
+    <button class="logout" onclick="exitOrStepBack()">خروج</button>
+  </div>
+  <div class="container">
+    <div id="admin-student-detail-panel"></div>
+  </div>
+</div>
+
 <!-- Admin Add/Edit Modal -->
 <div class="modal-bg" id="admin-modal-bg">
 
@@ -4318,6 +4330,9 @@ function renderAdminList(){
     const input = document.getElementById('admin-search-input');
     if(input){ input.focus(); input.setSelectionRange(caretPos, caretPos); }
   }
+  if(currentStudentDetailId && document.getElementById('admin-student-detail-screen')?.classList.contains('active')){
+    renderStudentDetailScreen();
+  }
 }
 
 // أقسام المراحل العمرية المفتوحة في شاشة "المجموعات" — بتتصفّر لما تدخل التاب من جديد (openAdminSection)
@@ -4366,12 +4381,6 @@ function updateClassroomsAddButtonLabel(){
   btn.textContent = classroomsGradeView ? `+ إضافة مجموعة لـ ${GRADE_LABELS[classroomsGradeView] || 'المرحلة دي'}` : '+ إضافة مجموعة';
 }
 
-let expandedChildIds = new Set();
-function toggleChildExpand(id){
-  if(expandedChildIds.has(id)) expandedChildIds.delete(id);
-  else expandedChildIds.add(id);
-  renderAdminList();
-}
 
 // ============ تقويم السنتر: عرض شبكة شهرية بدل قايمة نصية ============
 let calendarViewDate = new Date();
@@ -4450,6 +4459,91 @@ function renderCalendarGrid(db, el){
   `;
 }
 
+function getChildPaymentInfo(db, c){
+  const rooms = (c.classroomIds||[]).map(cid=> db.classrooms.find(r=>r.id===cid)).filter(Boolean);
+  // كل تسجيل (طالب+مجموعة) له طريقة دفع مستقلة (شهري/بالحصة) — لازم نجيبها من enrollments مش نفترض إنها كلها شهري
+  const roomsWithMode = rooms.map(r=>{
+    const enrollment = (db.enrollments||[]).find(e=> e.childId===c.id && e.classroomId===r.id);
+    const mode = enrollment ? enrollment.paymentMode : ((r.paymentModes&&r.paymentModes[0]) || 'monthly');
+    const sub = getLatestSubscription(db, c.id, r.id);
+    return {room:r, mode, sub};
+  });
+  const monthlyRooms = roomsWithMode.filter(x=>x.mode==='monthly');
+  const monthlyTotal = monthlyRooms.reduce((s,x)=> s + (parseFloat(x.room.monthlyFee)||0), 0);
+  const pendingInvoices = roomsWithMode.filter(x=> x.sub && x.sub.status==='pending');
+  return {roomsWithMode, monthlyTotal, pendingInvoices};
+}
+function childPaymentRowHtml(c, x){
+  const label = x.mode==='session' ? `${x.room.name} — ${x.room.sessionFee||0} ج/حصة${x.sub?.sessionsCount?` × ${x.sub.sessionsCount} حصة`:''}` : `${x.room.name} — ${x.room.monthlyFee||0} ج/شهر`;
+  const methodBadge = x.sub
+    ? (x.sub.paymentMethod==='online'
+        ? (x.sub.status==='pending'
+            ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 في انتظار الدفع</span>`
+            : `<span class="badge" style="background:#3b82f6; color:#fff; font-size:10px; padding:2px 7px;">🔗 مدفوع أونلاين</span>`)
+        : `<span class="badge" style="background:#22c55e; color:#0a1a0f; font-size:10px; padding:2px 7px;">💵 نقدي</span>`)
+    : `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:2px 7px;">⚠️ بدون اشتراك</span>`;
+  return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:7px 0; border-bottom:1px dashed var(--border);">
+    <div style="font-size:13px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${label}</span>${methodBadge}</div>
+    <div style="display:flex; gap:5px; flex-wrap:wrap;">
+      ${x.sub && x.sub.status==='pending' ? `<button class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:11px; padding:4px 8px;" onclick="event.stopPropagation(); copySubscriptionPaymentLink('${x.sub.paymentLink}')">📋 نسخ رابط الدفع</button>
+      <button class="badge" style="background:#22c55e; color:#0a1a0f; font-size:11px; padding:4px 8px;" onclick="event.stopPropagation(); confirmOnlineSubscriptionPaid('${x.sub.id}')">✅ تأكيد استلام الدفع</button>` : ''}
+      <button class="badge" style="font-size:11px; padding:4px 8px;" onclick="event.stopPropagation(); openRegisterSubscriptionModal('${c.id}','${x.room.id}')">💰 تسجيل دفعة</button>
+    </div>
+  </div>`;
+}
+let currentStudentDetailId = null;
+function openStudentDetail(childId){
+  currentStudentDetailId = childId;
+  renderStudentDetailScreen();
+  showScreen('admin-student-detail-screen');
+}
+function renderStudentDetailScreen(){
+  const db = loadDB();
+  const c = db.children.find(x=>x.id===currentStudentDetailId);
+  const titleEl = document.getElementById('admin-student-detail-title');
+  const panel = document.getElementById('admin-student-detail-panel');
+  if(!c){ if(titleEl) titleEl.textContent='الطالب'; if(panel) panel.innerHTML = '<div class="empty">الطالب ده اتحذف</div>'; return; }
+  const orphanIds = new Set(getChildrenWithoutGuardian(db).map(x=>x.id));
+  const hasAgeIssue = getGradeAgeStatus(c.dob,c.grade);
+  const {roomsWithMode, monthlyTotal, pendingInvoices} = getChildPaymentInfo(db, c);
+  const linkedParents = db.parents.filter(p=> p.childIds.includes(c.id));
+  const parentsLabel = linkedParents.length
+    ? linkedParents.map(p=> p.id===c.primaryParentId ? `⭐${p.name}` : p.name).join('، ')
+    : 'بدون ولي أمر مرتبط';
+  if(titleEl) titleEl.textContent = c.name;
+  panel.innerHTML = `
+    <div class="list-row" style="flex-direction:column; align-items:stretch; padding:14px; border-radius:14px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:52px; height:52px; font-size:24px; box-shadow:0 2px 8px rgba(0,0,0,.25);">🧑‍🎓</div>
+        <div style="flex:1;">
+          <div class="list-name" style="font-size:17px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span>${c.name}</span>
+            ${orphanIds.has(c.id)?'<span style="color:var(--danger); font-size:13px; font-weight:700;">⚠️</span>':''}
+            ${pendingInvoices.length?`<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 ${pendingInvoices.length} فاتورة معلّقة</span>`:''}
+          </div>
+          <div class="list-sub" style="margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span>🎓 ${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'}</span>
+            ${c.dob ? `<span style="opacity:.6;">·</span><span>🎂 ${c.dob}</span>` : ''}
+          </div>
+        </div>
+      </div>
+      ${hasAgeIssue && (hasAgeIssue.status==='over_repeat'||hasAgeIssue.status==='over_reject'||hasAgeIssue.status==='under_reject') ? `<div style="margin-top:8px;">${hasAgeIssue.status==='over_repeat' ? '<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:2px 8px; font-size:11px;">🔁 يبدو معيد (سنة)</span>' : '<span class="badge" style="background:var(--danger); color:#fff; padding:2px 8px; font-size:11px;">⛔ عمر غير منطقي للمرحلة</span>'}</div>` : ''}
+      ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff; margin-top:10px; align-self:flex-start;" onclick="quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
+      <div style="background:var(--paper); border-radius:10px; padding:10px 12px; margin-top:14px;">
+        <div style="font-weight:700; font-size:14px; margin-bottom:6px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <span>💰 الاشتراكات وطرق الدفع</span>
+          ${monthlyTotal ? `<span style="color:#4ade80; font-size:13px; font-weight:700; margin-inline-start:auto;">إجمالي الشهري: ${monthlyTotal} ج/شهر</span>` : ''}
+        </div>
+        ${roomsWithMode.length ? roomsWithMode.map(x=>childPaymentRowHtml(c,x)).join('') : '<div class="list-sub">بدون مجموعات</div>'}
+      </div>
+      <div class="list-sub" style="margin-top:12px; ${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">👤 ${parentsLabel}</div>
+      <div class="list-actions" style="flex-wrap:wrap; margin-top:14px;">
+        <button class="badge" onclick="openAdminEditModal('children','${c.id}')">تعديل</button>
+        <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('children','${c.id}')">حذف</button>
+      </div>
+    </div>
+  `;
+}
 function renderAdminListInner(){
   const db = loadDB();
   const el = document.getElementById('admin-list-panel');
@@ -4465,75 +4559,20 @@ function renderAdminListInner(){
     // الطلاب اللي محتاجين تصرف (بدون ولي أمر / عمر غير منطقي) يظهروا فوق الأول، والباقي بترتيبهم الأصلي بعدهم
     const sortedItems = [...items].sort((a,b)=> (isProblem(b)?1:0) - (isProblem(a)?1:0));
     el.innerHTML = filterChip + searchBoxHtml('دور على اسم طالب...') + (sortedItems.map(c=>{
-      const rooms = (c.classroomIds||[]).map(cid=> db.classrooms.find(r=>r.id===cid)).filter(Boolean);
-      // كل تسجيل (طالب+مجموعة) له طريقة دفع مستقلة (شهري/بالحصة) — لازم نجيبها من enrollments مش نفترض إنها كلها شهري
-      const roomsWithMode = rooms.map(r=>{
-        const enrollment = (db.enrollments||[]).find(e=> e.childId===c.id && e.classroomId===r.id);
-        const mode = enrollment ? enrollment.paymentMode : ((r.paymentModes&&r.paymentModes[0]) || 'monthly');
-        const sub = getLatestSubscription(db, c.id, r.id);
-        return {room:r, mode, sub};
-      });
-      const monthlyRooms = roomsWithMode.filter(x=>x.mode==='monthly');
-      const sessionRooms = roomsWithMode.filter(x=>x.mode==='session');
-      const monthlyTotal = monthlyRooms.reduce((s,x)=> s + (parseFloat(x.room.monthlyFee)||0), 0);
-      const pendingInvoices = roomsWithMode.filter(x=> x.sub && x.sub.status==='pending');
-      const linkedParents = db.parents.filter(p=> p.childIds.includes(c.id));
-      const parentsLabel = linkedParents.length
-        ? linkedParents.map(p=> p.id===c.primaryParentId ? `⭐${p.name}` : p.name).join('، ')
-        : 'بدون ولي أمر مرتبط';
-      const isExpanded = expandedChildIds.has(c.id);
+      const {monthlyTotal, pendingInvoices} = getChildPaymentInfo(db, c);
       const problem = isProblem(c);
-      const paymentRowHtml = x => {
-        const label = x.mode==='session' ? `${x.room.name} — ${x.room.sessionFee||0} ج/حصة${x.sub?.sessionsCount?` × ${x.sub.sessionsCount} حصة`:''}` : `${x.room.name} — ${x.room.monthlyFee||0} ج/شهر`;
-        const methodBadge = x.sub
-          ? (x.sub.paymentMethod==='online'
-              ? (x.sub.status==='pending'
-                  ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 في انتظار الدفع</span>`
-                  : `<span class="badge" style="background:#3b82f6; color:#fff; font-size:10px; padding:2px 7px;">🔗 مدفوع أونلاين</span>`)
-              : `<span class="badge" style="background:#22c55e; color:#0a1a0f; font-size:10px; padding:2px 7px;">💵 نقدي</span>`)
-          : `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:2px 7px;">⚠️ بدون اشتراك</span>`;
-        return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:5px 0; border-bottom:1px dashed var(--border);">
-          <div style="font-size:12.5px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${label}</span>${methodBadge}</div>
-          <div style="display:flex; gap:5px; flex-wrap:wrap;">
-            ${x.sub && x.sub.status==='pending' ? `<button class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:3px 7px;" onclick="event.stopPropagation(); copySubscriptionPaymentLink('${x.sub.paymentLink}')">📋 نسخ رابط الدفع</button>
-            <button class="badge" style="background:#22c55e; color:#0a1a0f; font-size:10px; padding:3px 7px;" onclick="event.stopPropagation(); confirmOnlineSubscriptionPaid('${x.sub.id}')">✅ تأكيد استلام الدفع</button>` : ''}
-            <button class="badge" style="font-size:10px; padding:3px 7px;" onclick="event.stopPropagation(); openRegisterSubscriptionModal('${c.id}','${x.room.id}')">💰 تسجيل دفعة</button>
+      return `<div class="list-row" style="align-items:center; gap:10px; padding:10px 14px; border-radius:14px; cursor:pointer; ${problem?'border-color:var(--danger);':''} ${pendingInvoices.length?'border-color:#f59e0b;':''}" onclick="openStudentDetail('${c.id}')">
+        <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:36px; height:36px; font-size:16px; box-shadow:0 2px 8px rgba(0,0,0,.25);">🧑‍🎓</div>
+        <div class="list-info" style="flex:1;">
+          <div class="list-name" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span>${c.name}</span>
+            ${problem?'<span style="color:var(--danger); font-size:12px; font-weight:700;">⚠️</span>':''}
+            ${pendingInvoices.length?`<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 ${pendingInvoices.length}</span>`:''}
           </div>
-        </div>`;
-      };
-      return `<div class="list-row" style="flex-direction:column; align-items:stretch; padding:10px 14px; border-radius:14px; ${problem?'border-color:var(--danger);':''} ${pendingInvoices.length?'border-color:#f59e0b;':''}">
-        <div class="list-row-main" style="cursor:pointer; align-items:center; gap:10px; flex:0 0 auto;" onclick="toggleChildExpand('${c.id}')">
-          <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:36px; height:36px; font-size:16px; box-shadow:0 2px 8px rgba(0,0,0,.25);">🧑‍🎓</div>
-          <div class="list-info">
-            <div class="list-name" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span>${c.name}</span>
-              ${problem?'<span style="color:var(--danger); font-size:12px; font-weight:700;">⚠️</span>':''}
-              ${pendingInvoices.length?`<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 ${pendingInvoices.length} فاتورة معلّقة</span>`:''}
-            </div>
-          </div>
-          ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff; flex-shrink:0;" onclick="event.stopPropagation(); quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
-          <span style="font-size:16px; transform:rotate(${isExpanded?90:0}deg); transition:transform .15s;">◀</span>
+          <div class="list-sub">${c.grade ? GRADE_LABELS[c.grade]||c.grade : 'بدون مرحلة'}${monthlyTotal ? ` · 💰 ${monthlyTotal} ج/شهر` : ''}</div>
         </div>
-        ${isExpanded ? `
-        <div class="list-info" style="margin-top:10px; display:flex; flex-direction:column; gap:8px;">
-          <div class="list-sub" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-            <span>🎓 ${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'}</span>
-            ${c.dob ? `<span style="opacity:.6;">·</span><span>🎂 ${c.dob}</span>` : ''}
-            ${(()=>{ const s=getGradeAgeStatus(c.dob,c.grade); if(!s) return ''; if(s.status==='over_repeat') return '<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:2px 8px; font-size:11px;">🔁 يبدو معيد (سنة)</span>'; if(s.status==='over_reject'||s.status==='under_reject') return '<span class="badge" style="background:var(--danger); color:#fff; padding:2px 8px; font-size:11px;">⛔ عمر غير منطقي للمرحلة</span>'; return ''; })()}
-          </div>
-          <div style="background:var(--paper); border-radius:10px; padding:8px 10px;">
-            <div style="font-weight:700; font-size:13px; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-              <span>💰 الاشتراكات وطرق الدفع</span>
-              ${monthlyTotal ? `<span style="color:#4ade80; font-size:12px; font-weight:700; margin-inline-start:auto;">إجمالي الشهري: ${monthlyTotal} ج/شهر</span>` : ''}
-            </div>
-            ${roomsWithMode.length ? roomsWithMode.map(paymentRowHtml).join('') : '<div class="list-sub">بدون مجموعات</div>'}
-          </div>
-          <div class="list-sub" style="${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">👤 ${parentsLabel}</div>
-        </div>
-        <div class="list-actions" style="flex-wrap:wrap; margin-top:10px;">
-          <button class="badge" onclick="openAdminEditModal('children','${c.id}')">تعديل</button>
-          <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('children','${c.id}')">حذف</button>
-        </div>` : ''}
+        ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff; flex-shrink:0;" onclick="event.stopPropagation(); quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
+        <span style="font-size:16px;">◀</span>
       </div>`;
     }).join('') || '<div class="empty">لا يوجد نتائج</div>');
   }
@@ -6423,6 +6462,10 @@ async function deleteAdminItem(type, id){
   if(!result.ok){ showToast('⚠️ الحذف نجح على السيرفر بس فشل تحديث بعض البيانات المرتبطة محليًا — اعمل reload للتأكد'); return; }
   showToast('تم الحذف');
   renderAdminStats(); renderAdminAlerts();
+  if(type==='children' && currentStudentDetailId===id){
+    currentStudentDetailId = null;
+    showScreen('admin-section-screen', {replace:true});
+  }
   renderAdminList();
   });
 }
