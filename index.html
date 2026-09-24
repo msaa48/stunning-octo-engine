@@ -1005,7 +1005,7 @@
     <h3 id="admin-modal-title">إضافة</h3>
     <div id="admin-modal-fields" style="display:flex; flex-direction:column; gap:10px;"></div>
     <div style="display:flex; gap:8px; margin-top:14px;">
-      <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('admin-modal-bg')">إلغاء</button>
+      <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeAdminModalGuarded()">إلغاء</button>
       <button class="btn primary admin block" onclick="saveAdminModal()">حفظ</button>
     </div>
   </div>
@@ -1147,6 +1147,17 @@
 </div>
 
 <!-- Custom confirm modal (replaces native confirm() which some in-app browsers block) -->
+<div class="modal-bg" id="confirm-diff-modal-bg">
+  <div class="modal">
+    <h3>📝 تأكيد التعديلات</h3>
+    <div id="confirm-diff-list" style="display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; margin-bottom:14px;"></div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn block" id="confirm-diff-cancel" style="background:var(--cancel-bg); color:var(--ink);">تراجع</button>
+      <button class="btn primary admin block" id="confirm-diff-ok">تأكيد الحفظ</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="confirm-modal-bg">
   <div class="modal" style="text-align:center;">
     <div style="font-size:34px; margin-bottom:6px;">⚠️</div>
@@ -1676,6 +1687,108 @@ function isSuperAdminImpersonating(){
 }
 
 /* ========================= SESSION STATE ========================= */
+/* ========================= AUTO CHANGE-DIFF + UNSAVED-CHANGES GUARD (مودال الأدمن) ========================= */
+let adminModalSnapshot = null;
+let adminModalDirty = false;
+function captureAdminModalSnapshot(){
+  const container = document.getElementById('admin-modal-fields');
+  const simple = {};
+  container.querySelectorAll('input[id^="f-"], select[id^="f-"], textarea[id^="f-"]').forEach(el=>{
+    if(el.type==='checkbox' || el.type==='radio' || el.type==='hidden') return;
+    simple[el.id] = el.tagName==='SELECT' ? (el.selectedOptions[0]?.text || el.value) : el.value;
+  });
+  const checkboxGroups = {};
+  ['f-classroom-chk','f-teacher-classroom-chk'].forEach(cls=>{
+    if(container.querySelector('.'+cls)){
+      checkboxGroups[cls] = Array.from(container.querySelectorAll('.'+cls+':checked')).map(x=>x.value);
+    }
+  });
+  const radioGroups = {};
+  Array.from(new Set(Array.from(container.querySelectorAll('input[type="radio"]')).map(r=>r.name))).forEach(nm=>{
+    const checked = container.querySelector(`input[name="${nm}"]:checked`);
+    radioGroups[nm] = checked ? checked.value : null;
+  });
+  const paymentModes = {};
+  container.querySelectorAll('.f-classroom-pm-select').forEach(sel=>{ paymentModes[sel.dataset.classroom] = sel.value; });
+  return {simple, checkboxGroups, radioGroups, paymentModes};
+}
+function buildAdminModalDiff(){
+  if(!adminModalSnapshot) return [];
+  const before = adminModalSnapshot;
+  const after = captureAdminModalSnapshot();
+  const db = loadDB();
+  const changes = [];
+  Object.keys(after.simple).forEach(id=>{
+    const b = before.simple[id]; const a = after.simple[id];
+    if(b===undefined || b===a) return;
+    const el = document.getElementById(id);
+    changes.push({label: (el && el.placeholder) || id, before: b || '—', after: a || '—'});
+  });
+  const nameOfClassroom = id => db.classrooms.find(r=>r.id===id)?.name || id;
+  Object.keys(after.checkboxGroups).forEach(cls=>{
+    const b = new Set(before.checkboxGroups[cls]||[]);
+    const a = new Set(after.checkboxGroups[cls]||[]);
+    const added = [...a].filter(x=>!b.has(x));
+    const removed = [...b].filter(x=>!a.has(x));
+    if(added.length || removed.length){
+      changes.push({label:'المجموعات', before: [...b].map(nameOfClassroom).join('، ')||'بدون مجموعات', after: [...a].map(nameOfClassroom).join('، ')||'بدون مجموعات'});
+    }
+  });
+  const radioLabels = {'f-primary-parent':'ولي الأمر الرئيسي', 'f-payment-type':'نظام المرتب'};
+  Object.keys(after.radioGroups).forEach(nm=>{
+    const b = before.radioGroups[nm], a = after.radioGroups[nm];
+    if(b===a) return;
+    let bLabel=b, aLabel=a;
+    if(nm==='f-payment-type'){ const map={salary:'راتب ثابت', percentage:'نسبة'}; bLabel = map[b]||'—'; aLabel = map[a]||'—'; }
+    else if(nm==='f-primary-parent'){ const p = id=> db.parents.find(x=>x.id===id)?.name||id; bLabel = b?p(b):'—'; aLabel = a?p(a):'—'; }
+    changes.push({label: radioLabels[nm]||nm, before: bLabel, after: aLabel});
+  });
+  Object.keys(after.paymentModes).forEach(cid=>{
+    const b = before.paymentModes[cid]; const a = after.paymentModes[cid];
+    if(b===undefined || b===a) return;
+    const modeLabel = m => m==='session' ? 'بالحصة' : 'شهري';
+    changes.push({label:`طريقة دفع "${nameOfClassroom(cid)}"`, before: modeLabel(b), after: modeLabel(a)});
+  });
+  return changes;
+}
+function confirmDiffAsync(changes){
+  return new Promise(resolve=>{
+    const list = document.getElementById('confirm-diff-list');
+    list.innerHTML = changes.map(c=>`
+      <div style="background:var(--paper); border-radius:10px; padding:8px 10px;">
+        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">${c.label}</div>
+        <div style="font-size:12.5px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <span style="color:var(--danger); text-decoration:line-through;">${c.before}</span>
+          <span style="opacity:.6;">➜</span>
+          <span style="color:#4ade80; font-weight:700;">${c.after}</span>
+        </div>
+      </div>
+    `).join('');
+    const modalBg = document.getElementById('confirm-diff-modal-bg');
+    const okBtn = document.getElementById('confirm-diff-ok');
+    const newOk = okBtn.cloneNode(true); okBtn.parentNode.replaceChild(newOk, okBtn);
+    const cancelBtn = document.getElementById('confirm-diff-cancel');
+    const newCancel = cancelBtn.cloneNode(true); cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+    let settled = false;
+    newOk.onclick = ()=>{ if(settled) return; settled=true; modalBg.classList.remove('show'); resolve(true); };
+    newCancel.onclick = ()=>{ if(settled) return; settled=true; modalBg.classList.remove('show'); resolve(false); };
+    modalBg.classList.add('show');
+  });
+}
+(function(){
+  const container = document.getElementById('admin-modal-fields');
+  const markDirty = ()=>{ if(document.getElementById('admin-modal-bg').classList.contains('show')) adminModalDirty = true; };
+  container.addEventListener('input', markDirty);
+  container.addEventListener('change', markDirty);
+})();
+function closeAdminModalGuarded(){
+  if(adminModalDirty){
+    confirmAction('هتفقد التعديلات اللي عملتها لسه ما اتحفظتش. متأكد إنك عايز تلغي؟', ()=> closeModal('admin-modal-bg'));
+  } else {
+    closeModal('admin-modal-bg');
+  }
+}
+
 function confirmAction(message, onConfirm){
   document.getElementById('confirm-modal-text').textContent = message;
   const okBtn = document.getElementById('confirm-modal-ok');
@@ -2040,6 +2153,11 @@ window.addEventListener('popstate', async function(e){
     isPoppingState = true;
     history.pushState({ screenId: navHistory[navHistory.length - 1] }, '', location.hash);
     isPoppingState = false;
+    if(openModal.id==='admin-modal-bg' && adminModalDirty){
+      const ok = await confirmActionAsync('هتفقد التعديلات اللي عملتها لسه ما اتحفظتش. متأكد إنك عايز تلغي؟');
+      if(ok) closeModal('admin-modal-bg');
+      return;
+    }
     closeModal(openModal.id);
     return;
   }
@@ -2640,7 +2758,7 @@ function showToast(msg){
   t._hideTimer = setTimeout(()=> t.classList.remove('show'), duration);
 }
 
-function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+function closeModal(id){ document.getElementById(id).classList.remove('show'); if(id==='admin-modal-bg'){ adminModalDirty = false; } }
 function timeStr(iso){
   const d = new Date(iso);
   return d.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
@@ -5642,12 +5760,16 @@ function openAdminAddModal(){
   renderAdminModalFields();
   document.getElementById('admin-modal-title').textContent = {children:'إضافة طالب', teachers:'إضافة مدرّس', parents:'إضافة ولي أمر', links:'ربط ولي أمر بطالب', classrooms:'إضافة مجموعة', subjects:'إضافة مادة', payments:'تسجيل دفعة', calendar:'إضافة حدث بالتقويم'}[adminActiveTab];
   document.getElementById('admin-modal-bg').classList.add('show');
+  adminModalSnapshot = null; // مفيش "قبل" في الإضافة أصلًا — بس لسه بنتتبع dirty عشان تحذير الخروج
+  adminModalDirty = false;
 }
 function openAdminEditModal(type, id){
   adminModalMode = 'edit'; adminModalEditId = id; adminActiveTab = type;
   renderAdminModalFields(id);
   document.getElementById('admin-modal-title').textContent = {children:'تعديل طالب', teachers:'تعديل مدرّس', parents:'تعديل ولي أمر', classrooms:'تعديل مجموعة', subjects:'تعديل مادة', calendar:'تعديل حدث', payments:'تعديل دفعة'}[type];
   document.getElementById('admin-modal-bg').classList.add('show');
+  adminModalSnapshot = captureAdminModalSnapshot();
+  adminModalDirty = false;
 }
 
 function renderAdminModalFields(id){
@@ -6083,6 +6205,13 @@ async function saveAdminModal(){
   const type = adminActiveTab;
   if(type==='payments'){ await saveAdminPayment(db); return; }
   if(type==='links'){ await saveAdminLink(db); return; }
+  if(adminModalMode==='edit'){
+    const changes = buildAdminModalDiff();
+    if(changes.length){
+      const confirmed = await confirmDiffAsync(changes);
+      if(!confirmed) return;
+    }
+  }
   const name = document.getElementById('f-name') ? document.getElementById('f-name').value.trim() : '';
   if(!name && type!=='classrooms'){ showToast('اكتب الاسم الأول'); return; }
 
