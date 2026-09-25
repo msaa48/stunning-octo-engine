@@ -4404,6 +4404,14 @@ function openAdminSection(tab){
   }
 }
 
+// بيتنده من زرار "عدّل الربط" في مودال ولي الأمر — بيودّي لتاب الروابط مفلتر على اسمه بعد قفل المودال
+function goToLinksForParent(parentName){
+  closeModal('admin-modal-bg');
+  openAdminSection('links');
+  adminSearchQuery = parentName;
+  renderAdminList();
+}
+
 // بيتنده من زرار "إدارة الدفع" في صفحة تفاصيل الطالب — بيودّي لتاب المدفوعات مفلتر على اسمه
 function goToPaymentsForChild(childName){
   openAdminSection('payments');
@@ -4699,13 +4707,16 @@ function renderAdminListInner(){
     const sortedItems = [...items].sort((a,b)=> (isProblem(b)?1:0) - (isProblem(a)?1:0));
     el.innerHTML = filterChip + searchBoxHtml('دور على اسم طالب...') + (sortedItems.map(c=>{
       const {monthlyTotal, pendingInvoices} = getChildPaymentInfo(db, c);
-      const problem = isProblem(c);
-      return `<div class="list-row" style="align-items:center; gap:10px; padding:10px 14px; border-radius:14px; cursor:pointer; ${problem?'border-color:var(--danger);':''} ${pendingInvoices.length?'border-color:#f59e0b;':''}" onclick="openStudentDetail('${c.id}')">
+      const ageIssue = getGradeAgeStatus(c.dob, c.grade);
+      const ageBadge = ageIssue && ageIssue.status==='over_repeat' ? '<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔁 معيد</span>'
+        : ageIssue && (ageIssue.status==='over_reject'||ageIssue.status==='under_reject') ? '<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:2px 7px;">⛔ عمر غير منطقي</span>' : '';
+      return `<div class="list-row" style="align-items:center; gap:10px; padding:10px 14px; border-radius:14px; cursor:pointer; ${orphanIds.has(c.id)?'border-color:var(--danger);':''} ${pendingInvoices.length?'border-color:#f59e0b;':''}" onclick="openStudentDetail('${c.id}')">
         <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:36px; height:36px; font-size:16px; box-shadow:0 2px 8px rgba(0,0,0,.25);">🧑‍🎓</div>
         <div class="list-info" style="flex:1;">
           <div class="list-name" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
             <span>${c.name}</span>
-            ${problem?'<span style="color:var(--danger); font-size:12px; font-weight:700;">⚠️</span>':''}
+            ${orphanIds.has(c.id)?'<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:2px 7px;">⚠️ بدون ولي أمر</span>':''}
+            ${ageBadge}
             ${pendingInvoices.length?`<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 ${pendingInvoices.length}</span>`:''}
           </div>
           <div class="list-sub">${c.grade ? GRADE_LABELS[c.grade]||c.grade : 'بدون مرحلة'}${monthlyTotal ? ` · 💰 ${monthlyTotal} ج/شهر` : ''}</div>
@@ -5822,7 +5833,14 @@ function renderAdminModalFields(id){
       <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">3</span>المجموعات المسجل فيها (ممكن أكتر من مجموعة)</div>
       <div id="f-classroom-checks"></div>
       <div id="f-classroom-summary" class="admin-alert-card info static" style="margin-top:8px;"></div>
-      ${linkedParents.length>1 ? `
+      ${!id ? `
+        <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">4</span>ولي الأمر</div>
+        <select id="f-add-child-parent">
+          <option value="">بدون ربط دلوقتي...</option>
+          ${db.parents.map(p=>`<option value="${p.id}">${p.name}${p.phone?' — '+p.phone:''}</option>`).join('')}
+        </select>
+        <div style="font-size:12px; color:var(--muted);">ولي الأمر مش في القايمة؟ ممكن تضيفه بعدين من تاب "أولياء الأمور" أو "الروابط"</div>
+      ` : (linkedParents.length>1 ? `
         <div class="section-title" style="margin:14px 0 4px;">ولي الأمر الرئيسي</div>
         ${linkedParents.map(p=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
           <input type="radio" name="f-primary-parent" value="${p.id}" ${item.primaryParentId===p.id?'checked':''}> ${p.name}
@@ -5830,8 +5848,10 @@ function renderAdminModalFields(id){
       ` : (linkedParents.length===1 ? `<div style="font-size:13px; color:var(--muted); margin-top:10px;">ولي الأمر الوحيد المرتبط: ${linkedParents[0].name} (رئيسي تلقائيًا)</div>` : `
       <div class="admin-alert-card warn static" style="margin-top:10px;">
         <span class="alert-ico">⚠️</span>
-        <div><div class="alert-title">لسه مفيش ولي أمر مرتبط</div><div class="alert-sub">اربطه من تاب "أولياء الأمور" بعد الحفظ عشان يقدر يتابع الطالب</div></div>
-      </div>`)}
+        <div><div class="alert-title">لسه مفيش ولي أمر مرتبط</div><div class="alert-sub">اربطه دلوقتي من غير ما تسيب الشاشة</div></div>
+      </div>
+      <button type="button" class="badge admin" style="margin-top:8px;" onclick="quickLinkGuardianForChild('${item.id}')">🔗 اربط ولي أمر دلوقتي</button>
+      `))}
       `;
     // بنخزّن المجموعات المسجل فيها الطالب فعلاً (لو تعديل) عشان نعرضها متعلّمة
     // حتى لو مش من نفس مرحلة الطالب الحالية (تصحيح بيانات قديمة)، وبنرسم
@@ -5907,10 +5927,11 @@ function renderAdminModalFields(id){
       <input type="text" id="f-phone" placeholder="رقم التليفون" value="${item.phone||''}">
       <input type="hidden" id="f-email" value="${item.email||''}">
       ${emailBlock}
-      <div class="section-title" style="margin:4px 0;">الطلاب</div>
-      ${db.children.map(c=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
-        <input type="checkbox" class="f-child-chk" value="${c.id}" ${item.childIds&&item.childIds.includes(c.id)?'checked':''}> ${c.name}
-      </label>`).join('') || '<div class="empty">مفيش طلاب لسه</div>'}`;
+      <div class="section-title" style="margin:4px 0;">الطلاب المرتبطين</div>
+      ${id ? `
+        ${(item.childIds&&item.childIds.length) ? `<div style="display:flex; flex-wrap:wrap; gap:6px;">${item.childIds.map(cid=>{ const ch=db.children.find(c=>c.id===cid); return ch ? `<span class="badge">${ch.name}${item.id===ch.primaryParentId?' ⭐':''}</span>` : ''; }).join('')}</div>` : `<div class="empty">مفيش طلاب مرتبطين لسه</div>`}
+        <button type="button" class="badge admin" style="margin-top:8px;" onclick="goToLinksForParent('${(item.name||'').replace(/'/g,"\\'")}')">🔗 عدّل الربط من تاب الروابط</button>
+      ` : `<div style="font-size:13px; color:var(--muted);">هتقدر تربطه بطلاب من تاب "الروابط" بعد ما تحفظه</div>`}`;
   }
   else if(type==='classrooms'){
     const item = id ? db.classrooms.find(r=>r.id===id) : {};
@@ -6265,6 +6286,16 @@ async function saveAdminModal(){
     if(adminModalMode==='add'){
       childId = uid('ch');
       db.children.push({id:childId, name, dob, grade, classroomIds});
+      const addParentSelect = document.getElementById('f-add-child-parent');
+      const chosenParentId = addParentSelect ? addParentSelect.value : '';
+      if(chosenParentId){
+        const parent = db.parents.find(p=>p.id===chosenParentId);
+        if(parent){
+          if(!parent.childIds.includes(childId)) parent.childIds.push(childId);
+          const newChild = db.children.find(c=>c.id===childId);
+          newChild.primaryParentId = chosenParentId;
+        }
+      }
     } else {
       childId = adminModalEditId;
       const item = db.children.find(c=>c.id===childId);
@@ -6355,32 +6386,17 @@ async function saveAdminModal(){
   else if(type==='parents'){
     const phone = document.getElementById('f-phone').value.trim();
     const email = document.getElementById('f-email').value.trim();
-    const childIds = Array.from(document.querySelectorAll('.f-child-chk:checked')).map(x=>x.value);
     if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('صيغة الإيميل مش مظبوطة'); return; }
     if(adminModalMode==='add' && !email){ showToast('لازم تحط إيميل ولي الأمر عشان يقدر يعمل حسابه'); return; }
     let parentId = adminModalEditId;
     if(adminModalMode==='add'){
       parentId = uid('p');
-      db.parents.push({id:parentId, name, phone, email, childIds});
+      // الربط بطلاب بقى بيتم حصريًا من تاب "الروابط" بعد الحفظ — الأدمن الجديد بيتضاف من غير طلاب مرتبطين
+      db.parents.push({id:parentId, name, phone, email, childIds:[]});
     } else {
       const item = db.parents.find(p=>p.id===parentId);
-      const oldChildIds = item.childIds || [];
-      item.name=name; item.phone=phone; item.childIds=childIds; item.email=email;
-      // نفس منطق تاب "الروابط" بالظبط: أي طالب اتشال من عند ولي الأمر ده، لازم نصلّح primaryParentId بتاعه لو كان بيشاور عليه
-      const removedChildIds = oldChildIds.filter(cid=> !childIds.includes(cid));
-      removedChildIds.forEach(cid=>{
-        const child = db.children.find(c=>c.id===cid);
-        if(child && child.primaryParentId===parentId){
-          const remaining = db.parents.filter(p=> p.id!==parentId && p.childIds.includes(cid));
-          child.primaryParentId = remaining.length ? remaining[0].id : null;
-        }
-      });
-      // أي طالب جديد اتضاف ومالوش ولي أمر رئيسي، نخلي ولي الأمر ده رئيسي تلقائي
-      const addedChildIds = childIds.filter(cid=> !oldChildIds.includes(cid));
-      addedChildIds.forEach(cid=>{
-        const child = db.children.find(c=>c.id===cid);
-        if(child && !child.primaryParentId) child.primaryParentId = parentId;
-      });
+      item.name=name; item.phone=phone; item.email=email;
+      // ملحوظة: item.childIds مبيتلمسش هنا خالص — إدارة الربط بقت حصريًا من تاب "الروابط" (saveAdminLink/unlinkGuardian)
     }
     setPersonEmail('parents', parentId, email);
   }
