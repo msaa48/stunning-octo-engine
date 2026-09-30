@@ -4638,6 +4638,20 @@ function childPaymentRowHtml(c, x){
   </div>`;
 }
 let currentStudentDetailId = null;
+// بيفتح فورم تعديل الطالب وينزل مباشرة على الخانة المطلوبة (تاريخ الميلاد / المرحلة / المجموعات) بدل ما يفتح من أول الفورم
+function editChildFocus(childId, target){
+  openAdminEditModal('children', childId);
+  const ids = {dob:'f-dob', grade:'f-grade', groups:'f-classroom-checks'};
+  setTimeout(()=>{
+    const el = document.getElementById(ids[target]);
+    if(!el) return;
+    el.scrollIntoView({block:'center', behavior:'smooth'});
+    const old = el.style.outline;
+    el.style.outline = '2px solid #f59e0b';
+    el.style.outlineOffset = '4px';
+    setTimeout(()=>{ el.style.outline = old; el.style.outlineOffset = ''; }, 2200);
+  }, 120);
+}
 function openStudentDetail(childId){
   currentStudentDetailId = childId;
   renderStudentDetailScreen();
@@ -4674,9 +4688,9 @@ function renderStudentDetailScreen(){
   // 1) شريط "محتاج تصرف" — كل التنبيهات في مكان واحد وكل تنبيه جنبه زرار الحل
   const alerts = [];
   if(orphan) alerts.push({danger:true, text:'مفيش ولي أمر مربوط بالطالب', btn:'اربط ولي أمر', call:`quickLinkGuardianForChild('${cid}')`});
-  if(!c.grade) alerts.push({text:'المرحلة الدراسية مش محددة', btn:'حدّدها', call:editCall});
-  if(ageBad) alerts.push({danger:true, text:'السن مش منطقي للمرحلة دي — راجع تاريخ الميلاد أو المرحلة', btn:'راجع', call:editCall});
-  if(!roomsWithMode.length) alerts.push({text:'مش مسجّل في أي مجموعة', btn:'سجّله', call:editCall});
+  if(!c.grade) alerts.push({text:'المرحلة الدراسية مش محددة', btn:'حدّدها', call:`editChildFocus('${cid}','grade')`});
+  if(ageBad) alerts.push({danger:true, text:'السن مش منطقي للمرحلة دي — راجع تاريخ الميلاد أو المرحلة', btn:'راجع', call:`editChildFocus('${cid}','dob')`});
+  if(!roomsWithMode.length) alerts.push({text:'مش مسجّل في أي مجموعة', btn:'سجّله في مجموعة', call:`editChildFocus('${cid}','groups')`});
   if(pendingInvoices.length) alerts.push({text:`${pendingInvoices.length} فاتورة أونلاين في انتظار الدفع`, btn:'المدفوعات', call:payCall});
   if(noSubRooms.length) alerts.push({text:`${noSubRooms.length} مجموعة بدون اشتراك مسجّل`, btn:'المدفوعات', call:payCall});
   const alertsHtml = alerts.length
@@ -4752,7 +4766,7 @@ function renderStudentDetailScreen(){
     </div>
 
     <div class="list-row" style="${cardStyle}">
-      ${title('📚 المجموعات', `<button class="badge" style="margin-inline-start:auto;" onclick="${editCall}">تعديل</button>`)}
+      ${title('📚 المجموعات')}
       ${groupsHtml}
     </div>
 
