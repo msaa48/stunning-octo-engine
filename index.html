@@ -186,7 +186,11 @@
     -webkit-appearance:none; appearance:none; padding-left:36px;
   }
   .section-title{font-size:13px; color:var(--gold); font-weight:700; margin:20px 0 10px; text-transform:uppercase; letter-spacing:.06em; font-family:'Cairo',sans-serif;}
-  select, input[type=text], input[type=number], textarea{width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); font-size:15px; font-family:inherit; background:var(--input-bg); color:var(--ink);}
+  select, input[type=text], input[type=number], input[type=date], textarea{width:100%; padding:12px; border-radius:12px; border:1px solid var(--border); font-size:15px; font-family:inherit; background:var(--input-bg); color:var(--ink);}
+  input[type=date]{min-height:48px; text-align:start;}
+  .fld-label{font-size:12.5px; color:var(--muted); font-weight:700; margin:8px 0 -4px;}
+  .fld-hint{font-size:12px; color:var(--muted); margin:-6px 0 4px;}
+  .cls-group-label{font-size:12px; font-weight:700; color:var(--muted); margin:10px 0 6px;}
   .link-pick-list{max-height:180px; overflow-y:auto; overscroll-behavior:contain; border:1px solid var(--border); border-radius:12px; margin-top:-6px; background:var(--input-bg);}
   .link-pick-row{padding:10px 14px; font-size:14px; cursor:pointer; border-bottom:1px solid var(--border);}
   .link-pick-row:last-child{border-bottom:none;}
@@ -5926,27 +5930,30 @@ function renderAdminModalFields(id){
     const enrolledIds = item.classroomIds || [];
     const gradeOptions = Object.entries(GRADE_LABELS).map(([g,label])=>`<option value="${g}" ${item.grade===g?'selected':''}>${label}</option>`).join('');
     el.innerHTML = `
-      <div class="section-title" style="margin:4px 0;"><span class="form-step-badge">1</span>البيانات الأساسية</div>
-      <input type="text" id="f-name" placeholder="اسم الطالب" value="${item.name||''}">
-      <input type="date" id="f-dob" placeholder="تاريخ الميلاد" value="${item.dob||''}" oninput="renderAgeGradeWarning()">
+      <div class="section-title" style="margin:4px 0 0;">🧑‍🎓 البيانات الأساسية</div>
+      <div class="fld-label">اسم الطالب</div>
+      <input type="text" id="f-name" placeholder="الاسم الكامل" value="${item.name||''}">
+      <div class="fld-label">تاريخ الميلاد</div>
+      <input type="date" id="f-dob" value="${item.dob||''}" oninput="renderAgeGradeWarning()">
       <div id="f-dob-warning"></div>
-      <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">2</span>المرحلة الدراسية</div>
+      <div class="fld-label">المرحلة الدراسية</div>
       <select id="f-grade" onchange="renderChildClassroomChecks(); renderAgeGradeWarning();">
         <option value="">اختر المرحلة الدراسية...</option>
         ${gradeOptions}
       </select>
-      <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">3</span>المجموعات المسجل فيها (ممكن أكتر من مجموعة)</div>
+      <div class="section-title" style="margin:18px 0 0;">📚 المجموعات</div>
+      <div class="fld-hint">اختار مجموعة أو أكتر — بتظهر حسب المرحلة</div>
       <div id="f-classroom-checks"></div>
       <div id="f-classroom-summary" class="admin-alert-card info static" style="margin-top:8px;"></div>
       ${!id ? `
-        <div class="section-title" style="margin:14px 0 4px;"><span class="form-step-badge">4</span>ولي الأمر</div>
+        <div class="section-title" style="margin:18px 0 0;">👨‍👩‍👧 ولي الأمر</div>
         <select id="f-add-child-parent">
           <option value="">بدون ربط دلوقتي...</option>
           ${db.parents.map(p=>`<option value="${p.id}">${p.name}${p.phone?' — '+p.phone:''}</option>`).join('')}
         </select>
         <div style="font-size:12px; color:var(--muted);">ولي الأمر مش في القايمة؟ ممكن تضيفه بعدين من تاب "أولياء الأمور" أو "الروابط"</div>
       ` : (linkedParents.length>1 ? `
-        <div class="section-title" style="margin:14px 0 4px;">ولي الأمر الرئيسي</div>
+        <div class="section-title" style="margin:18px 0 0;">⭐ ولي الأمر الرئيسي</div>
         ${linkedParents.map(p=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
           <input type="radio" name="f-primary-parent" value="${p.id}" ${item.primaryParentId===p.id?'checked':''}> ${p.name}
         </label>`).join('')}
@@ -6266,38 +6273,53 @@ function renderChildClassroomChecks(){
     return;
   }
   const isUnpriced = r => !r.monthlyFee && !r.sessionFee;
-  // المجموعات الجاهزة (بسعر) أول القائمة، والمجموعات "من غير سعر" في الآخر — عشان الخيارات الفعلية تبان الأول
-  const matching = db.classrooms.filter(r=> r.grade===grade).sort((a,b)=> (isUnpriced(a)?1:0) - (isUnpriced(b)?1:0));
+  // المسجّل فيها الطالب فوق الأول، وبعدها المتاحة (اللي بسعر قبل اللي من غير سعر)
+  const sortFn = (a,b)=> (isUnpriced(a)?1:0) - (isUnpriced(b)?1:0);
+  const matching = db.classrooms.filter(r=> r.grade===grade);
+  const enrolledRooms = matching.filter(r=> enrolledIds.includes(r.id)).sort(sortFn);
+  const otherRooms = matching.filter(r=> !enrolledIds.includes(r.id)).sort(sortFn);
   const mismatchedEnrolled = db.classrooms.filter(r=> enrolledIds.includes(r.id) && r.grade!==grade);
   const existingEnrollments = wrap._existingEnrollments || {};
-  // القائمة دي أصلاً متفلترة على مرحلة واحدة، فمش محتاجين نكرر اسم المرحلة تاني في كل سطر.
-  // بدل ما نحاول نطابق نص المرحلة بالظبط (بيختلف شكله من مركز لمركز: "تانية"/"ثانية"...)،
-  // بناخد الجزء اللي قبل آخر شرطة في الاسم أيًا كان شكلها، وده بيشتغل مهما كان شكل الكتابة
+  // القائمة أصلاً متفلترة على مرحلة واحدة، فمش محتاجين نكرر اسم المرحلة في كل سطر
   const stripGradeSuffix = name => name.split(/[-–—](?=[^-–—]*$)/)[0].trim();
-  let html = matching.map(r=>{
+  const roomCard = r=>{
     const modes = r.paymentModes || ['monthly'];
     const isChecked = enrolledIds.includes(r.id);
     const currentMode = existingEnrollments[r.id] || 'monthly';
     const displayName = stripGradeSuffix(r.name);
-    const unpriced = isUnpriced(r);
-    const priceInfo = modes.length>1
-      ? `<select class="f-classroom-pm-select" data-classroom="${r.id}" style="font-size:12px; padding:2px 6px; border-radius:6px;" ${isChecked?'':'disabled'} onchange="updateClassroomSummary();">
-           <option value="monthly" ${currentMode==='monthly'?'selected':''}>شهري (${r.monthlyFee||0} ج)</option>
-           <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
-         </select>`
-      : `<span style="color:var(--muted); font-size:12px;">${modes[0]==='session' ? `بالحصة · ${r.sessionFee||0} ج` : `شهري · ${r.monthlyFee||0} ج`}${(modes[0]==='monthly' && r.sessionFee) ? ` <span style="opacity:.7;">+ ${r.sessionFee} ج/حصة</span>` : ''}</span>`;
-    const unpricedBadge = unpriced ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px;">⚠️ من غير سعر</span>` : '';
-    return `<label class="classroom-check-row" style="display:block; padding:10px 12px; border-radius:10px; border:1px solid var(--border); margin-bottom:6px; transition:background .15s, border-color .15s;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <input type="checkbox" class="f-classroom-chk" value="${r.id}" style="flex-shrink:0;" ${isChecked?'checked':''} onchange="const row=this.closest('.classroom-check-row'); const s=row.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked; row.style.background=this.checked?'rgba(124,58,237,.15)':''; row.style.borderColor=this.checked?'var(--admin-1,#7c3aed)':'var(--border)'; updateClassroomSummary();">
-          <span style="font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;">${displayName}</span>
-        </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px; padding-inline-start:26px;">
-          ${priceInfo}
-          ${unpricedBadge}
+    const unpricedBadge = isUnpriced(r) ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:1px 6px; font-size:10px;">⚠️ من غير سعر</span>` : '';
+    const teachers = db.teachers.filter(t=> (t.classroomIds||[]).includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
+    const times = (r.meetingTimes||[]).length
+      ? r.meetingTimes.map(m=> m.day + (m.start ? ` (${m.start}${m.end?'-'+m.end:''})` : '')).join('، ')
+      : 'لسه مفيش معاد محدد';
+    const priceTxt = modes.length>1
+      ? `شهري ${r.monthlyFee||0} ج · بالحصة ${r.sessionFee||0} ج`
+      : (modes[0]==='session' ? `بالحصة ${r.sessionFee||0} ج` : `شهري ${r.monthlyFee||0} ج${r.sessionFee ? ` · ${r.sessionFee} ج/حصة` : ''}`);
+    const pmBlock = modes.length>1
+      ? `<div class="pm-wrap" style="display:${isChecked?'block':'none'}; margin-top:8px;">
+           <div class="fld-label" style="margin:0 0 4px;">طريقة الدفع لهذه المجموعة</div>
+           <select class="f-classroom-pm-select" data-classroom="${r.id}" ${isChecked?'':'disabled'} onchange="updateClassroomSummary();">
+             <option value="monthly" ${currentMode==='monthly'?'selected':''}>شهري (${r.monthlyFee||0} ج)</option>
+             <option value="session" ${currentMode==='session'?'selected':''}>بالحصة (${r.sessionFee||0} ج)</option>
+           </select>
+         </div>` : '';
+    return `<label class="classroom-check-row" style="display:block; padding:12px; border-radius:12px; border:1px solid var(--border); margin-bottom:8px; transition:background .15s, border-color .15s;">
+        <div style="display:flex; align-items:flex-start; gap:10px;">
+          <input type="checkbox" class="f-classroom-chk" value="${r.id}" style="flex-shrink:0; width:20px; height:20px; margin-top:2px;" ${isChecked?'checked':''} onchange="const row=this.closest('.classroom-check-row'); const s=row.querySelector('.f-classroom-pm-select'); if(s) s.disabled=!this.checked; const w=row.querySelector('.pm-wrap'); if(w) w.style.display=this.checked?'block':'none'; row.style.background=this.checked?'rgba(124,58,237,.15)':''; row.style.borderColor=this.checked?'var(--admin-1,#7c3aed)':'var(--border)'; updateClassroomSummary();">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:14.5px; font-weight:700; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">${displayName} ${unpricedBadge}</div>
+            <div class="list-sub" style="margin-top:3px;">👨‍🏫 ${teachers}</div>
+            <div class="list-sub">🗓️ ${times}</div>
+            <div class="list-sub">💰 ${priceTxt}</div>
+            ${pmBlock}
+          </div>
         </div>
       </label>`;
-  }).join('') || '<div class="empty">مفيش مجموعات لمرحلة "'+(GRADE_LABELS[grade]||grade)+'" لسه — أضف واحدة من تاب "المجموعات"</div>';
+  };
+  let html = '';
+  if(enrolledRooms.length) html += `<div class="cls-group-label" style="margin-top:0;">✅ مسجّل فيها (${enrolledRooms.length})</div>` + enrolledRooms.map(roomCard).join('');
+  if(otherRooms.length) html += (enrolledRooms.length ? `<div class="cls-group-label">➕ مجموعات متاحة</div>` : '') + otherRooms.map(roomCard).join('');
+  if(!html) html = '<div class="empty">مفيش مجموعات لمرحلة "'+(GRADE_LABELS[grade]||grade)+'" لسه — أضف واحدة من تاب "المجموعات"</div>';
   if(mismatchedEnrolled.length){
     html += `<div style="font-size:12px; color:var(--danger); margin-top:6px;">⚠️ الطالب متسجّل أصلاً في مجموعة/مجموعات من مرحلة تانية غير اللي اخترتها: ${mismatchedEnrolled.map(r=>r.name).join('، ')} — دوس حفظ عشان يتشالوا تلقائيًا، أو راجع المرحلة المختارة لو دي غلطة</div>`;
   }
