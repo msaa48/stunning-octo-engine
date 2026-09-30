@@ -4643,51 +4643,142 @@ function openStudentDetail(childId){
   renderStudentDetailScreen();
   showScreen('admin-student-detail-screen');
 }
+function waLink(phone){
+  let d = String(phone||'').replace(/\D/g,'');
+  if(!d) return '';
+  if(d.startsWith('00')) d = d.slice(2);
+  else if(d.startsWith('0')) d = '20' + d.slice(1);
+  return 'https://wa.me/' + d;
+}
 function renderStudentDetailScreen(){
   const db = loadDB();
   const c = db.children.find(x=>x.id===currentStudentDetailId);
   const titleEl = document.getElementById('admin-student-detail-title');
   const panel = document.getElementById('admin-student-detail-panel');
   if(!c){ if(titleEl) titleEl.textContent='الطالب'; if(panel) panel.innerHTML = '<div class="empty">الطالب ده اتحذف</div>'; return; }
-  const orphanIds = new Set(getChildrenWithoutGuardian(db).map(x=>x.id));
-  const hasAgeIssue = getGradeAgeStatus(c.dob,c.grade);
+  const cid = c.id;
+  const orphan = getChildrenWithoutGuardian(db).some(x=>x.id===cid);
+  const ageStatus = getGradeAgeStatus(c.dob, c.grade);
+  const ageBad = !!ageStatus && (ageStatus.status==='over_reject' || ageStatus.status==='under_reject');
+  const isRepeat = !!ageStatus && ageStatus.status==='over_repeat';
   const {roomsWithMode, monthlyTotal, pendingInvoices} = getChildPaymentInfo(db, c);
-  const linkedParents = db.parents.filter(p=> p.childIds.includes(c.id));
-  const parentsLabel = linkedParents.length
-    ? linkedParents.map(p=> p.id===c.primaryParentId ? `⭐${p.name}` : p.name).join('، ')
-    : 'بدون ولي أمر مرتبط';
+  const linkedParents = db.parents.filter(p=> (p.childIds||[]).includes(cid));
+  const noSubRooms = roomsWithMode.filter(x=> !x.sub);
+  const cardStyle = 'flex-direction:column; align-items:stretch; padding:14px; border-radius:14px; margin-bottom:12px;';
+  const innerStyle = 'background:var(--paper); border-radius:10px; padding:10px 12px; margin-bottom:8px;';
+  const title = (txt, extra) => `<div style="font-weight:700; font-size:14px; margin-bottom:10px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${txt}</span>${extra||''}</div>`;
+  const editCall = `openAdminEditModal('children','${cid}')`;
+  const payCall = `goToPaymentsForChild('${escAttr(c.name)}')`;
   if(titleEl) titleEl.textContent = c.name;
+
+  // 1) شريط "محتاج تصرف" — كل التنبيهات في مكان واحد وكل تنبيه جنبه زرار الحل
+  const alerts = [];
+  if(orphan) alerts.push({danger:true, text:'مفيش ولي أمر مربوط بالطالب', btn:'اربط ولي أمر', call:`quickLinkGuardianForChild('${cid}')`});
+  if(!c.grade) alerts.push({text:'المرحلة الدراسية مش محددة', btn:'حدّدها', call:editCall});
+  if(ageBad) alerts.push({danger:true, text:'السن مش منطقي للمرحلة دي — راجع تاريخ الميلاد أو المرحلة', btn:'راجع', call:editCall});
+  if(!roomsWithMode.length) alerts.push({text:'مش مسجّل في أي مجموعة', btn:'سجّله', call:editCall});
+  if(pendingInvoices.length) alerts.push({text:`${pendingInvoices.length} فاتورة أونلاين في انتظار الدفع`, btn:'المدفوعات', call:payCall});
+  if(noSubRooms.length) alerts.push({text:`${noSubRooms.length} مجموعة بدون اشتراك مسجّل`, btn:'المدفوعات', call:payCall});
+  const alertsHtml = alerts.length
+    ? alerts.map(a=>`<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; border-radius:10px; margin-bottom:6px; background:rgba(245,158,11,.12); border:1px solid ${a.danger?'var(--danger)':'#f59e0b'};">
+        <span style="flex:1 1 160px; font-size:12.5px;">${a.danger?'⛔':'⚠️'} ${a.text}</span>
+        <button class="badge" style="${a.danger?'background:var(--danger); color:#fff;':''}" onclick="${a.call}">${a.btn}</button>
+      </div>`).join('')
+    : '<div class="list-sub" style="color:var(--success); font-weight:700;">✅ مفيش حاجة محتاجة تصرف</div>';
+
+  // 2) المجموعات: الاسم + المدرّس + المواعيد
+  const groupsHtml = roomsWithMode.length ? roomsWithMode.map(x=>{
+    const r = x.room;
+    const teachers = db.teachers.filter(t=> (t.classroomIds||[]).includes(r.id)).map(t=>t.name).join('، ') || 'بدون مدرّس';
+    const times = (r.meetingTimes||[]).length
+      ? r.meetingTimes.map(m=> m.day + (m.start ? ` (${m.start}${m.end?'-'+m.end:''})` : '')).join('، ')
+      : 'لسه مفيش معاد محدد';
+    return `<div style="${innerStyle}">
+      <div style="font-weight:700; font-size:13.5px;">${r.name}</div>
+      <div class="list-sub" style="margin-top:3px;">👨‍🏫 ${teachers}</div>
+      <div class="list-sub">🗓️ ${times}</div>
+    </div>`;
+  }).join('') : '<div class="list-sub">لسه مش مسجّل في أي مجموعة</div>';
+
+  // 3) أولياء الأمور: كارت لكل واحد بأزرار الاتصال والتحكم
+  const parentsHtml = linkedParents.length ? linkedParents.map(p=>{
+    const isPrimary = p.id===c.primaryParentId;
+    const wa = waLink(p.phone);
+    const aStyle = 'text-decoration:none; display:inline-block;';
+    return `<div style="${innerStyle}">
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <b style="font-size:13.5px;">${isPrimary?'⭐ ':''}${p.name}</b>
+        <span style="font-size:11px; margin-inline-start:auto; color:${p.claimedBy?'var(--success)':'var(--muted)'};">${p.claimedBy?'مفعّل ✅':'لسه مش مفعّل ⏳'}</span>
+      </div>
+      <div class="list-sub" style="margin-top:3px;">${p.phone ? `📱 <span dir="ltr">${p.phone}</span>` : 'مفيش رقم مسجّل'}</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+        ${p.phone ? `<a class="badge" style="${aStyle}" href="tel:${p.phone}">📞 اتصال</a>` : ''}
+        ${wa ? `<a class="badge" style="${aStyle}" href="${wa}" target="_blank" rel="noopener">💬 واتساب</a>` : ''}
+        ${p.claimedBy ? `<button class="badge" onclick="startImpersonation({role:'PARENT', personId:'${p.id}', centerId: session.centerId, label:'${escAttr(p.name)}'})">👁 عرض كشاشته</button>` : ''}
+        ${(!isPrimary && linkedParents.length>1) ? `<button class="badge" onclick="setPrimaryGuardian('${cid}','${p.id}')">⭐ اجعله رئيسي</button>` : ''}
+        <button class="badge" style="color:var(--danger);" onclick="unlinkGuardian('${p.id}','${cid}')">فك الربط</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="list-sub" style="color:var(--danger); font-weight:600;">بدون ولي أمر مرتبط</div>';
+
+  // 4) الحضور والتقييمات
+  const cutoff = new Date(getSystemNow().getTime() - 30*86400000).toISOString().slice(0,10);
+  const att = (db.attendance||[]).filter(a=>a.childId===cid);
+  const att30 = att.filter(a=> (a.sessionDate||'') >= cutoff).length;
+  const lastAtt = att.map(a=>a.sessionDate).filter(Boolean).sort().pop();
+  const evs = (db.evaluations||[]).filter(e=>e.childId===cid);
+  const rated = evs.map(e=>Number(e.rating)).filter(n=>!isNaN(n) && n>0);
+  const avgRating = rated.length ? (rated.reduce((s,n)=>s+n,0)/rated.length).toFixed(1) : null;
+
   panel.innerHTML = `
-    <div class="list-row" style="flex-direction:column; align-items:stretch; padding:14px; border-radius:14px;">
+    <div class="list-row" style="${cardStyle}">
       <div style="display:flex; align-items:center; gap:12px;">
         <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0); width:52px; height:52px; font-size:24px; box-shadow:0 2px 8px rgba(0,0,0,.25);">🧑‍🎓</div>
         <div style="flex:1;">
-          <div class="list-name" style="font-size:17px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-            <span>${c.name}</span>
-            ${orphanIds.has(c.id)?'<span style="color:var(--danger); font-size:13px; font-weight:700;">⚠️</span>':''}
-            ${pendingInvoices.length?`<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 ${pendingInvoices.length} فاتورة معلّقة</span>`:''}
-          </div>
+          <div class="list-name" style="font-size:17px;">${c.name}</div>
           <div class="list-sub" style="margin-top:3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-            <span>🎓 ${c.grade ? GRADE_LABELS[c.grade]||c.grade : '⚠️ بدون مرحلة دراسية محددة'}</span>
+            <span>🎓 ${c.grade ? (GRADE_LABELS[c.grade]||c.grade) : 'بدون مرحلة'}</span>
             ${c.dob ? `<span style="opacity:.6;">·</span><span>🎂 ${c.dob}</span>` : ''}
+            ${isRepeat ? '<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:2px 7px; font-size:10px;">🔁 يبدو معيد</span>' : ''}
           </div>
         </div>
+        <button class="badge" onclick="${editCall}">✏️ تعديل</button>
       </div>
-      ${hasAgeIssue && (hasAgeIssue.status==='over_repeat'||hasAgeIssue.status==='over_reject'||hasAgeIssue.status==='under_reject') ? `<div style="margin-top:8px;">${hasAgeIssue.status==='over_repeat' ? '<span class="badge" style="background:#f59e0b; color:#1a1a1a; padding:2px 8px; font-size:11px;">🔁 يبدو معيد (سنة)</span>' : '<span class="badge" style="background:var(--danger); color:#fff; padding:2px 8px; font-size:11px;">⛔ عمر غير منطقي للمرحلة</span>'}</div>` : ''}
-      ${orphanIds.has(c.id) ? `<button class="badge" style="background:var(--danger); color:#fff; margin-top:10px; align-self:flex-start;" onclick="quickLinkGuardianForChild('${c.id}')">اربط ولي أمر</button>` : ''}
-      <div style="background:var(--paper); border-radius:10px; padding:10px 12px; margin-top:14px;">
-        <div style="font-weight:700; font-size:14px; margin-bottom:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span>💰 حالة الاشتراكات</span>
-          ${monthlyTotal ? `<span style="color:#4ade80; font-size:13px; font-weight:700; margin-inline-start:auto;">إجمالي الشهري: ${monthlyTotal} ج/شهر</span>` : ''}
-        </div>
-        ${roomsWithMode.length ? roomsWithMode.map(x=>childPaymentStatusLine(x)).join('') : '<div class="list-sub">بدون مجموعات</div>'}
-        <button class="badge admin" style="margin-top:10px; width:100%;" onclick="goToPaymentsForChild('${c.name.replace(/'/g,"\\'")}')">💳 إدارة الدفع في تاب المدفوعات</button>
-      </div>
-      <div class="list-sub" style="margin-top:12px; ${orphanIds.has(c.id)?'color:var(--danger); font-weight:600;':''}">👤 ${parentsLabel}</div>
-      <div class="list-actions" style="flex-wrap:wrap; margin-top:14px;">
-        <button class="badge" onclick="openAdminEditModal('children','${c.id}')">تعديل</button>
-        <button class="badge" style="color:var(--danger);" onclick="deleteAdminItem('children','${c.id}')">حذف</button>
-      </div>
+    </div>
+
+    <div class="list-row" style="${cardStyle}">
+      ${title('🚨 محتاج تصرف')}
+      ${alertsHtml}
+    </div>
+
+    <div class="list-row" style="${cardStyle}">
+      ${title('📚 المجموعات', `<button class="badge" style="margin-inline-start:auto;" onclick="${editCall}">تعديل</button>`)}
+      ${groupsHtml}
+    </div>
+
+    <div class="list-row" style="${cardStyle}">
+      ${title('👨‍👩‍👧 أولياء الأمور')}
+      ${parentsHtml}
+      <button class="badge" style="align-self:flex-start; margin-top:2px;" onclick="quickLinkGuardianForChild('${cid}')">➕ اربط ولي أمر</button>
+    </div>
+
+    <div class="list-row" style="${cardStyle}">
+      ${title('💰 الاشتراكات', monthlyTotal ? `<span style="color:#4ade80; font-size:13px; font-weight:700; margin-inline-start:auto;">إجمالي الشهري: ${monthlyTotal} ج</span>` : '')}
+      ${roomsWithMode.length ? roomsWithMode.map(x=>childPaymentStatusLine(x)).join('') : '<div class="list-sub">مفيش مجموعات</div>'}
+      <button class="badge admin" style="margin-top:10px; width:100%;" onclick="${payCall}">💳 إدارة الدفع في تاب المدفوعات</button>
+    </div>
+
+    <div class="list-row" style="${cardStyle}">
+      ${title('📊 الحضور والتقييمات')}
+      <div class="list-sub">✅ حضر ${att30} حصة في آخر 30 يوم</div>
+      <div class="list-sub">🕒 آخر حضور: ${lastAtt || 'لسه مفيش حضور مسجّل'}</div>
+      <div class="list-sub">📝 التقييمات: ${evs.length}${avgRating ? ` · متوسط ${avgRating}` : ''}</div>
+    </div>
+
+    <div class="list-row" style="${cardStyle} border-color:var(--danger);">
+      ${title('⚠️ منطقة الخطر')}
+      <div class="list-sub" style="margin-bottom:10px;">حذف الطالب بيمسح بياناته من المؤسسة.</div>
+      <button class="badge" style="color:var(--danger); align-self:flex-start;" onclick="deleteAdminItem('children','${cid}')">🗑 حذف الطالب</button>
     </div>
   `;
 }
