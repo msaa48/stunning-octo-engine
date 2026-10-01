@@ -1243,6 +1243,17 @@
 
       <div class="card">
         <div class="settings-head">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#1e7a4a,#134d2f);">📲</div>
+          <div class="section-title" style="margin:0;">تعليمات الدفع لأولياء الأمور</div>
+        </div>
+        <div class="settings-field">
+          <label>بتظهر لولي الأمر مع أي فاتورة "في انتظار الدفع" — اكتب رقم الانستاباي أو المحفظة وأي ملاحظة (مثلاً: ابعت صورة التحويل على واتساب)</label>
+          <textarea id="set-paymentInstructions" rows="4" maxlength="500" placeholder="مثال: حوّل على انستاباي: name@instapay أو فودافون كاش 01XXXXXXXXX، وابعت صورة التحويل على واتساب"></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="settings-head">
           <div class="list-avatar" style="background:linear-gradient(135deg,#7a3d3d,#a35454);">🏢</div>
           <div class="section-title" style="margin:0;">اشتراك المؤسسة والتقفيل المالي</div>
         </div>
@@ -1366,7 +1377,7 @@ function rowsToDB(rows){
   db.complaints = rows.complaints.map(r=>({...r.payload, id:r.id}));
   db.payments = rows.payments.map(r=>({...r.payload, id:r.id}));
   db.enrollments = (rows.enrollments||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode}));
-  db.subscriptions = (rows.subscriptions||[]).map(r=>({id:r.id, enrollmentId:r.enrollment_id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode, periodStart:r.period_start, periodEnd:r.period_end, amount:Number(r.amount), status:r.status, paymentMethod:r.payment_method||'cash', sessionsCount:r.sessions_count||null, paymentLink:r.payment_link||null}));
+  db.subscriptions = (rows.subscriptions||[]).map(r=>({id:r.id, enrollmentId:r.enrollment_id, childId:r.child_id, classroomId:r.classroom_id, paymentMode:r.payment_mode, periodStart:r.period_start, periodEnd:r.period_end, amount:Number(r.amount), status:r.status, paymentMethod:r.payment_method||'cash', sessionsCount:r.sessions_count||null, paymentLink:r.payment_link||null, paymentInstructions:r.payment_instructions||null}));
   // attendance/attendance_exceptions للقراءة والعرض بس — الكتابة بتتم مباشرة على Supabase (مش عن طريق pushDBToSupabase) عشان الـtrigger يشتغل صح لحظيًا
   db.attendance = (rows.attendance||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, sessionDate:r.session_date, teacherId:r.teacher_id, exceptionId:r.exception_id}));
   db.attendanceExceptions = (rows.attendanceExceptions||[]).map(r=>({id:r.id, childId:r.child_id, classroomId:r.classroom_id, requestedBy:r.requested_by, grantedByRole:r.granted_by_role, grantedBy:r.granted_by, status:r.status, reason:r.reason, flaggedUnjustified:r.flagged_unjustified, flaggedNote:r.flagged_note, consumed:r.consumed, createdAt:r.created_at}));
@@ -1385,7 +1396,8 @@ function rowsToDB(rows){
     teacherExceptionSessionCap: rows.appSettings.teacher_exception_session_cap ?? 2,
     renewalReminderSessionsBefore: rows.appSettings.renewal_reminder_sessions_before ?? 3,
     financialClosingDay: rows.appSettings.financial_closing_day ?? 1,
-    institutionBillingGraceDays: rows.appSettings.institution_billing_grace_days ?? 3
+    institutionBillingGraceDays: rows.appSettings.institution_billing_grace_days ?? 3,
+    paymentInstructions: rows.appSettings.payment_instructions || ''
   } : {
     raiseCycleMonths:4, teacherPayoutBasis:'sessions', allowAssistants:false,
     whoCanAssignAssistants:'teacher_only', defaultPaymentMode:'monthly',
@@ -1628,7 +1640,7 @@ async function pushDBToSupabase(db){
     const results = await Promise.all([
       supabaseClient.from('classrooms').upsert(db.classrooms.map(c=>({id:c.id, name:c.name, grade:c.grade, monthly_fee:c.monthlyFee, payment_modes:c.paymentModes||['monthly'], session_fee:c.sessionFee||0, meeting_times:c.meetingTimes||[], subject_id:c.subjectId||null, center_id:centerId}))),
       supabaseClient.from('enrollments').upsert((db.enrollments||[]).map(e=>({id:e.id, child_id:e.childId, classroom_id:e.classroomId, payment_mode:e.paymentMode, center_id:centerId}))),
-      supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, payment_method:s.paymentMethod||'cash', sessions_count:s.sessionsCount||null, payment_link:s.paymentLink||null, center_id:centerId}))),
+      supabaseClient.from('subscriptions').upsert((db.subscriptions||[]).map(s=>({id:s.id, enrollment_id:s.enrollmentId, child_id:s.childId, classroom_id:s.classroomId, payment_mode:s.paymentMode, period_start:s.periodStart, period_end:s.periodEnd, amount:s.amount, status:s.status, payment_method:s.paymentMethod||'cash', sessions_count:s.sessionsCount||null, payment_link:s.paymentLink||null, payment_instructions:s.paymentInstructions||null, center_id:centerId}))),
       supabaseClient.from('subjects').upsert(db.subjects.map(s=>({id:s.id, name:s.name, color:s.color, grade:s.grade, center_id:centerId}))),
       // ملحوظة: email و claimed_by مقصودين خارج الـ upsert ده عشان منمسحش ربط الحساب الحقيقي بتاع المدرّس/ولي الأمر
       // ملحوظة أمان: بيانات المدرّسين (فيها راتب/نسبة) بتتبعت بس لو اللي بيحفظ هو الأدمن — مفيش داعي إن مدرّس أو حد تاني يبعت الجدول ده أصلًا حتى لو الحماية على الداتابيز بترفض أي تعديل فعلي
@@ -1661,7 +1673,8 @@ async function pushDBToSupabase(db){
         teacher_exception_session_cap: db.settings.teacherExceptionSessionCap ?? 2,
         renewal_reminder_sessions_before: db.settings.renewalReminderSessionsBefore ?? 3,
         financial_closing_day: db.settings.financialClosingDay ?? 1,
-        institution_billing_grace_days: db.settings.institutionBillingGraceDays ?? 3
+        institution_billing_grace_days: db.settings.institutionBillingGraceDays ?? 3,
+        payment_instructions: db.settings.paymentInstructions || null
       })
     ]);
     // Supabase JS بيرجع {data, error} من غير ما يرمي exception حتى لو الـ upsert اترفض
@@ -2694,6 +2707,7 @@ function openAdminSettingsScreen(){
   document.getElementById('set-renewalReminderSessionsBefore').value = s.renewalReminderSessionsBefore ?? 3;
   document.getElementById('set-financialClosingDay').value = s.financialClosingDay ?? 1;
   document.getElementById('set-institutionBillingGraceDays').value = s.institutionBillingGraceDays ?? 3;
+  document.getElementById('set-paymentInstructions').value = s.paymentInstructions || '';
   document.getElementById('set-allowAssistants').checked = !!s.allowAssistants;
   document.getElementById('set-whoCanAssignAssistants').value = s.whoCanAssignAssistants || 'teacher_only';
   showScreen('admin-settings-screen');
@@ -2722,7 +2736,8 @@ async function saveAdminSettings(){
     teacherExceptionSessionCap,
     renewalReminderSessionsBefore,
     financialClosingDay,
-    institutionBillingGraceDays
+    institutionBillingGraceDays,
+    paymentInstructions: document.getElementById('set-paymentInstructions').value.trim()
   };
   const result = await saveDB(db);
   if(!result.ok){ showToast('⚠️ فشل حفظ الإعدادات على السيرفر'); return; }
@@ -3748,7 +3763,7 @@ function renderParentPayments(){
     else { statusLabel='منتهية'; badgeStyle='background:#fee2e2; color:var(--danger);'; }
     return `<div class="tl-item">
       <div class="tl-em">💳</div>
-      <div class="tl-body"><div class="tl-title">${room?room.name:'—'}</div><div class="tl-note">${e.paymentMode==='session'?'بالحصة':'شهري'}${sub?' · '+sub.amount+' جنيه':''}</div></div>
+      <div class="tl-body"><div class="tl-title">${room?room.name:'—'}</div><div class="tl-note">${e.paymentMode==='session'?'بالحصة':'شهري'}${sub?' · '+sub.amount+' جنيه':''}</div>${st.key==='pending' ? `<div class="tl-note" style="white-space:pre-line; margin-top:4px; color:#93610f;">${sub.paymentInstructions ? 'للدفع: ' + sub.paymentInstructions : 'تواصل مع إدارة المركز لإتمام الدفع'}</div>` : ''}</div>
       <span class="badge ${badgeClass}" style="${badgeStyle}">${statusLabel}</span>
     </div>`;
   }).join('');
@@ -4644,12 +4659,47 @@ function getChildPaymentInfo(db, c){
   return {roomsWithMode, monthlyTotal, pendingInvoices};
 }
 // حالة الاشتراك الفعلية بتاخد التاريخ في الاعتبار — مش بس طريقة الدفع
+// عدد الحصص اللي الطالب حضرها فعلاً ضمن فترة اشتراك بالحصة (الحضور المغطّى باستثناء مش بيتخصم)
+function countSubscriptionUsedSessions(sub){
+  const db = loadDB();
+  return (db.attendance||[]).filter(a=> a.childId===sub.childId && a.classroomId===sub.classroomId && !a.exceptionId
+    && a.sessionDate>=sub.periodStart && a.sessionDate<=sub.periodEnd).length;
+}
 function getSubscriptionState(sub, today){
   today = today || localDateStr();
   if(!sub) return {key:'none', label:'بدون اشتراك'};
   if(sub.status==='pending') return {key:'pending', label:'في انتظار الدفع'};
-  if(sub.status==='active' && sub.periodEnd>=today) return {key:'active', label:'سارية لحد '+sub.periodEnd};
+  if(sub.status==='active' && sub.periodEnd>=today){
+    if(sub.paymentMode==='session' && sub.sessionsCount){
+      const used = countSubscriptionUsedSessions(sub);
+      if(used >= sub.sessionsCount) return {key:'expired', label:`الحصص المدفوعة خلصت (${used}/${sub.sessionsCount})`};
+      return {key:'active', label:`متبقي ${sub.sessionsCount-used} من ${sub.sessionsCount} حصة · لحد ${sub.periodEnd}`};
+    }
+    return {key:'active', label:'سارية لحد '+sub.periodEnd};
+  }
   return {key:'expired', label:'منتهي من '+sub.periodEnd};
+}
+// أيام الأسبوع اللي المجموعة بتتقابل فيها (من الجدول الأسبوعي) — بتستخدم لحساب ميعاد آخر حصة مدفوعة
+const AR_WEEKDAYS = {'الأحد':0,'الاثنين':1,'الإثنين':1,'الثلاثاء':2,'الأربعاء':3,'الخميس':4,'الجمعة':5,'السبت':6};
+function getClassroomMeetingWeekdays(db, classroomId){
+  const days = ((db.scheduleSettingsByClassroom||{})[classroomId]||{}).days || [];
+  const set = new Set();
+  (db.schedule||[]).filter(sc=> sc.classroomId===classroomId).forEach(sc=>{
+    const name = typeof sc.day==='number' ? days[sc.day] : sc.day;
+    if(name!==undefined && name in AR_WEEKDAYS) set.add(AR_WEEKDAYS[name]);
+  });
+  return [...set];
+}
+// تاريخ الحصة رقم n بداية من تاريخ البداية (شاملاً اليوم نفسه لو هو يوم حصة)
+function nthMeetingDate(startStr, n, weekdays){
+  if(!weekdays.length) return addDaysStr(startStr, 7*(n-1)); // مفيش جدول محدد للمجموعة: بنفترض حصة كل أسبوع تبدأ من تاريخ البداية
+  let cur = startStr, count = 0;
+  for(let i=0; i<800; i++){
+    const [y,m,d] = cur.split('-').map(Number);
+    if(weekdays.includes(new Date(Date.UTC(y,m-1,d)).getUTCDay())){ count++; if(count===n) return cur; }
+    cur = addDaysStr(cur, 1);
+  }
+  return addDaysStr(startStr, 7*n);
 }
 function subscriptionBadgeHtml(sub){
   const st = getSubscriptionState(sub);
@@ -4674,7 +4724,7 @@ function childPaymentRowHtml(c, x){
   return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:7px 0; border-bottom:1px dashed var(--border);">
     <div style="font-size:13px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${label}</span>${methodBadge}</div>
     <div style="display:flex; gap:5px; flex-wrap:wrap;">
-      ${x.sub && x.sub.status==='pending' ? `<button class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:11px; padding:4px 8px;" onclick="event.stopPropagation(); copySubscriptionPaymentLink('${x.sub.paymentLink}')">📋 نسخ رابط الدفع</button>
+      ${x.sub && x.sub.status==='pending' ? `<button class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:11px; padding:4px 8px;" onclick="event.stopPropagation(); copySubscriptionPaymentInstructions('${x.sub.id}')">📋 نسخ تعليمات الدفع</button>
       <button class="badge" style="background:#22c55e; color:#0a1a0f; font-size:11px; padding:4px 8px;" onclick="event.stopPropagation(); confirmOnlineSubscriptionPaid('${x.sub.id}')">✅ تأكيد استلام الدفع</button>` : ''}
       <button class="badge" style="font-size:11px; padding:4px 8px;" onclick="event.stopPropagation(); openRegisterSubscriptionModal('${c.id}','${x.room.id}')">💰 تسجيل دفعة</button>
     </div>
@@ -5248,8 +5298,7 @@ function renderAdminListInner(){
       let statusInfo;
       if(!sub) statusInfo = {key:'none', label:'لسه مفيش دفعة', cls:''};
       else if(sub.status==='pending') statusInfo = {key:'pending', label:'فاتورة معلّقة', cls:''};
-      else if(sub.status==='active' && sub.periodEnd >= today) statusInfo = {key:'active', label:'سارية لحد '+sub.periodEnd, cls:'resolved'};
-      else statusInfo = {key:'expired', label:'منتهية من '+sub.periodEnd, cls:''};
+      else { const _st = getSubscriptionState(sub, today); statusInfo = {key:_st.key, label:_st.label, cls:_st.key==='active'?'resolved':''}; }
       if(statusInfo.key==='active') activeCount++; else if(statusInfo.key==='expired') expiredCount++; else if(statusInfo.key==='pending') pendingStatCount++; else noneCount++;
       return {child, room, e, sub, statusInfo};
     }).filter(r=>r.child && r.room);
@@ -5686,18 +5735,19 @@ function openRegisterSubscriptionModal(childId, classroomId){
         <input type="radio" name="f-sub-method" value="cash" checked onchange="onSubscriptionMethodChange()"> 💵 نقدي وقت الحصة
       </label>
       <label style="flex:1; display:flex; align-items:center; gap:6px; border:1.5px solid var(--border); border-radius:10px; padding:8px; cursor:pointer;">
-        <input type="radio" name="f-sub-method" value="online" onchange="onSubscriptionMethodChange()"> 🔗 رابط دفع أونلاين
+        <input type="radio" name="f-sub-method" value="online" onchange="onSubscriptionMethodChange()"> 📲 تحويل (انستاباي/محفظة)
       </label>
     </div>
-    <input type="text" id="f-sub-start" placeholder="تاريخ بداية ${isSession?'أول حصة مدفوعة':'الاشتراك'} (YYYY-MM-DD)" value="${today}">
+    <input type="text" id="f-sub-start" placeholder="تاريخ بداية ${isSession?'أول حصة مدفوعة':'الاشتراك'} (YYYY-MM-DD)" value="${today}" ${isSession?'oninput="updateSessionEndPreview()"':''}>
     ${isSession ? `
       <input type="number" min="1" id="f-sub-sessions-count" placeholder="عدد الحصص المدفوعة مقدمًا" value="1" oninput="onSubscriptionSessionsCountChange(${perSession})">
-      <div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 يقفل تغطية زمنية كافية (30 يوم لكل حصة) عشان الطالب يقدر يحضر لحد ما الحصص المدفوعة تخلص</div>
+      <div id="f-sub-end-preview" style="font-size:12px; color:var(--muted); margin-top:-4px;"></div>
     ` : `<div style="font-size:12px; color:var(--muted); margin-top:-4px;">💡 هيغطي شهر كامل من التاريخ ده</div>`}
     <input type="text" id="f-sub-amount" placeholder="المبلغ بالجنيه" value="${defaultAmount}">
-    <div id="f-sub-online-note" style="display:none; font-size:12px; color:var(--muted);">هيتسجل الاشتراك كـ"في انتظار الدفع" ويتولّد رابط دفع تقدر تشاركه مع ولي الأمر. لما الدفع يتأكد، هتضغط "تأكيد استلام الدفع" من كارت الطالب.</div>
+    <div id="f-sub-online-note" style="display:none; font-size:12px; color:var(--muted);">هيتسجل الاشتراك كـ"في انتظار الدفع" وولي الأمر هيشوف المبلغ وتعليمات الدفع في شاشته (من الإعدادات). لما التحويل يوصل، اضغط "تأكيد استلام الدفع" من كارت الطالب.</div>
   `;
   adminModalMode = 'subscription-add'; adminModalEditId = null;
+  if(isSession) updateSessionEndPreview();
   document.getElementById('admin-modal-bg').classList.add('show');
 }
 function onSubscriptionMethodChange(){
@@ -5710,6 +5760,18 @@ function onSubscriptionSessionsCountChange(perSession){
   const amountEl = document.getElementById('f-sub-amount');
   const count = parseInt(countEl.value)||1;
   amountEl.value = (perSession * count).toString();
+  updateSessionEndPreview();
+}
+// بيوضّح للمدير الاشتراك هيخلص إمتى: بعد ميعاد آخر حصة مدفوعة
+function updateSessionEndPreview(){
+  const el = document.getElementById('f-sub-end-preview');
+  if(!el || !subscriptionModalContext) return;
+  const start = (document.getElementById('f-sub-start')||{}).value || '';
+  const count = parseInt((document.getElementById('f-sub-sessions-count')||{}).value)||1;
+  if(!isValidDateStr(start.trim())){ el.textContent = ''; return; }
+  const wd = getClassroomMeetingWeekdays(loadDB(), subscriptionModalContext.classroomId);
+  const end = nthMeetingDate(start.trim(), Math.max(1,count), wd);
+  el.textContent = `💡 كل حصة مدفوعة = حضور واحد، والاشتراك بيخلص بعد ميعاد آخر حصة (${end})${wd.length?'':' — المجموعة ملهاش جدول أسبوعي فاتحسبت حصة كل أسبوع'}`;
 }
 async function saveNewSubscription(){
   const db = loadDB();
@@ -5728,35 +5790,37 @@ async function saveNewSubscription(){
   if(isSession){
     sessionsCount = parseInt(document.getElementById('f-sub-sessions-count')?.value)||1;
     if(sessionsCount<1){ showToast('عدد الحصص لازم يكون 1 على الأقل'); return; }
-    periodEnd = addDaysStr(startRaw, sessionsCount*30); // تغطية زمنية آمنة بدل عداد حصص فعلي — راجع ملاحظة الحقل
+    // الاشتراك بالحصة بينتهي بعد ميعاد آخر حصة مدفوعة، والسيرفر كمان بيمنع الحضور بعد ما العدد المدفوع يخلص
+    periodEnd = nthMeetingDate(startRaw, sessionsCount, getClassroomMeetingWeekdays(db, classroomId));
   } else {
     periodEnd = addMonthsStr(startRaw, 1);
   }
   const status = method==='online' ? 'pending' : 'active';
-  const paymentLink = method==='online' ? `https://pay.masar-centers.app/i/${crypto.randomUUID().slice(0,8)}` : null;
+  const paymentLink = null; // مفيش بوابة دفع حقيقية — الدفع الأونلاين تحويل يدوي ومؤكَّد من المدير
+  const paymentInstructions = method==='online' ? ((db.settings||{}).paymentInstructions || null) : null;
   // إدخال مباشر (insert) بدل الحفظ العام (saveDB/pushDBToSupabase) — عشان بلوك upsert
   // الشامل لكل الاشتراكات القديمة مايتصدمش مع صلاحيات الأسيستنت (INSERT بس، من غير UPDATE)
   const { data, error } = await supabaseClient.from('subscriptions').insert({
     enrollment_id: enrollment.id, child_id: childId, classroom_id: classroomId,
     payment_mode: enrollment.paymentMode, period_start: startRaw, period_end: periodEnd,
     amount: parseFloat(amountRaw), status, payment_method: method, sessions_count: sessionsCount,
-    payment_link: paymentLink, center_id: session.centerId
+    payment_link: paymentLink, payment_instructions: paymentInstructions, center_id: session.centerId
   }).select().single();
   if(error){ showToast('تعذّر تسجيل الدفعة: ' + (error.message||'حصل خطأ غير متوقع')); return; }
   db.subscriptions = db.subscriptions || [];
   db.subscriptions.push({
     id: data.id, enrollmentId: enrollment.id, childId, classroomId,
     paymentMode: enrollment.paymentMode, periodStart: startRaw, periodEnd,
-    amount: parseFloat(amountRaw), status, paymentMethod: method, sessionsCount, paymentLink
+    amount: parseFloat(amountRaw), status, paymentMethod: method, sessionsCount, paymentLink, paymentInstructions
   });
   dbCache = db;
   try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   closeModal('admin-modal-bg');
   subscriptionModalContext = null;
   if(method==='online'){
-    showToast('تم إصدار الفاتورة 🔗 — انسخ رابط الدفع من كارت الطالب وشاركه مع ولي الأمر');
+    showToast(paymentInstructions ? 'تم تسجيل الفاتورة ✓ — ولي الأمر هيشوف تعليمات الدفع في شاشته' : 'تم تسجيل الفاتورة ✓ — ضيف تعليمات الدفع من الإعدادات عشان ولي الأمر يعرف يحوّل فين');
   } else {
-    showToast('تم تسجيل الدفعة ✓ — الطالب يقدر يحضر لحد ' + periodEnd);
+    showToast(isSession ? `تم تسجيل الدفعة ✓ — ${sessionsCount} حصة، بتنتهي بعد ${periodEnd}` : 'تم تسجيل الدفعة ✓ — الطالب يقدر يحضر لحد ' + periodEnd);
   }
   renderAdminList();
 }
@@ -5772,8 +5836,17 @@ async function confirmOnlineSubscriptionPaid(subId){
   showToast('تم تأكيد استلام الدفع ✓');
   renderAdminList();
 }
-function copySubscriptionPaymentLink(link){
-  navigator.clipboard?.writeText(link).then(()=> showToast('تم نسخ رابط الدفع 📋')).catch(()=> showToast(link));
+// بيجهّز رسالة جاهزة (المبلغ + تعليمات التحويل) تبعتها لولي الأمر على واتساب
+function copySubscriptionPaymentInstructions(subId){
+  const db = loadDB();
+  const sub = (db.subscriptions||[]).find(x=>x.id===subId);
+  if(!sub) return;
+  const child = db.children.find(c=>c.id===sub.childId);
+  const room = db.classrooms.find(r=>r.id===sub.classroomId);
+  const instr = sub.paymentInstructions || (db.settings||{}).paymentInstructions || '';
+  if(!instr){ showToast('ضيف تعليمات الدفع من الإعدادات الأول ⚙️'); return; }
+  const msg = `اشتراك ${child?child.name:''} في ${room?room.name:''}\nالمبلغ المطلوب: ${sub.amount} جنيه\n${instr}`;
+  navigator.clipboard?.writeText(msg).then(()=> showToast('تم نسخ الرسالة 📋 — ابعتها لولي الأمر')).catch(()=> showToast(msg));
 }
 
 async function flagExceptionUnjustified(exceptionId){
