@@ -1396,7 +1396,7 @@ function rowsToDB(rows){
     teacherExceptionSessionCap: rows.appSettings.teacher_exception_session_cap ?? 2,
     renewalReminderSessionsBefore: rows.appSettings.renewal_reminder_sessions_before ?? 3,
     financialClosingDay: rows.appSettings.financial_closing_day ?? 1,
-    institutionBillingGraceDays: rows.appSettings.institution_billing_grace_days ?? 3,
+    institutionBillingGraceDays: rows.billingGraceDays ?? 3,
     paymentInstructions: rows.appSettings.payment_instructions || ''
   } : {
     raiseCycleMonths:4, teacherPayoutBasis:'sessions', allowAssistants:false,
@@ -1415,7 +1415,7 @@ async function fetchDBFromSupabase(){
   const centerId = session.centerId;
   if(!centerId){ dbCache = seedData(); return; } // Super Admin (لسه ملوش شاشة خاصة) — ديمو مؤقت لحد ما نبني لوحته
   try{
-    const { data: centerRow } = await supabaseClient.from('centers').select('name, simulated_time_offset_ms').eq('id', centerId).single();
+    const { data: centerRow } = await supabaseClient.from('centers').select('name, simulated_time_offset_ms, billing_grace_days').eq('id', centerId).single();
     session.centerSlug = slugifyWordsForDomain(centerRow?.name || 'markaz'); // مستخدم كدومين للإيميلات المولّدة أوتوماتيك (بعد الـ@) — مفصول بـ hyphen "-" لأن الـ underscore ممنوع في أسماء الدومين
     simulatedTimeOffsetMs = centerRow?.simulated_time_offset_ms || 0;
     const isAdmin = session.role==='ADMIN';
@@ -1447,6 +1447,7 @@ async function fetchDBFromSupabase(){
     });
     rows.teachers = teachersResult.data || [];
     rows.appSettings = appSettingsRes.data || null;
+    rows.billingGraceDays = centerRow?.billing_grace_days ?? 3; // مهلة السماح بقت على جدول centers (مش app_settings)
 
 
     dbCache = rowsToDB(rows);
@@ -1673,10 +1674,10 @@ async function pushDBToSupabase(db){
         teacher_exception_session_cap: db.settings.teacherExceptionSessionCap ?? 2,
         renewal_reminder_sessions_before: db.settings.renewalReminderSessionsBefore ?? 3,
         financial_closing_day: db.settings.financialClosingDay ?? 1,
-        payment_instructions: db.settings.paymentInstructions || null,
-        // فترة السماح بتتبعت بس لو مالك المنصة (غير كده الـ trigger بيتجاهلها)
-        ...(session.isSuperAdmin ? {institution_billing_grace_days: db.settings.institutionBillingGraceDays ?? 3} : {})
-      })
+        payment_instructions: db.settings.paymentInstructions || null
+      }),
+      // مهلة السماح على جدول centers، والـ RLS بتسمح بالتعديل لمالك المنصة بس — فبنبعتها بس لو super admin
+      ...(session.isSuperAdmin ? [supabaseClient.from('centers').update({billing_grace_days: db.settings.institutionBillingGraceDays ?? 3}).eq('id', centerId)] : [])
     ]);
     // Supabase JS بيرجع {data, error} من غير ما يرمي exception حتى لو الـ upsert اترفض
     // (زي رفض RLS أو قيد في الداتابيز)، فلازم نتأكد من كل نتيجة بنفسنا —
@@ -2708,7 +2709,7 @@ function openAdminSettingsScreen(){
   document.getElementById('set-renewalReminderSessionsBefore').value = s.renewalReminderSessionsBefore ?? 3;
   document.getElementById('set-financialClosingDay').value = s.financialClosingDay ?? 1;
   document.getElementById('set-institutionBillingGraceDays').value = s.institutionBillingGraceDays ?? 3;
-  // فترة السماح من صلاحيات مالك المنصة بس (الداتابيز بتحميها بـ trigger) — المدير بيشوفها قراءة فقط
+  // فترة السماح من صلاحيات مالك المنصة بس (الداتابيز بتحميها بـ RLS على centers) — المدير بيشوفها قراءة فقط
   document.getElementById('set-institutionBillingGraceDays').disabled = !session.isSuperAdmin;
   document.getElementById('set-paymentInstructions').value = s.paymentInstructions || '';
   document.getElementById('set-allowAssistants').checked = !!s.allowAssistants;
