@@ -1320,6 +1320,32 @@ let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخ
 let simulatedTimeOffsetMs = 0;
 function getSystemNow(){ return new Date(Date.now() + simulatedTimeOffsetMs); }
 
+// ===== تواريخ بالتوقيت المحلي =====
+// toISOString() بيحوّل لـUTC، فبين 12 و3 الفجر بتوقيت مصر بيرجّع تاريخ اليوم اللي قبله، وفي أي حساب بـnew Date('YYYY-MM-DDT00:00:00') بيرجّع يوم ناقص
+function pad2(n){ return String(n).padStart(2,'0'); }
+function localDateStr(d){ d = d || getSystemNow(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function localMonthStr(d){ return localDateStr(d).slice(0,7); }
+function isValidDateStr(str){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str||'');
+  if(!m) return false;
+  const dt = new Date(Date.UTC(+m[1], +m[2]-1, +m[3]));
+  return dt.getUTCFullYear()===+m[1] && dt.getUTCMonth()===+m[2]-1 && dt.getUTCDate()===+m[3];
+}
+function addDaysStr(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m-1, d+n));
+  return t.getUTCFullYear()+'-'+pad2(t.getUTCMonth()+1)+'-'+pad2(t.getUTCDate());
+}
+// بيضيف شهور من غير ما يتخطى نهاية الشهر (31 يناير + شهر = 28 فبراير مش 3 مارس)
+function addMonthsStr(dateStr, n){
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const total = (m-1) + n;
+  const ty = y + Math.floor(total/12);
+  const tm = ((total%12)+12)%12;
+  const last = new Date(Date.UTC(ty, tm+1, 0)).getUTCDate();
+  return ty+'-'+pad2(tm+1)+'-'+pad2(Math.min(d, last));
+}
+
 // تحويل صفوف Supabase (snake_case) لنفس شكل الـ db القديم (camelCase) اللي كل الكود شغال عليه
 function rowsToDB(rows){
   const db = seedData(); // نبدأ بشكل افتراضي كامل، وبعدين نستبدل كل جزء بيانات حقيقية جاية من Supabase
@@ -3021,7 +3047,7 @@ function subjectsTaughtToChildByTeacher(db, teacher, child){
 function computeChildEffortPercent(db, teacher, child){
   const subjectIds = subjectsTaughtToChildByTeacher(db, teacher, child);
   if(subjectIds.length===0) return null;
-  const todayStr = getSystemNow().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   let totalTasks = 0, doneTasks = 0;
   subjectIds.forEach(sid=>{
     const tasks = (db.subjectTasks||[]).filter(t=> t.subjectId===sid);
@@ -3043,7 +3069,7 @@ function renderTeacherStudentGrid(){
   if(!teacher || !grid) return;
   const myChildren = db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid)));
   if(myChildren.length===0){ grid.innerHTML = '<div class="empty">لا يوجد طلاب في مجموعاتك</div>'; return; }
-  const todayStr = getSystemNow().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   grid.innerHTML = myChildren.map(c=>{
     const effort = computeChildEffortPercent(db, teacher, c);
     const sharedRoomIds = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
@@ -3081,7 +3107,7 @@ async function recordSessionAttendance(childId, classroomId){
   const db = loadDB();
   const authId = await getAuthUserId();
   const teacher = db.teachers.find(t=>t.id===session.personId);
-  const todayStr = getSystemNow().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   const { data, error } = await supabaseClient.from('attendance').insert({
     child_id: childId, classroom_id: classroomId, session_date: todayStr,
     teacher_id: teacher?teacher.id:null, recorded_by: authId
@@ -3174,7 +3200,7 @@ function renderAssistantStudentGrid(){
   if(!teacher){ grid.innerHTML = '<div class="empty">مش مرتبط بأي مدرّس لسه — كلّم الأدمن يربطك بمدرّس</div>'; return; }
   const myChildren = db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid)));
   if(myChildren.length===0){ grid.innerHTML = '<div class="empty">لا يوجد طلاب في مجموعات المدرّس ده</div>'; return; }
-  const todayStr = getSystemNow().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   grid.innerHTML = myChildren.map(c=>{
     const sharedRoomIds = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
     const sharedRooms = sharedRoomIds.map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
@@ -3207,7 +3233,7 @@ async function recordAssistantAttendance(childId, classroomId){
   const db = loadDB();
   const authId = await getAuthUserId();
   const teacher = db.teachers.find(t=>t.id===assistantActiveTeacherId);
-  const todayStr = getSystemNow().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   const { data, error } = await supabaseClient.from('attendance').insert({
     child_id: childId, classroom_id: classroomId, session_date: todayStr,
     teacher_id: teacher?teacher.id:null, recorded_by: authId
@@ -3286,7 +3312,7 @@ function renderTeacherTasksToday(){
   const child = db.children.find(c=>c.id===teacherActiveChildId);
   if(!teacher || !child){ el.innerHTML = '<div class="empty">اختر طالب الأول</div>'; return; }
   const subjectIds = subjectsTaughtToChildByTeacher(db, teacher, child);
-  const todayStr = getSystemNow().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   const blocks = subjectIds.map(sid=>{
     const subj = db.subjects.find(s=>s.id===sid);
     const tasks = (db.subjectTasks||[]).filter(t=>t.subjectId===sid).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
@@ -3305,7 +3331,7 @@ function renderTeacherTasksToday(){
 
 async function toggleTaskCompletion(childId, subjectId, taskId, isDone){
   const db = loadDB();
-  const todayStr = getSystemNow().toISOString().slice(0,10);
+  const todayStr = localDateStr();
   const { data, error } = await supabaseClient.from('task_completions').upsert({
     child_id: childId, subject_id: subjectId, task_id: taskId, teacher_id: session.personId,
     completion_date: todayStr, done: isDone, center_id: session.centerId
@@ -3702,17 +3728,24 @@ async function sendParentMessage(){
 function renderParentPayments(){
   const db = loadDB();
   const childId = document.getElementById('parent-child-select').value;
-  const today = getSystemNow().toISOString().slice(0,10);
+  const today = localDateStr();
   const enrollments = (db.enrollments||[]).filter(e=>e.childId===childId);
   const el = document.getElementById('parent-payments-view');
   if(enrollments.length===0){ el.innerHTML = '<div class="empty">الطالب مش مسجّل في أي مجموعة لسه</div>'; return; }
   el.innerHTML = enrollments.map(e=>{
     const room = db.classrooms.find(r=>r.id===e.classroomId);
-    const sub = getLatestSubscription(db, childId, e.classroomId);
-    let statusLabel, badgeClass, badgeStyle;
-    if(!sub){ statusLabel='لسه مفيش دفعة'; badgeClass=''; badgeStyle='background:#fef3c7; color:#93610f;'; }
-    else if(sub.status==='active' && sub.periodEnd>=today){ statusLabel='سارية لحد '+sub.periodEnd; badgeClass='resolved'; badgeStyle=''; }
-    else { statusLabel='منتهية'; badgeClass=''; badgeStyle='background:#fee2e2; color:var(--danger);'; }
+    // لو فيه اشتراك ساري نعرضه الأول (حتى لو فيه فاتورة تجديد معلّقة)، وبعده المعلّق، وبعده الأحدث
+    const subs = (db.subscriptions||[]).filter(s=> s.childId===childId && s.classroomId===e.classroomId);
+    const byEndDesc = (a,b)=> (b.periodEnd||'').localeCompare(a.periodEnd||'');
+    const sub = subs.filter(s=> s.status==='active' && s.periodEnd>=today).sort(byEndDesc)[0]
+             || subs.filter(s=> s.status==='pending').sort(byEndDesc)[0]
+             || subs.sort(byEndDesc)[0] || null;
+    const st = getSubscriptionState(sub, today);
+    let statusLabel, badgeClass='', badgeStyle='';
+    if(st.key==='none'){ statusLabel='لسه مفيش دفعة'; badgeStyle='background:#fef3c7; color:#93610f;'; }
+    else if(st.key==='active'){ statusLabel=st.label; badgeClass='resolved'; }
+    else if(st.key==='pending'){ statusLabel='في انتظار الدفع'; badgeStyle='background:#fef3c7; color:#93610f;'; }
+    else { statusLabel='منتهية'; badgeStyle='background:#fee2e2; color:var(--danger);'; }
     return `<div class="tl-item">
       <div class="tl-em">💳</div>
       <div class="tl-body"><div class="tl-title">${room?room.name:'—'}</div><div class="tl-note">${e.paymentMode==='session'?'بالحصة':'شهري'}${sub?' · '+sub.amount+' جنيه':''}</div></div>
@@ -4159,7 +4192,7 @@ function initAdminScreen(){
 
 function renderAdminAlerts(){
   const db = loadDB();
-  const currentMonth = getSystemNow().toISOString().slice(0,7);
+  const currentMonth = localMonthStr();
   const overdue = db.payments.filter(p=> p.status!=='PAID' && p.month < currentMonth);
   const orphans = getChildrenWithoutGuardian(db);
   const pendingComplaints = db.complaints.filter(c=>c.status==='PENDING');
@@ -4610,28 +4643,34 @@ function getChildPaymentInfo(db, c){
   const pendingInvoices = roomsWithMode.filter(x=> x.sub && x.sub.status==='pending');
   return {roomsWithMode, monthlyTotal, pendingInvoices};
 }
+// حالة الاشتراك الفعلية بتاخد التاريخ في الاعتبار — مش بس طريقة الدفع
+function getSubscriptionState(sub, today){
+  today = today || localDateStr();
+  if(!sub) return {key:'none', label:'بدون اشتراك'};
+  if(sub.status==='pending') return {key:'pending', label:'في انتظار الدفع'};
+  if(sub.status==='active' && sub.periodEnd>=today) return {key:'active', label:'سارية لحد '+sub.periodEnd};
+  return {key:'expired', label:'منتهي من '+sub.periodEnd};
+}
+function subscriptionBadgeHtml(sub){
+  const st = getSubscriptionState(sub);
+  const base = 'font-size:10px; padding:2px 7px;';
+  if(st.key==='none') return `<span class="badge" style="background:var(--danger); color:#fff; ${base}">⚠️ بدون اشتراك</span>`;
+  if(st.key==='pending') return `<span class="badge" style="background:#f59e0b; color:#1a1a1a; ${base}">🔗 في انتظار الدفع</span>`;
+  if(st.key==='expired') return `<span class="badge" style="background:var(--danger); color:#fff; ${base}">⛔ ${st.label}</span>`;
+  return sub.paymentMethod==='online'
+    ? `<span class="badge" style="background:#3b82f6; color:#fff; ${base}">🔗 مدفوع أونلاين · ${st.label}</span>`
+    : `<span class="badge" style="background:#22c55e; color:#0a1a0f; ${base}">💵 نقدي · ${st.label}</span>`;
+}
 function childPaymentStatusLine(x){
   const label = x.mode==='session' ? `${x.room.name} (بالحصة)` : `${x.room.name} (شهري)`;
-  const statusBadge = x.sub
-    ? (x.sub.paymentMethod==='online'
-        ? (x.sub.status==='pending'
-            ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 في انتظار الدفع</span>`
-            : `<span class="badge" style="background:#3b82f6; color:#fff; font-size:10px; padding:2px 7px;">🔗 مدفوع أونلاين</span>`)
-        : `<span class="badge" style="background:#22c55e; color:#0a1a0f; font-size:10px; padding:2px 7px;">💵 نقدي</span>`)
-    : `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:2px 7px;">⚠️ بدون اشتراك</span>`;
+  const statusBadge = subscriptionBadgeHtml(x.sub);
   return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:5px 0; border-bottom:1px dashed var(--border);">
     <span style="font-size:12.5px;">${label}</span>${statusBadge}
   </div>`;
 }
 function childPaymentRowHtml(c, x){
   const label = x.mode==='session' ? `${x.room.name} — ${x.room.sessionFee||0} ج/حصة${x.sub?.sessionsCount?` × ${x.sub.sessionsCount} حصة`:''}` : `${x.room.name} — ${x.room.monthlyFee||0} ج/شهر`;
-  const methodBadge = x.sub
-    ? (x.sub.paymentMethod==='online'
-        ? (x.sub.status==='pending'
-            ? `<span class="badge" style="background:#f59e0b; color:#1a1a1a; font-size:10px; padding:2px 7px;">🔗 في انتظار الدفع</span>`
-            : `<span class="badge" style="background:#3b82f6; color:#fff; font-size:10px; padding:2px 7px;">🔗 مدفوع أونلاين</span>`)
-        : `<span class="badge" style="background:#22c55e; color:#0a1a0f; font-size:10px; padding:2px 7px;">💵 نقدي</span>`)
-    : `<span class="badge" style="background:var(--danger); color:#fff; font-size:10px; padding:2px 7px;">⚠️ بدون اشتراك</span>`;
+  const methodBadge = subscriptionBadgeHtml(x.sub);
   return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:7px 0; border-bottom:1px dashed var(--border);">
     <div style="font-size:13px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${label}</span>${methodBadge}</div>
     <div style="display:flex; gap:5px; flex-wrap:wrap;">
@@ -4697,6 +4736,8 @@ function renderStudentDetailScreen(){
   if(!roomsWithMode.length) alerts.push({text:'مش مسجّل في أي مجموعة', btn:'سجّله في مجموعة', call:`editChildFocus('${cid}','groups')`});
   if(pendingInvoices.length) alerts.push({text:`${pendingInvoices.length} فاتورة أونلاين في انتظار الدفع`, btn:'المدفوعات', call:payCall});
   if(noSubRooms.length) alerts.push({text:`${noSubRooms.length} مجموعة بدون اشتراك مسجّل`, btn:'المدفوعات', call:payCall});
+  const expiredRooms = roomsWithMode.filter(x=> getSubscriptionState(x.sub).key==='expired');
+  if(expiredRooms.length) alerts.push({danger:true, text:`${expiredRooms.length===1 ? 'اشتراك منتهي' : expiredRooms.length+' اشتراكات منتهية'}: ${expiredRooms.map(x=>x.room.name).join('، ')}`, btn:'جدّد', call:payCall});
   const alertsHtml = alerts.length
     ? alerts.map(a=>`<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 10px; border-radius:10px; margin-bottom:6px; background:rgba(245,158,11,.12); border:1px solid ${a.danger?'var(--danger)':'#f59e0b'};">
         <span style="flex:1 1 160px; font-size:12.5px;">${a.danger?'⛔':'⚠️'} ${a.text}</span>
@@ -4740,7 +4781,7 @@ function renderStudentDetailScreen(){
   }).join('') : '<div class="list-sub" style="color:var(--danger); font-weight:600;">بدون ولي أمر مرتبط</div>';
 
   // 4) الحضور والتقييمات
-  const cutoff = new Date(getSystemNow().getTime() - 30*86400000).toISOString().slice(0,10);
+  const cutoff = addDaysStr(localDateStr(), -30);
   const att = (db.attendance||[]).filter(a=>a.childId===cid);
   const att30 = att.filter(a=> (a.sessionDate||'') >= cutoff).length;
   const lastAtt = att.map(a=>a.sessionDate).filter(Boolean).sort().pop();
@@ -5197,7 +5238,7 @@ function renderAdminListInner(){
     return;
   }
   else if(adminActiveTab==='payments'){
-    const today = getSystemNow().toISOString().slice(0,10);
+    const today = localDateStr();
     const enrollments = db.enrollments || [];
     let activeCount=0, expiredCount=0, noneCount=0, pendingStatCount=0;
     const rows = enrollments.map(e=>{
@@ -5632,7 +5673,7 @@ function openRegisterSubscriptionModal(childId, classroomId){
   const enrollment = (db.enrollments||[]).find(e=> e.childId===childId && e.classroomId===classroomId);
   if(!child || !room || !enrollment) return;
   subscriptionModalContext = {childId, classroomId};
-  const today = getSystemNow().toISOString().slice(0,10);
+  const today = localDateStr();
   const isSession = enrollment.paymentMode==='session';
   const perSession = room.sessionFee||0;
   const defaultAmount = isSession ? perSession : (room.monthlyFee||0);
@@ -5679,7 +5720,7 @@ async function saveNewSubscription(){
   const startRaw = document.getElementById('f-sub-start').value.trim();
   const amountRaw = document.getElementById('f-sub-amount').value.trim();
   const method = document.querySelector('input[name="f-sub-method"]:checked')?.value || 'cash';
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(startRaw)){ showToast('صيغة التاريخ لازم تكون YYYY-MM-DD'); return; }
+  if(!isValidDateStr(startRaw)){ showToast('التاريخ مش صحيح — الصيغة YYYY-MM-DD'); return; }
   if(!/^\d+(\.\d+)?$/.test(amountRaw) || parseFloat(amountRaw)<=0){ showToast('المبلغ لازم يكون رقم أكبر من صفر'); return; }
   const isSession = enrollment.paymentMode==='session';
   let sessionsCount = null;
@@ -5687,13 +5728,9 @@ async function saveNewSubscription(){
   if(isSession){
     sessionsCount = parseInt(document.getElementById('f-sub-sessions-count')?.value)||1;
     if(sessionsCount<1){ showToast('عدد الحصص لازم يكون 1 على الأقل'); return; }
-    const d = new Date(startRaw+'T00:00:00');
-    d.setDate(d.getDate() + sessionsCount*30); // تغطية زمنية آمنة بدل عداد حصص فعلي — راجع ملاحظة الحقل
-    periodEnd = d.toISOString().slice(0,10);
+    periodEnd = addDaysStr(startRaw, sessionsCount*30); // تغطية زمنية آمنة بدل عداد حصص فعلي — راجع ملاحظة الحقل
   } else {
-    const d = new Date(startRaw+'T00:00:00');
-    d.setMonth(d.getMonth()+1);
-    periodEnd = d.toISOString().slice(0,10);
+    periodEnd = addMonthsStr(startRaw, 1);
   }
   const status = method==='online' ? 'pending' : 'active';
   const paymentLink = method==='online' ? `https://pay.masar-centers.app/i/${crypto.randomUUID().slice(0,8)}` : null;
@@ -5758,7 +5795,7 @@ async function flagExceptionUnjustified(exceptionId){
 
 async function generateMonthlyPayments(){
   const db = loadDB();
-  const currentMonth = getSystemNow().toISOString().slice(0,7);
+  const currentMonth = localMonthStr();
   let created = 0;
   const skipped = [];
   db.children.forEach(c=>{
@@ -6156,7 +6193,7 @@ function renderAdminModalFields(id){
   else if(type==='payments'){
     const now = getSystemNow();
     const item = id ? db.payments.find(p=>p.id===id) : null;
-    const defaultMonth = item ? item.month : now.toISOString().slice(0,7);
+    const defaultMonth = item ? item.month : localMonthStr(now);
     el.innerHTML = `
       <select id="f-child" ${item?'disabled':''}>
         ${db.children.map(c=>`<option value="${c.id}" ${item&&item.childId===c.id?'selected':''}>${c.name}</option>`).join('') || '<option value="">لا يوجد طلاب</option>'}
@@ -6907,7 +6944,7 @@ function openGeneratePayoutsModal(){
   const now = getSystemNow();
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth()-1, 1);
-  const fmt = d => d.toISOString().slice(0,10);
+  const fmt = d => localDateStr(d);
   document.getElementById('gp-period-start').value = fmt(lastMonthStart);
   document.getElementById('gp-period-end').value = fmt(lastMonthEnd);
   document.getElementById('gen-payouts-modal-bg').classList.add('show');
