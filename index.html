@@ -1255,14 +1255,22 @@
       <div class="card">
         <div class="settings-head">
           <div class="list-avatar" style="background:linear-gradient(135deg,#7a3d3d,#a35454);">🏢</div>
-          <div class="section-title" style="margin:0;">اشتراك المؤسسة والتقفيل المالي</div>
+          <div class="section-title" style="margin:0;">التقفيل المالي</div>
         </div>
         <div class="settings-field">
           <label>يوم الشهر للتقفيل المالي (1-28)</label>
           <input type="number" id="set-financialClosingDay" min="1" max="28">
         </div>
-        <div class="settings-field">
-          <label>مهلة السماح بعد تأخر سداد اشتراك المؤسسة (أيام)</label>
+      </div>
+
+      <div class="card">
+        <div class="settings-head">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#7a3d3d,#a35454);">🏢</div>
+          <div class="section-title" style="margin:0;">اشتراكك مع المنصة</div>
+        </div>
+        <div id="platform-sub-info" style="font-size:14px; line-height:1.9;"></div>
+        <div class="settings-field" id="set-graceField" style="display:none; margin-top:14px;">
+          <label>مهلة السماح بعد تأخر سداد اشتراك المؤسسة (أيام) — لمالك المنصة فقط</label>
           <input type="number" id="set-institutionBillingGraceDays" min="0" max="30">
         </div>
       </div>
@@ -1415,9 +1423,15 @@ async function fetchDBFromSupabase(){
   const centerId = session.centerId;
   if(!centerId){ dbCache = seedData(); return; } // Super Admin (لسه ملوش شاشة خاصة) — ديمو مؤقت لحد ما نبني لوحته
   try{
-    const { data: centerRow } = await supabaseClient.from('centers').select('name, simulated_time_offset_ms, billing_grace_days').eq('id', centerId).single();
+    const { data: centerRow } = await supabaseClient.from('centers').select('name, simulated_time_offset_ms, billing_grace_days, subscription_status, subscription_renews_at').eq('id', centerId).single();
     session.centerSlug = slugifyWordsForDomain(centerRow?.name || 'markaz'); // مستخدم كدومين للإيميلات المولّدة أوتوماتيك (بعد الـ@) — مفصول بـ hyphen "-" لأن الـ underscore ممنوع في أسماء الدومين
     simulatedTimeOffsetMs = centerRow?.simulated_time_offset_ms || 0;
+    // بيانات اشتراك المركز مع المنصة (للعرض فقط في الإعدادات) — فاشلة بهدوء لو الاستعلام اتعطل
+    session.platformSub = { status: centerRow?.subscription_status || null, renewsAt: centerRow?.subscription_renews_at || null, invoice: null };
+    if(session.role==='ADMIN'){
+      const { data: invRows } = await supabaseClient.from('center_invoices').select('status, amount, period_end').eq('center_id', centerId).order('period_end', {ascending:false}).limit(1);
+      session.platformSub.invoice = (invRows && invRows[0]) || null;
+    }
     const isAdmin = session.role==='ADMIN';
     const tables = ['classrooms','subjects','assistants','assistant_teachers','parents','children','schedule',
       'schedule_settings_by_classroom','calendar_events','events','complaints','payments',
@@ -2699,6 +2713,38 @@ function toggleDrawerGroup(event, group){
   else{ items.classList.add('open'); header.classList.add('open'); }
 }
 
+function renderPlatformSubCard(){
+  const el = document.getElementById('platform-sub-info');
+  if(!el) return;
+  const ps = session.platformSub;
+  if(!ps || !ps.status){ el.innerHTML = '<div style="color:var(--muted);">بيانات الاشتراك مش متاحة دلوقتي</div>'; return; }
+  const statusLabel = {trial:'تجربة', active:'مفعّلة', past_due:'متأخرة بالدفع', suspended:'موقوفة', cancelled:'ملغاة'};
+  const statusColor = {trial:'#6b7280', active:'#16a34a', past_due:'#d97706', suspended:'#dc2626', cancelled:'#6b7280'};
+  const fmt = d => { const [y,m,dd] = d.split('-'); return dd+'/'+m+'/'+y; };
+  const grace = loadDB().settings.institutionBillingGraceDays ?? 3;
+  const inv = ps.invoice;
+  const renewDate = ps.renewsAt || (inv ? inv.period_end : null);
+  // نفس منطق run_billing_cycle: فاتورة بمبلغ صفر = لسه مفيش سعر اشتراك، فمفيش تأخير ولا مهلة
+  let graceLine;
+  if(!inv || !(Number(inv.amount) > 0)){
+    graceLine = 'لسه مفيش سعر اشتراك متحدد من المنصة';
+  } else if(inv.status === 'overdue'){
+    const deadline = addDaysStr(inv.period_end, grace);
+    const today = localDateStr(new Date());
+    const left = Math.round((new Date(deadline+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+    graceLine = left > 0
+      ? 'متبقي <b>'+left+'</b> يوم من المهلة قبل تعليق الحساب (آخر يوم: '+fmt(deadline)+')'
+      : 'انتهت مهلة السماح — الحساب بيتعلّق في الفحص اليومي لو الاشتراك لسه ماتسددش';
+  } else {
+    graceLine = 'مفيش تأخير في السداد دلوقتي';
+  }
+  el.innerHTML =
+    '<div>الحالة: <b style="color:'+(statusColor[ps.status]||'inherit')+';">'+(statusLabel[ps.status]||ps.status)+'</b></div>'+
+    '<div>تاريخ التجديد/الاستحقاق: <b>'+(renewDate ? fmt(renewDate) : 'غير محدد')+'</b></div>'+
+    '<div>مهلة السماح بعد التأخر: <b>'+grace+'</b> يوم</div>'+
+    '<div style="color:var(--muted);">'+graceLine+'</div>';
+}
+
 function openAdminSettingsScreen(){
   const db = loadDB();
   const s = db.settings;
@@ -2711,6 +2757,8 @@ function openAdminSettingsScreen(){
   document.getElementById('set-institutionBillingGraceDays').value = s.institutionBillingGraceDays ?? 3;
   // فترة السماح من صلاحيات مالك المنصة بس (الداتابيز بتحميها بـ RLS على centers) — المدير بيشوفها قراءة فقط
   document.getElementById('set-institutionBillingGraceDays').disabled = !session.isSuperAdmin;
+  document.getElementById('set-graceField').style.display = session.isSuperAdmin ? '' : 'none'; // المدير بيشوف المهلة في سطر القراءة بس
+  renderPlatformSubCard();
   document.getElementById('set-paymentInstructions').value = s.paymentInstructions || '';
   document.getElementById('set-allowAssistants').checked = !!s.allowAssistants;
   document.getElementById('set-whoCanAssignAssistants').value = s.whoCanAssignAssistants || 'teacher_only';
