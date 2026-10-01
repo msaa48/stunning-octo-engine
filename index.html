@@ -857,7 +857,7 @@
         <button class="drawer-fab" aria-label="تبديل المظهر">🌗</button>
         <div class="drawer-fab-label">المظهر</div>
       </div>
-      <div class="drawer-fab-wrap" onclick="closeModal('admin-drawer-bg'); openAdminSettingsScreen()">
+      <div class="drawer-fab-wrap" id="admin-settings-fab" style="display:none" onclick="closeModal('admin-drawer-bg'); openAdminSettingsScreen()">
         <button class="drawer-fab" aria-label="الإعدادات">⚙️</button>
         <div class="drawer-fab-label">الإعدادات</div>
       </div>
@@ -1663,7 +1663,8 @@ async function pushDBToSupabase(db){
       supabaseClient.from('teacher_attendance').upsert(db.teacherAttendance.map(a=>({id:a.id, teacher_id:a.teacherId||null, payload:a, center_id:centerId}))),
       supabaseClient.from('teacher_evaluations').upsert(db.teacherEvaluations.map(e=>({id:e.id, teacher_id:e.teacherId||null, payload:e, center_id:centerId}))),
       supabaseClient.from('teacher_raises').upsert(db.teacherRaises.map(r=>({id:r.id, teacher_id:r.teacherId||null, payload:r, center_id:centerId}))),
-      supabaseClient.from('app_settings').upsert({
+      // app_settings مقفولة على مالك المنصة بس (RLS) — أي دور تاني هيترفض فمش بنبعتها أصلًا
+      ...(session.isSuperAdmin ? [supabaseClient.from('app_settings').upsert({
         center_id:centerId,
         raise_cycle_months:db.settings.raiseCycleMonths,
         teacher_payout_basis:db.settings.teacherPayoutBasis||'sessions',
@@ -1675,7 +1676,7 @@ async function pushDBToSupabase(db){
         financial_closing_day: db.settings.financialClosingDay ?? 1,
         institution_billing_grace_days: db.settings.institutionBillingGraceDays ?? 3,
         payment_instructions: db.settings.paymentInstructions || null
-      })
+      })] : [])
     ]);
     // Supabase JS بيرجع {data, error} من غير ما يرمي exception حتى لو الـ upsert اترفض
     // (زي رفض RLS أو قيد في الداتابيز)، فلازم نتأكد من كل نتيجة بنفسنا —
@@ -2686,6 +2687,9 @@ function openNotifModal(){
 }
 
 function openAdminDrawer(){
+  // app_settings مقفولة على مالك المنصة بس (RLS) — مدير المركز مايشوفش زرار الإعدادات
+  const settingsFab = document.getElementById('admin-settings-fab');
+  if(settingsFab) settingsFab.style.display = session.isSuperAdmin ? '' : 'none';
   document.getElementById('admin-drawer-bg').classList.add('show');
 }
 
@@ -2698,6 +2702,7 @@ function toggleDrawerGroup(event, group){
 }
 
 function openAdminSettingsScreen(){
+  if(!session.isSuperAdmin){ showToast('الإعدادات دي من صلاحيات مالك المنصة'); return; }
   const db = loadDB();
   const s = db.settings;
   document.getElementById('set-raiseCycleMonths').value = s.raiseCycleMonths || 4;
