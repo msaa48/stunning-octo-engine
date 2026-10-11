@@ -2800,6 +2800,7 @@ const NOTIF_TYPE_ICON = {
 
 // بيدوّر على أي حاجة في النظام "ناقصة بيانات" بشكل حرج (مش تنبيه عادي، ده نقص فعلي محتاج يتصلّح)
 // مجموعة من غير مدرّس، من غير معاد أسبوعي، من غير سعر — طالب من غير أي مجموعة — مدرّس من غير أي مجموعة
+// بيدوّر على أي حاجة في النظام "ناقصة بيانات" بشكل حرج، وبيجمع كل مشاكل نفس السجل في عنصر واحد (مش سطر لكل مشكلة)
 function findCriticalIssues(){
   const db = loadDB();
   const issues = [];
@@ -2807,17 +2808,26 @@ function findCriticalIssues(){
     const hasTeacher = (db.teachers||[]).some(t=>(t.classroomIds||[]).includes(r.id));
     const hasSchedule = (r.meetingTimes||[]).length>0;
     const hasPrice = (r.monthlyFee>0) || (r.sessionFee>0);
-    if(!hasTeacher) issues.push({icon:'🏫', title:'مجموعة من غير مدرّس', body:`"${r.name}" لسه مش متربطة بأي مدرّس`});
-    if(!hasSchedule) issues.push({icon:'🗓️', title:'مجموعة من غير معاد', body:`"${r.name}" لسه مالهاش معاد حصص محدد`});
-    if(!hasPrice) issues.push({icon:'💰', title:'مجموعة من غير سعر', body:`"${r.name}" لسه مالهاش سعر اشتراك محدد`});
+    const missing = [];
+    if(!hasTeacher) missing.push('مدرّس');
+    if(!hasSchedule) missing.push('معاد حصص');
+    if(!hasPrice) missing.push('سعر اشتراك');
+    if(missing.length) issues.push({icon:'🏫', title:`مجموعة "${r.name}"`, body:'ناقصها: ' + missing.join('، '), type:'classrooms', id:r.id});
   });
   (db.teachers||[]).forEach(t=>{
-    if(!(t.classroomIds||[]).length) issues.push({icon:'👩‍🏫', title:'مدرّس من غير مجموعات', body:`"${t.name}" لسه مش مربوط بأي مجموعة`});
+    if(!(t.classroomIds||[]).length) issues.push({icon:'👩‍🏫', title:`مدرّس "${t.name}"`, body:'لسه مش مربوط بأي مجموعة', type:'teachers', id:t.id});
   });
   (db.children||[]).forEach(c=>{
-    if(!(c.classroomIds||[]).length) issues.push({icon:'🎓', title:'طالب من غير مجموعة', body:`"${c.name}" لسه مش مسجّل في أي مجموعة`});
+    if(!(c.classroomIds||[]).length) issues.push({icon:'🎓', title:`طالب "${c.name}"`, body:'لسه مش مسجّل في أي مجموعة', type:'children', id:c.id});
   });
   return issues;
+}
+
+// بيوديك على طول لشاشة تعديل السجل اللي فيه النقص، بعد ما يقفل مودال الإشعارات
+function goToCriticalIssue(type, id){
+  closeModal('notif-modal-bg');
+  openAdminSection(type);
+  openAdminEditModal(type, id);
 }
 
 function renderNotifModal(){
@@ -2827,13 +2837,14 @@ function renderNotifModal(){
   const issues = (session.role==='ADMIN') ? findCriticalIssues() : [];
   const issuesHtml = issues.length ? `
     <div style="font-size:12px; font-weight:700; color:var(--danger,#e5484d); margin:4px 2px;">⚠️ بيانات ناقصة محتاجة تتصلّح (${issues.length})</div>
-    ${issues.map(it=>`<div class="card" style="margin-bottom:0; padding:12px 14px; border-inline-start:3px solid var(--danger,#e5484d); background:rgba(229,72,77,.06);">
+    ${issues.map(it=>`<div class="card" style="margin-bottom:0; padding:12px 14px; cursor:pointer; border-inline-start:3px solid var(--danger,#e5484d); background:rgba(229,72,77,.06);" onclick="goToCriticalIssue('${it.type}','${it.id}')">
       <div style="display:flex; gap:8px; align-items:flex-start;">
         <span style="font-size:18px;">${it.icon}</span>
         <div style="flex:1; min-width:0;">
           <div style="font-weight:700; font-size:13.5px;">${it.title}</div>
           <div style="font-size:12.5px; color:var(--sub,#6b7280); margin-top:2px;">${it.body}</div>
         </div>
+        <span style="color:var(--sub,#9ca3af); font-size:14px;">‹</span>
       </div>
     </div>`).join('')}
     <div style="font-size:12px; font-weight:700; color:var(--sub,#9ca3af); margin:10px 2px 4px;">🔔 الإشعارات العادية</div>
