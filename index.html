@@ -1613,6 +1613,29 @@ async function setPersonEmail(table, id, email){
   }
 }
 
+// فلترة سريعة بالاسم لليستة مجموعات المدرّس (بتفتح أي مجموعة/مرحلة فيها نتيجة مطابقة، وتقفل اللي من غيرها لو فيه نص بحث)
+function filterTeacherClassroomList(query){
+  const q = (query||'').trim();
+  const wrap = document.getElementById('f-teacher-classroom-list');
+  if(!wrap) return;
+  wrap.querySelectorAll('.teacher-grade-group').forEach(gradeEl=>{
+    let gradeHasMatch = false;
+    gradeEl.querySelectorAll('.teacher-subject-group').forEach(subEl=>{
+      let subHasMatch = false;
+      subEl.querySelectorAll('label').forEach(lbl=>{
+        const text = lbl.textContent.trim();
+        const match = !q || text.includes(q);
+        lbl.style.display = match ? 'flex' : 'none';
+        if(match) subHasMatch = true;
+      });
+      subEl.style.display = subHasMatch ? '' : 'none';
+      if(subHasMatch) gradeHasMatch = true;
+    });
+    gradeEl.style.display = gradeHasMatch ? '' : 'none';
+    if(q) gradeEl.open = gradeHasMatch;
+  });
+}
+
 async function pushDBToSupabase(db){
   const centerId = session.centerId;
   if(!centerId) return {ok:true, skipped:true}; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
@@ -6117,9 +6140,46 @@ function renderAdminModalFields(id){
       <input type="hidden" id="f-email" value="${item.email||''}">
       ${emailBlock}
       <div class="section-title" style="margin:4px 0;">المجموعات</div>
-      ${db.classrooms.map(r=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px;">
-        <input type="checkbox" class="f-teacher-classroom-chk" value="${r.id}" ${item.classroomIds&&item.classroomIds.includes(r.id)?'checked':''}> ${r.name}
-      </label>`).join('') || '<div class="empty">مفيش مجموعات لسه</div>'}
+      ${(()=>{
+        const enrolledIds = (item.classroomIds)||[];
+        if(!db.classrooms.length) return '<div class="empty">مفيش مجموعات لسه</div>';
+        const subjFor = r=>{
+          if(r.subjectId){ const s=db.subjects.find(x=>x.id===r.subjectId); if(s) return s.name; }
+          const found = db.subjects.find(s=> r.name.includes(s.name));
+          if(found) return found.name;
+          const m = r.name.match(/^مجموعة\s+(.+?)\s*—/);
+          if(m) return m[1].trim();
+          return 'أخرى';
+        };
+        const gradesOrder = Object.keys(GRADE_LABELS);
+        const byGrade = {};
+        db.classrooms.forEach(r=>{ const g = gradesOrder.includes(r.grade) ? r.grade : '__OTHER__'; (byGrade[g]=byGrade[g]||[]).push(r); });
+        const orderedGrades = [...gradesOrder,'__OTHER__'].filter(g=> byGrade[g] && byGrade[g].length);
+        const chkHtml = r=>`<label style="display:flex; gap:8px; align-items:center; font-size:14px; padding:4px 0;">
+          <input type="checkbox" class="f-teacher-classroom-chk" value="${r.id}" ${enrolledIds.includes(r.id)?'checked':''}> ${r.name}
+        </label>`;
+        return `
+        <input type="text" id="f-teacher-classroom-search" placeholder="🔍 دور على اسم مجموعة..." style="width:100%; margin-bottom:8px;" oninput="filterTeacherClassroomList(this.value)">
+        <div id="f-teacher-classroom-list">
+        ${orderedGrades.map(g=>{
+          const list = byGrade[g];
+          const label = g==='__OTHER__' ? 'أخرى' : GRADE_LABELS[g];
+          const hasChecked = list.some(r=> enrolledIds.includes(r.id));
+          const bySubject = {};
+          list.forEach(r=>{ const sub=subjFor(r); (bySubject[sub]=bySubject[sub]||[]).push(r); });
+          const subjectNames = Object.keys(bySubject).sort((a,b)=> a==='أخرى'?1:(b==='أخرى'?-1:a.localeCompare(b,'ar')));
+          return `<details class="teacher-grade-group" data-grade-label="${label}" ${hasChecked?'open':''} style="margin-bottom:6px; border:1px solid var(--border); border-radius:8px; padding:6px 10px;">
+            <summary style="cursor:pointer; font-weight:700; font-size:13px;">🎓 ${label} <span class="badge" style="font-size:10px;">${list.length}</span></summary>
+            ${subjectNames.map(sub=>`
+              <div class="teacher-subject-group" data-subject-label="${sub}" style="margin:6px 0 0 0; padding-inline-start:8px;">
+                <div style="font-size:12px; font-weight:700; color:var(--muted); margin-bottom:2px;">📚 ${sub}</div>
+                ${bySubject[sub].map(chkHtml).join('')}
+              </div>
+            `).join('')}
+          </details>`;
+        }).join('')}
+        </div>`;
+      })()}
       <div class="section-title" style="margin:4px 0;">نظام المرتب</div>
       <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
         <input type="radio" name="f-payment-type" value="salary" ${(!item.paymentType||item.paymentType==='salary')?'checked':''} onchange="togglePaymentTypeFields()"> راتب ثابت
