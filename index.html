@@ -1613,41 +1613,6 @@ async function setPersonEmail(table, id, email){
   }
 }
 
-// تغيير مالك الحساب: بيقفل دخول الحساب القديم خالص (بيمسح صفه من profiles) ويصفّر claimed_by
-// ويولّد إيميل جديد جاهز — من غير ما يلمس تاريخ الشخص (جدول/تقييمات/مدفوعات) لأنها متربطة بـ id السجل نفسه مش بالحساب
-async function transferAccountOwnership(table, id, personName){
-  try{
-    const { data: personRow, error: readErr } = await supabaseClient.from(table).select('claimed_by').eq('id', id).single();
-    if(readErr) throw readErr;
-    const oldAuthId = personRow?.claimed_by;
-    if(oldAuthId){
-      const { error: delErr } = await supabaseClient.from('profiles').delete().eq('id', oldAuthId); // بيقفل دخول الحساب القديم فورًا
-      if(delErr) throw delErr;
-    }
-    const newEmail = generateUserEmail(personName, id);
-    const { error: updErr } = await supabaseClient.from(table).update({ claimed_by: null, email: newEmail }).eq('id', id);
-    if(updErr) throw updErr;
-    return newEmail;
-  } catch(e){
-    console.error('فشل تغيير مالك الحساب', e);
-    showToast('⚠️ حصل خطأ أثناء تغيير مالك الحساب، جرّب تاني');
-    return null;
-  }
-}
-async function handleTransferOwnership(table, id, personName){
-  confirmAction(
-    `متأكد إنك عايز تغيّر مالك حساب "${personName}"؟ الحساب القديم هيتقفل خالص ومش هيقدر يدخل تاني، وهيتولّد إيميل جديد جاهز لشخص جديد يعمل حساب بيه. بيانات "${personName}" (الجدول/التقييمات/المدفوعات) مش هتتأثر.`,
-    async () => {
-      const newEmail = await transferAccountOwnership(table, id, personName);
-      if(newEmail){
-        showToast('✅ اتقفل الحساب القديم، وده الإيميل الجديد: ' + newEmail);
-        await fetchDBFromSupabase();
-        openAdminEditModal(table, id); // نعيد فتح نفس الفورم عشان يشوف الحالة الجديدة على طول
-      }
-    }
-  );
-}
-
 async function pushDBToSupabase(db){
   const centerId = session.centerId;
   if(!centerId) return {ok:true, skipped:true}; // Super Admin أو لسه مفيش جلسة — تخطي المزامنة
@@ -6144,7 +6109,6 @@ function renderAdminModalFields(id){
     emailGenerationLocked = !!(item.claimedBy);
     const emailBlock = item.claimedBy
       ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">🔒 الإيميل: <b style="color:var(--text);">${item.email||''}</b> — الشخص ده عمل حسابه بيه بالفعل، فمش هيتغيّر لو عدّلت الاسم
-          <button type="button" class="badge" style="margin-inline-start:8px;" onclick="handleTransferOwnership('teachers','${item.id}', document.getElementById('f-name').value.trim() || '${(item.name||'').replace(/'/g,"\\'")}')">🔄 تغيير مالك الحساب</button>
         </div>`
       : `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">📧 الإيميل (بيتولّد أوتوماتيك من الاسم): <span id="f-email-preview" style="font-weight:700; color:var(--text);">${item.email || 'هيتولّد أوتوماتيك من الاسم بمجرد ما تكتبه'}</span></div>`;
     el.innerHTML = `
@@ -6175,7 +6139,6 @@ function renderAdminModalFields(id){
     emailGenerationLocked = !!(item.claimedBy);
     const emailBlock = item.claimedBy
       ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">🔒 الإيميل: <b style="color:var(--text);">${item.email||''}</b> — الشخص ده عمل حسابه بيه بالفعل، فمش هيتغيّر لو عدّلت الاسم
-          <button type="button" class="badge" style="margin-inline-start:8px;" onclick="handleTransferOwnership('assistants','${item.id}', document.getElementById('f-name').value.trim() || '${(item.name||'').replace(/'/g,"\\'")}')">🔄 تغيير مالك الحساب</button>
         </div>`
       : `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">📧 الإيميل (بيتولّد أوتوماتيك من الاسم): <span id="f-email-preview" style="font-weight:700; color:var(--text);">${item.email || 'هيتولّد أوتوماتيك من الاسم بمجرد ما تكتبه'}</span></div>`;
     el.innerHTML = `
@@ -6193,7 +6156,6 @@ function renderAdminModalFields(id){
     emailGenerationLocked = !!(item.claimedBy);
     const emailBlock = item.claimedBy
       ? `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">🔒 الإيميل: <b style="color:var(--text);">${item.email||''}</b> — الشخص ده عمل حسابه بيه بالفعل، فمش هيتغيّر لو عدّلت الاسم
-          <button type="button" class="badge" style="margin-inline-start:8px;" onclick="handleTransferOwnership('parents','${item.id}', document.getElementById('f-name').value.trim() || '${(item.name||'').replace(/'/g,"\\'")}')">🔄 تغيير مالك الحساب</button>
         </div>`
       : `<div style="font-size:13px; color:var(--muted); background:var(--paper); border:1px solid var(--border); border-radius:10px; padding:8px 10px;">📧 الإيميل (بيتولّد أوتوماتيك من الاسم): <span id="f-email-preview" style="font-weight:700; color:var(--text);">${item.email || 'هيتولّد أوتوماتيك من الاسم بمجرد ما تكتبه'}</span></div>`;
     el.innerHTML = `
