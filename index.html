@@ -6120,7 +6120,7 @@ function openAdminAddModal(){
   quickLinkActive = false;
   adminModalMode = 'add'; adminModalEditId = null;
   renderAdminModalFields();
-  document.getElementById('admin-modal-title').textContent = {children:'إضافة طالب', teachers:'إضافة مدرّس', parents:'إضافة ولي أمر', links:'ربط ولي أمر بطالب', classrooms:'إضافة مجموعة', subjects:'إضافة مادة', payments:'تسجيل دفعة', calendar:'إضافة حدث بالتقويم'}[adminActiveTab];
+  document.getElementById('admin-modal-title').textContent = {children:'إضافة طالب', teachers:'إضافة مدرّس', parents:'إضافة ولي أمر', links:'ربط ولي أمر بطالب', classrooms:'إضافة مجموعة', subjects:'إضافة مادة', payments:'تسجيل دفعة', calendar:'إضافة حدث بالتقويم', assistants:'إضافة أسيستنت'}[adminActiveTab];
   document.getElementById('admin-modal-bg').classList.add('show');
   adminModalSnapshot = null; // مفيش "قبل" في الإضافة أصلًا — بس لسه بنتتبع dirty عشان تحذير الخروج
   adminModalDirty = false;
