@@ -6883,7 +6883,7 @@ async function deleteAdminItem(type, id){
   const warnings = {
     subjects: 'متأكد إنك عايز تحذف المادة دي؟ ⚠️ هتتمسح معاها كل التقييمات المسجلة في المادة دي، وأي حصص ليها في الجدول.',
     classrooms: 'متأكد إنك عايز تحذف المجموعة دي؟ ⚠️ الطلاب المسجلين فيها هيبقوا "بدون مجموعة"، والمدرّسين المرتبطين بيها هيتشال المجموعة من عندهم، وجدول الحصص بتاعها هيتمسح بالكامل.',
-    teachers: 'متأكد إنك عايز تحذف المدرّس ده؟ ⚠️ حسابه وجدوله هيتمسحوا، وهيتشال من أي حصص متسجل عليها، وهيتمسح معاه سجل حضوره وتقييمات أدائه بالكامل.',
+    teachers: 'متأكد إنك عايز تحذف المدرّس ده؟ ⚠️ حسابه وجدوله هيتمسحوا، وهيتشال من أي حصص متسجل عليها، وهيتمسح معاه سجل حضوره وتقييمات أدائه بالكامل. 💰 وكمان كل كشوف مرتباته (حتى اللي اتدفعت) هتتمسح ومش هتقدر ترجعها.',
     assistants: 'متأكد إنك عايز تحذف الأسيستنت ده؟ ⚠️ حسابه هيتمسح وهيتفك ربطه بكل المدرّسين اللي شغال معاهم.',
     parents: 'متأكد إنك عايز تحذف ولي الأمر ده؟ ⚠️ حسابه وشكاويه هيتمسحوا، وهيتفك ربطه بأي طلاب.',
     children: 'متأكد إنك عايز تحذف الطالب ده؟ ⚠️ كل سجلاته (الأحداث، المدفوعات، التقييمات، الرسائل) هتتمسح بالكامل.'
@@ -6892,9 +6892,15 @@ async function deleteAdminItem(type, id){
   // خطوة 1: حذف فعلي من Supabase الأول — قبل أي تعديل محلي، عشان لو فشل نوقف
   // ومنسيبش الواجهة تفتكر إن الحذف نجح وهو فعليًا لسه موجود في السيرفر
   // (upsert وحده في pushDBToSupabase مش بيمسح صفوف، فلازم .delete() صريح هنا)
+  // supabase-js مبيرميش استثناء عند الفشل — بيرجّع {error} في الرد، فلازم نفحصه صراحةً
+  const run = async (promises)=>{
+    const results = await Promise.all(promises);
+    const bad = results.find(r=> r && r.error);
+    if(bad) throw bad.error;
+  };
   try{
     if(type==='children'){
-      await Promise.all([
+      await run([
         supabaseClient.from('children').delete().eq('id', id),
         supabaseClient.from('events').delete().eq('child_id', id),
         supabaseClient.from('payments').delete().eq('child_id', id),
@@ -6907,21 +6913,21 @@ async function deleteAdminItem(type, id){
         supabaseClient.from('attendance_exceptions').delete().eq('child_id', id)
       ]);
     } else if(type==='teachers'){
-      await Promise.all([
+      await run([
         supabaseClient.from('teachers').delete().eq('id', id),
         supabaseClient.from('teacher_attendance').delete().eq('teacher_id', id),
         supabaseClient.from('teacher_evaluations').delete().eq('teacher_id', id),
         supabaseClient.from('teacher_raises').delete().eq('teacher_id', id)
       ]);
     } else if(type==='assistants'){
-      await supabaseClient.from('assistants').delete().eq('id', id);
+      await run([supabaseClient.from('assistants').delete().eq('id', id)]);
     } else if(type==='parents'){
-      await Promise.all([
+      await run([
         supabaseClient.from('parents').delete().eq('id', id),
         supabaseClient.from('complaints').delete().eq('parent_id', id)
       ]);
     } else if(type==='classrooms'){
-      await Promise.all([
+      await run([
         supabaseClient.from('classrooms').delete().eq('id', id),
         supabaseClient.from('schedule').delete().eq('classroom_id', id),
         supabaseClient.from('schedule_settings_by_classroom').delete().eq('classroom_id', id),
@@ -6932,7 +6938,7 @@ async function deleteAdminItem(type, id){
         supabaseClient.from('events').delete().eq('classroom_id', id)
       ]);
     } else if(type==='subjects'){
-      await Promise.all([
+      await run([
         supabaseClient.from('subjects').delete().eq('id', id),
         supabaseClient.from('schedule').delete().eq('subject_id', id),
         supabaseClient.from('evaluations').delete().eq('subject_id', id),
@@ -6940,15 +6946,16 @@ async function deleteAdminItem(type, id){
         supabaseClient.from('task_completions').delete().eq('subject_id', id)
       ]);
     } else if(type==='payments'){
-      await supabaseClient.from('payments').delete().eq('id', id);
+      await run([supabaseClient.from('payments').delete().eq('id', id)]);
     } else if(type==='calendar'){
-      await supabaseClient.from('calendar_events').delete().eq('id', id);
+      await run([supabaseClient.from('calendar_events').delete().eq('id', id)]);
     } else if(type==='complaints'){
-      await supabaseClient.from('complaints').delete().eq('id', id);
+      await run([supabaseClient.from('complaints').delete().eq('id', id)]);
     }
   } catch(e){
     console.error('فشل الحذف من السيرفر', e);
     showToast('⚠️ فشل الحذف من السيرفر — حاول تاني');
+    try{ await fetchDBFromSupabase(); renderAdminList(); }catch(_){} // ممكن يكون اتمسح جزء قبل الفشل — نزامن الواجهة مع السيرفر
     return; // منكملش تعديل محلي لو الحذف الفعلي فشل، عشان الواجهة تفضل متطابقة مع السيرفر
   }
 
@@ -6970,6 +6977,7 @@ async function deleteAdminItem(type, id){
     db.schedule.forEach(s=>{ if(s.teacherId===id) s.teacherId=null; });
     db.teacherAttendance = db.teacherAttendance.filter(r=>r.teacherId!==id);
     db.teacherEvaluations = db.teacherEvaluations.filter(e=>e.teacherId!==id);
+    db.teacherPayouts = (db.teacherPayouts||[]).filter(p=>p.teacherId!==id);
   }
   else if(type==='assistants'){
     db.assistants = db.assistants.filter(a=>a.id!==id);
