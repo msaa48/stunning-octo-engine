@@ -4446,7 +4446,7 @@ const ADMIN_TAB_GROUPS = {
   family: ['children','teachers','assistants','parents','links'],
   classes: ['classrooms','subjects','schedule'],
   staff: ['teacherAttendance','teacherEvaluations','teacherPayouts'],
-  money: ['payments','attendanceExceptions'],
+  money: ['payments','attendanceExceptions','financialArchive'],
   other: ['calendar','complaints']
 };
 const ADMIN_TAB_META = {
@@ -4464,7 +4464,8 @@ const ADMIN_TAB_META = {
   payments:{icon:'💳', label:'المدفوعات', color:'linear-gradient(135deg,#3d8a5f,#1e6b3d)'},
   attendanceExceptions:{icon:'🎫', label:'استثناءات الحضور', color:'linear-gradient(135deg,#c0433a,#93610f)'},
   calendar:{icon:'📅', label:'تقويم السنتر', color:'linear-gradient(135deg,#a0527a,#8a3d66)'},
-  complaints:{icon:'💬', label:'الشكاوى', color:'linear-gradient(135deg,#c0433a,#a3352c)'}
+  complaints:{icon:'💬', label:'الشكاوى', color:'linear-gradient(135deg,#c0433a,#a3352c)'},
+  financialArchive:{icon:'🗄️', label:'الأرشيف المالي', color:'linear-gradient(135deg,#5b6472,#3d4452)'}
 };
 
 function renderAdminMenus(){
@@ -4546,8 +4547,9 @@ function openAdminSection(tab){
   if(tab!=='children') adminChildrenNoGuardianFilter = false;
   if(tab==='classrooms'){ expandedGradeSections = new Set(); expandedSubjectSections = new Set(); classroomsGradeView = null; }
   if(tab==='subjects'){ subjectsGradeView = null; }
+  if(tab==='financialArchive'){ financialArchiveCache = null; }
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
-  document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions') ? 'none' : 'block';
+  document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions'||tab==='financialArchive') ? 'none' : 'block';
   const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
   document.getElementById('admin-add-btn').textContent = addLabels[tab] || '+ إضافة';
   document.getElementById('admin-add-btn').onclick = (tab==='teacherPayouts') ? openGeneratePayoutsModal : openAdminAddModal;
@@ -4609,6 +4611,107 @@ function matchesSearch(name){
   return normalizeArabic(name).includes(normalizeArabic(adminSearchQuery));
 }
 function avatarInitial(name){ return (name||'?').replace('أ. ','').trim().charAt(0); }
+
+/* ========================= الأرشيف المالي =========================
+   سجلات مالية (كشوف مرتبات / اشتراكات / مدفوعات) صاحبها اتحذف (مدرّس / طالب / مجموعة).
+   بتفضل محفوظة على السيرفر ومعاها اسم صاحبها وقت الحذف. للقراءة فقط. */
+let financialArchiveCache = null;
+let financialArchiveLoading = false;
+function faEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function loadFinancialArchive(){
+  await fetchDBFromSupabase();
+  const db = loadDB();
+  const [p, s, pay] = await Promise.all([
+    supabaseClient.from('teacher_payouts').select('*'),
+    supabaseClient.from('subscriptions').select('*'),
+    supabaseClient.from('payments').select('*')
+  ]);
+  const err = p.error || s.error || pay.error;
+  if(err) throw err;
+  const teacherIds = new Set((db.teachers||[]).map(t=>t.id));
+  const childIds = new Set((db.children||[]).map(c=>c.id));
+  const roomIds = new Set((db.classrooms||[]).map(r=>r.id));
+  return {
+    payouts: (p.data||[]).filter(x=> !x.teacher_id || !teacherIds.has(x.teacher_id)),
+    subs: (s.data||[])
+      .map(x=>({...x, _childGone: !x.child_id || !childIds.has(x.child_id), _roomGone: !x.classroom_id || !roomIds.has(x.classroom_id)}))
+      .filter(x=> x._childGone || x._roomGone),
+    pays: (pay.data||[]).filter(x=> !x.child_id || !childIds.has(x.child_id))
+  };
+}
+
+function renderFinancialArchive(el){
+  if(!financialArchiveCache){
+    el.innerHTML = '<div class="empty">⏳ جاري تحميل الأرشيف المالي...</div>';
+    if(!financialArchiveLoading){
+      financialArchiveLoading = true;
+      loadFinancialArchive()
+        .then(r=>{ financialArchiveCache = r; })
+        .catch(e=>{ console.error('فشل تحميل الأرشيف المالي', e); financialArchiveCache = {error:true}; })
+        .finally(()=>{ financialArchiveLoading = false; if(adminActiveTab==='financialArchive') renderAdminList(); });
+    }
+    return;
+  }
+  const d = financialArchiveCache;
+  if(d.error){ el.innerHTML = '<div class="empty">⚠️ حصل خطأ في تحميل الأرشيف — ارجع وافتحه تاني</div>'; return; }
+
+  const money = n => Number(n||0).toFixed(2);
+  const payoutSt = {draft:'مسودة', approved:'معتمد', paid:'مدفوع'};
+  const subSt = {pending:'معلّقة', paid:'مدفوعة'};
+  const row = (icon, bg, title, lines)=> `<div class="list-row">
+    <div class="list-row-main">
+      <div class="list-avatar" style="background:${bg};">${icon}</div>
+      <div class="list-info"><div class="list-name">${title}</div>${lines.map(t=>`<div class="list-sub">${t}</div>`).join('')}</div>
+    </div>
+  </div>`;
+
+  const payouts = d.payouts.filter(x=> matchesSearch(x.teacher_name||'مدرّس محذوف'))
+    .sort((a,b)=> String(b.period_start).localeCompare(String(a.period_start)));
+  const subs = d.subs.filter(x=> matchesSearch((x.child_name||'')+' '+(x.classroom_name||'')))
+    .sort((a,b)=> String(b.period_start).localeCompare(String(a.period_start)));
+  const pays = d.pays.filter(x=> matchesSearch(x.child_name||'طالب محذوف'))
+    .sort((a,b)=> String((b.payload&&b.payload.month)||b.created_at).localeCompare(String((a.payload&&a.payload.month)||a.created_at)));
+
+  let html = `<div class="card" style="padding:12px 14px; margin-bottom:10px; font-size:12.5px; color:var(--muted); line-height:1.7;">
+    🗄️ هنا بتتحفظ أي سجلات مالية (مرتبات / اشتراكات / مدفوعات) صاحبها اتحذف — مدرّس أو طالب أو مجموعة. للقراءة فقط.
+  </div>`;
+  html += searchBoxHtml('دور باسم مدرّس أو طالب أو مجموعة...');
+
+  if(payouts.length){
+    const total = payouts.reduce((t,x)=> t + Number(x.final_amount||0), 0);
+    html += `<div class="section-title" style="margin:14px 0 6px;">💰 كشوف مرتبات (${payouts.length}) — الإجمالي ${money(total)} جنيه</div>`;
+    html += payouts.map(x=> row('💰','linear-gradient(135deg,#1e7a4a,#134d2f)',
+      `${faEsc(x.teacher_name||'مدرّس محذوف')} <span class="badge">${faEsc(payoutSt[x.status]||x.status)}</span>`,
+      [`${faEsc(x.period_start)} → ${faEsc(x.period_end)} · ${Number(x.session_count||0)} حصة`,
+       `المحسوب: ${money(x.computed_amount)}${Number(x.manual_adjustment)? ' · تعديل يدوي: '+money(x.manual_adjustment):''}`,
+       `<b>الصافي: ${money(x.final_amount)} جنيه</b>`])).join('');
+  }
+  if(subs.length){
+    const total = subs.reduce((t,x)=> t + Number(x.amount||0), 0);
+    html += `<div class="section-title" style="margin:14px 0 6px;">💳 اشتراكات (${subs.length}) — الإجمالي ${money(total)} جنيه</div>`;
+    html += subs.map(x=> row('💳','linear-gradient(135deg,#6553a0,#4a3d7a)',
+      `${faEsc(x.child_name||'طالب غير معروف')}${x._childGone?' <span class="badge">محذوف</span>':''}`,
+      [`المجموعة: ${faEsc(x.classroom_name||'غير معروفة')}${x._roomGone?' (محذوفة)':''}`,
+       `${faEsc(x.period_start)} → ${faEsc(x.period_end)} · ${faEsc(subSt[x.status]||x.status)}`,
+       `<b>${money(x.amount)} جنيه</b>`])).join('');
+  }
+  if(pays.length){
+    const total = pays.reduce((t,x)=> t + Number((x.payload&&x.payload.amount)||0), 0);
+    html += `<div class="section-title" style="margin:14px 0 6px;">🧾 مدفوعات (${pays.length}) — الإجمالي ${money(total)} جنيه</div>`;
+    html += pays.map(x=>{
+      const pl = x.payload||{};
+      return row('🧾','linear-gradient(135deg,#3d8a5f,#1e6b3d)',
+        `${faEsc(x.child_name||'طالب محذوف')} <span class="badge">محذوف</span>`,
+        [`${faEsc(pl.month||'')} · ${pl.status==='PAID'?'تم الدفع':'لسه ماتدفعش'}`,
+         `<b>${money(pl.amount)} جنيه</b>`]);
+    }).join('');
+  }
+  if(!payouts.length && !subs.length && !pays.length){
+    html += '<div class="empty">الأرشيف فاضي — أي سجل مالي لمدرّس أو طالب أو مجموعة بيتحذف هيظهر هنا</div>';
+  }
+  el.innerHTML = html;
+}
 
 function renderAdminList(){
   // نحافظ على فوكس مربع البحث ومكان الكيرسور، لأن إعادة بناء الـHTML بتفقدهم كل حرف
@@ -5433,6 +5536,10 @@ function renderAdminListInner(){
       </div>`;
     }).join('') || '<div class="empty">لا يوجد طلاب مسجلين في أي مجموعة لسه</div>';
     el.innerHTML = html;
+    return;
+  }
+  else if(adminActiveTab==='financialArchive'){
+    renderFinancialArchive(el);
     return;
   }
   else if(adminActiveTab==='calendar'){
@@ -6882,11 +6989,11 @@ async function saveAdminModal(){
 async function deleteAdminItem(type, id){
   const warnings = {
     subjects: 'متأكد إنك عايز تحذف المادة دي؟ ⚠️ هتتمسح معاها كل التقييمات المسجلة في المادة دي، وأي حصص ليها في الجدول.',
-    classrooms: 'متأكد إنك عايز تحذف المجموعة دي؟ ⚠️ الطلاب المسجلين فيها هيبقوا "بدون مجموعة"، والمدرّسين المرتبطين بيها هيتشال المجموعة من عندهم، وجدول الحصص بتاعها هيتمسح بالكامل.',
-    teachers: 'متأكد إنك عايز تحذف المدرّس ده؟ ⚠️ حسابه وجدوله هيتمسحوا، وهيتشال من أي حصص متسجل عليها، وهيتمسح معاه سجل حضوره وتقييمات أدائه بالكامل. 💰 وكمان كل كشوف مرتباته (حتى اللي اتدفعت) هتتمسح ومش هتقدر ترجعها.',
+    classrooms: 'متأكد إنك عايز تحذف المجموعة دي؟ ⚠️ الطلاب المسجلين فيها هيبقوا "بدون مجموعة"، والمدرّسين المرتبطين بيها هيتشال المجموعة من عندهم، وجدول الحصص بتاعها هيتمسح بالكامل. 💰 والاشتراكات المالية بتاعتها هتفضل محفوظة في «الأرشيف المالي».',
+    teachers: 'متأكد إنك عايز تحذف المدرّس ده؟ ⚠️ حسابه وجدوله هيتمسحوا، وهيتشال من أي حصص متسجل عليها، وهيتمسح معاه سجل حضوره وتقييمات أدائه بالكامل. 💰 كشوف مرتباته المالية (وعلاواته) هتفضل محفوظة في «الأرشيف المالي».',
     assistants: 'متأكد إنك عايز تحذف الأسيستنت ده؟ ⚠️ حسابه هيتمسح وهيتفك ربطه بكل المدرّسين اللي شغال معاهم.',
     parents: 'متأكد إنك عايز تحذف ولي الأمر ده؟ ⚠️ حسابه وشكاويه هيتمسحوا، وهيتفك ربطه بأي طلاب.',
-    children: 'متأكد إنك عايز تحذف الطالب ده؟ ⚠️ كل سجلاته (الأحداث، المدفوعات، التقييمات، الرسائل) هتتمسح بالكامل.'
+    children: 'متأكد إنك عايز تحذف الطالب ده؟ ⚠️ كل سجلاته (الأحداث، التقييمات، الرسائل) هتتمسح بالكامل. 💰 أما مدفوعاته واشتراكاته المالية فهتفضل محفوظة في «الأرشيف المالي».'
   };
   confirmAction(warnings[type] || 'متأكد إنك عايز تحذف ده؟', async ()=>{
   // خطوة 1: حذف فعلي من Supabase الأول — قبل أي تعديل محلي، عشان لو فشل نوقف
@@ -6903,12 +7010,10 @@ async function deleteAdminItem(type, id){
       await run([
         supabaseClient.from('children').delete().eq('id', id),
         supabaseClient.from('events').delete().eq('child_id', id),
-        supabaseClient.from('payments').delete().eq('child_id', id),
         supabaseClient.from('evaluations').delete().eq('child_id', id),
         supabaseClient.from('messages').delete().eq('child_id', id),
         supabaseClient.from('task_completions').delete().eq('child_id', id),
         supabaseClient.from('enrollments').delete().eq('child_id', id),
-        supabaseClient.from('subscriptions').delete().eq('child_id', id),
         supabaseClient.from('attendance').delete().eq('child_id', id),
         supabaseClient.from('attendance_exceptions').delete().eq('child_id', id)
       ]);
@@ -6916,8 +7021,7 @@ async function deleteAdminItem(type, id){
       await run([
         supabaseClient.from('teachers').delete().eq('id', id),
         supabaseClient.from('teacher_attendance').delete().eq('teacher_id', id),
-        supabaseClient.from('teacher_evaluations').delete().eq('teacher_id', id),
-        supabaseClient.from('teacher_raises').delete().eq('teacher_id', id)
+        supabaseClient.from('teacher_evaluations').delete().eq('teacher_id', id)
       ]);
     } else if(type==='assistants'){
       await run([supabaseClient.from('assistants').delete().eq('id', id)]);
@@ -6932,7 +7036,6 @@ async function deleteAdminItem(type, id){
         supabaseClient.from('schedule').delete().eq('classroom_id', id),
         supabaseClient.from('schedule_settings_by_classroom').delete().eq('classroom_id', id),
         supabaseClient.from('enrollments').delete().eq('classroom_id', id),
-        supabaseClient.from('subscriptions').delete().eq('classroom_id', id),
         supabaseClient.from('attendance').delete().eq('classroom_id', id),
         supabaseClient.from('attendance_exceptions').delete().eq('classroom_id', id),
         supabaseClient.from('events').delete().eq('classroom_id', id)
@@ -6964,12 +7067,13 @@ async function deleteAdminItem(type, id){
     db.children = db.children.filter(c=>c.id!==id);
     db.parents.forEach(p=> p.childIds = p.childIds.filter(cid=>cid!==id));
     db.events = db.events.filter(e=>e.childId!==id);
-    db.payments = db.payments.filter(p=>p.childId!==id);
+    db.payments.forEach(p=>{ if(p.childId===id) p.childId=null; }); // السجل المالي بيفضل (الأرشيف المالي)
     db.evaluations = db.evaluations.filter(e=>e.childId!==id);
     db.messages = db.messages.filter(m=>m.childId!==id);
     db.taskCompletions = (db.taskCompletions||[]).filter(c=>c.childId!==id);
     db.enrollments = (db.enrollments||[]).filter(e=>e.childId!==id);
-    db.subscriptions = (db.subscriptions||[]).filter(s=>s.childId!==id);
+    (db.subscriptions||[]).forEach(s=>{ if(s.childId===id) s.childId=null; });
+    (db.subscriptions||[]).forEach(s=>{ if(s.enrollmentId && !db.enrollments.some(e=>e.id===s.enrollmentId)) s.enrollmentId=null; });
   }
   else if(type==='teachers'){
     db.teachers = db.teachers.filter(t=>t.id!==id);
@@ -6977,7 +7081,8 @@ async function deleteAdminItem(type, id){
     db.schedule.forEach(s=>{ if(s.teacherId===id) s.teacherId=null; });
     db.teacherAttendance = db.teacherAttendance.filter(r=>r.teacherId!==id);
     db.teacherEvaluations = db.teacherEvaluations.filter(e=>e.teacherId!==id);
-    db.teacherPayouts = (db.teacherPayouts||[]).filter(p=>p.teacherId!==id);
+    (db.teacherPayouts||[]).forEach(p=>{ if(p.teacherId===id) p.teacherId=null; }); // الكشوف بتفضل (الأرشيف المالي)
+    (db.teacherRaises||[]).forEach(r=>{ if(r.teacherId===id) r.teacherId=null; });
   }
   else if(type==='assistants'){
     db.assistants = db.assistants.filter(a=>a.id!==id);
@@ -7000,7 +7105,8 @@ async function deleteAdminItem(type, id){
     db.schedule = db.schedule.filter(s=>s.classroomId!==id);
     delete db.scheduleSettingsByClassroom[id];
     db.enrollments = (db.enrollments||[]).filter(e=>e.classroomId!==id);
-    db.subscriptions = (db.subscriptions||[]).filter(s=>s.classroomId!==id);
+    (db.subscriptions||[]).forEach(s=>{ if(s.classroomId===id) s.classroomId=null; }); // الاشتراكات بتفضل (الأرشيف المالي)
+    (db.subscriptions||[]).forEach(s=>{ if(s.enrollmentId && !db.enrollments.some(e=>e.id===s.enrollmentId)) s.enrollmentId=null; });
     db.attendance = (db.attendance||[]).filter(a=>a.classroomId!==id);
     db.attendanceExceptions = (db.attendanceExceptions||[]).filter(a=>a.classroomId!==id);
     db.events = (db.events||[]).filter(e=>e.classroomId!==id);
