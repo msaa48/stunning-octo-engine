@@ -6128,7 +6128,7 @@ function openAdminAddModal(){
 function openAdminEditModal(type, id){
   adminModalMode = 'edit'; adminModalEditId = id; adminActiveTab = type;
   renderAdminModalFields(id);
-  document.getElementById('admin-modal-title').textContent = {children:'تعديل طالب', teachers:'تعديل مدرّس', parents:'تعديل ولي أمر', classrooms:'تعديل مجموعة', subjects:'تعديل مادة', calendar:'تعديل حدث', payments:'تعديل دفعة'}[type];
+  document.getElementById('admin-modal-title').textContent = {children:'تعديل طالب', teachers:'تعديل مدرّس', parents:'تعديل ولي أمر', classrooms:'تعديل مجموعة', subjects:'تعديل مادة', calendar:'تعديل حدث', payments:'تعديل دفعة', assistants:'تعديل أسيستنت'}[type];
   document.getElementById('admin-modal-bg').classList.add('show');
   adminModalSnapshot = captureAdminModalSnapshot();
   adminModalDirty = false;
@@ -6782,6 +6782,13 @@ async function saveAdminModal(){
     const subjectId = document.getElementById('f-classroom-subject').value;
     if(!subjectId){ showToast('لازم تختار المادة'); return; }
     const subject = db.subjects.find(s=>s.id===subjectId);
+    if(adminModalMode==='add'){
+      const dupExists = db.classrooms.some(r=> r.subjectId===subjectId && r.grade===grade);
+      if(dupExists){
+        const okDup = await confirmActionAsync('فيه مجموعة بنفس المادة ونفس المرحلة موجودة بالفعل (والاسم هيتكرر بالظبط).\n\nمتأكد إنك عايز تضيف مجموعة تانية؟');
+        if(!okDup) return;
+      }
+    }
     const wantsMonthly = document.getElementById('f-classroom-pm-monthly').checked;
     const wantsSessionChk = document.getElementById('f-classroom-pm-session');
     const wantsSession = !!(wantsSessionChk && wantsSessionChk.checked);
