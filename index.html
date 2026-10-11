@@ -2797,6 +2797,8 @@ const NOTIF_TYPE_ICON = {
   renewal_reminder: '⏰', exception_request: '🎫', exception_resolved: '✅',
   billing_overdue: '⚠️', billing_suspended: '🚫'
 };
+// حالة فتح/قفل قسمي جرس الإشعارات (بيانات ناقصة / إشعارات عادية) — بيانات ناقصة مفتوحة افتراضيًا لأهميتها
+let notifGroupsOpen = { critical: true, regular: false };
 
 // بيدوّر على أي حاجة في النظام "ناقصة بيانات" بشكل حرج (مش تنبيه عادي، ده نقص فعلي محتاج يتصلّح)
 // مجموعة من غير مدرّس، من غير معاد أسبوعي، من غير سعر — طالب من غير أي مجموعة — مدرّس من غير أي مجموعة
@@ -2835,9 +2837,11 @@ function renderNotifModal(){
   const list = (db.notifications||[]).slice().sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
   const listEl = document.getElementById('notif-list');
   const issues = (session.role==='ADMIN') ? findCriticalIssues() : [];
-  const issuesHtml = issues.length ? `
-    <div style="font-size:12px; font-weight:700; color:var(--danger,#e5484d); margin:4px 2px;">⚠️ بيانات ناقصة محتاجة تتصلّح (${issues.length})</div>
-    ${issues.map(it=>`<div class="card" style="margin-bottom:0; padding:12px 14px; cursor:pointer; border-inline-start:3px solid var(--danger,#e5484d); background:rgba(229,72,77,.06);" onclick="goToCriticalIssue('${it.type}','${it.id}')">
+  if(list.length===0 && issues.length===0){
+    listEl.innerHTML = '<p style="text-align:center; color:var(--sub,#9ca3af); padding:20px 0;">مفيش إشعارات دلوقتي</p>';
+    return;
+  }
+  const issuesBody = issues.map(it=>`<div class="card" style="margin-bottom:0; padding:12px 14px; cursor:pointer; border-inline-start:3px solid var(--danger,#e5484d); background:rgba(229,72,77,.06);" onclick="goToCriticalIssue('${it.type}','${it.id}')">
       <div style="display:flex; gap:8px; align-items:flex-start;">
         <span style="font-size:18px;">${it.icon}</span>
         <div style="flex:1; min-width:0;">
@@ -2846,14 +2850,14 @@ function renderNotifModal(){
         </div>
         <span style="color:var(--sub,#9ca3af); font-size:14px;">‹</span>
       </div>
-    </div>`).join('')}
-    <div style="font-size:12px; font-weight:700; color:var(--sub,#9ca3af); margin:10px 2px 4px;">🔔 الإشعارات العادية</div>
+    </div>`).join('');
+  const issuesHtml = issues.length ? `
+    <details class="notif-group" ${notifGroupsOpen.critical?'open':''} ontoggle="notifGroupsOpen.critical=this.open">
+      <summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:var(--danger,#e5484d); margin:4px 2px; padding:4px 2px;">⚠️ بيانات ناقصة محتاجة تتصلّح (${issues.length})</summary>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">${issuesBody}</div>
+    </details>
   ` : '';
-  if(list.length===0 && issues.length===0){
-    listEl.innerHTML = '<p style="text-align:center; color:var(--sub,#9ca3af); padding:20px 0;">مفيش إشعارات دلوقتي</p>';
-    return;
-  }
-  const regularHtml = list.length ? list.map(n=>{
+  const regularBody = list.map(n=>{
     const icon = NOTIF_TYPE_ICON[n.type] || '🔔';
     const unreadStyle = n.isRead ? '' : 'border-inline-start:3px solid var(--danger,#e5484d);';
     return `<div class="card" style="margin-bottom:0; padding:12px 14px; cursor:pointer; ${unreadStyle}" onclick="markNotifRead('${n.id}')">
@@ -2866,7 +2870,13 @@ function renderNotifModal(){
         </div>
       </div>
     </div>`;
-  }).join('') : (issues.length ? '<p style="text-align:center; color:var(--sub,#9ca3af); padding:10px 0; font-size:12.5px;">مفيش إشعارات عادية دلوقتي</p>' : '');
+  }).join('');
+  const regularHtml = issues.length ? `
+    <details class="notif-group" ${notifGroupsOpen.regular?'open':''} ontoggle="notifGroupsOpen.regular=this.open" style="margin-top:10px;">
+      <summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:var(--sub,#9ca3af); margin:4px 2px; padding:4px 2px;">🔔 الإشعارات العادية (${list.length})</summary>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">${list.length ? regularBody : '<p style="text-align:center; color:var(--sub,#9ca3af); padding:10px 0; font-size:12.5px;">مفيش إشعارات عادية دلوقتي</p>'}</div>
+    </details>
+  ` : regularBody;
   listEl.innerHTML = issuesHtml + regularHtml;
 }
 
