@@ -2676,10 +2676,17 @@ function escAttr(s){ return String(s==null?'':s).replace(/'/g,"\\'").replace(/"/
 function updateNotifBadge(){
   const db = loadDB();
   const unread = (db.notifications||[]).filter(n=>!n.isRead).length;
+  const criticalCount = (session.role==='ADMIN') ? findCriticalIssues().length : 0;
+  const total = unread + criticalCount;
   ['teacher','assistant','parent','admin'].forEach(role=>{
     const el = document.getElementById('notif-badge-'+role);
     if(!el) return;
-    if(unread>0){ el.textContent = unread>99?'99+':String(unread); el.style.display='flex'; }
+    const count = role==='admin' ? total : unread;
+    if(count>0){
+      el.textContent = count>99?'99+':String(count);
+      el.style.display='flex';
+      el.style.background = (role==='admin' && criticalCount>0) ? 'var(--danger,#e5484d)' : '';
+    }
     else{ el.style.display='none'; }
   });
 }
@@ -2791,15 +2798,51 @@ const NOTIF_TYPE_ICON = {
   billing_overdue: '⚠️', billing_suspended: '🚫'
 };
 
+// بيدوّر على أي حاجة في النظام "ناقصة بيانات" بشكل حرج (مش تنبيه عادي، ده نقص فعلي محتاج يتصلّح)
+// مجموعة من غير مدرّس، من غير معاد أسبوعي، من غير سعر — طالب من غير أي مجموعة — مدرّس من غير أي مجموعة
+function findCriticalIssues(){
+  const db = loadDB();
+  const issues = [];
+  (db.classrooms||[]).forEach(r=>{
+    const hasTeacher = (db.teachers||[]).some(t=>(t.classroomIds||[]).includes(r.id));
+    const hasSchedule = (r.meetingTimes||[]).length>0;
+    const hasPrice = (r.monthlyFee>0) || (r.sessionFee>0);
+    if(!hasTeacher) issues.push({icon:'🏫', title:'مجموعة من غير مدرّس', body:`"${r.name}" لسه مش متربطة بأي مدرّس`});
+    if(!hasSchedule) issues.push({icon:'🗓️', title:'مجموعة من غير معاد', body:`"${r.name}" لسه مالهاش معاد حصص محدد`});
+    if(!hasPrice) issues.push({icon:'💰', title:'مجموعة من غير سعر', body:`"${r.name}" لسه مالهاش سعر اشتراك محدد`});
+  });
+  (db.teachers||[]).forEach(t=>{
+    if(!(t.classroomIds||[]).length) issues.push({icon:'👩‍🏫', title:'مدرّس من غير مجموعات', body:`"${t.name}" لسه مش مربوط بأي مجموعة`});
+  });
+  (db.children||[]).forEach(c=>{
+    if(!(c.classroomIds||[]).length) issues.push({icon:'🎓', title:'طالب من غير مجموعة', body:`"${c.name}" لسه مش مسجّل في أي مجموعة`});
+  });
+  return issues;
+}
+
 function renderNotifModal(){
   const db = loadDB();
   const list = (db.notifications||[]).slice().sort((a,b)=> new Date(b.createdAt) - new Date(a.createdAt));
   const listEl = document.getElementById('notif-list');
-  if(list.length===0){
+  const issues = (session.role==='ADMIN') ? findCriticalIssues() : [];
+  const issuesHtml = issues.length ? `
+    <div style="font-size:12px; font-weight:700; color:var(--danger,#e5484d); margin:4px 2px;">⚠️ بيانات ناقصة محتاجة تتصلّح (${issues.length})</div>
+    ${issues.map(it=>`<div class="card" style="margin-bottom:0; padding:12px 14px; border-inline-start:3px solid var(--danger,#e5484d); background:rgba(229,72,77,.06);">
+      <div style="display:flex; gap:8px; align-items:flex-start;">
+        <span style="font-size:18px;">${it.icon}</span>
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; font-size:13.5px;">${it.title}</div>
+          <div style="font-size:12.5px; color:var(--sub,#6b7280); margin-top:2px;">${it.body}</div>
+        </div>
+      </div>
+    </div>`).join('')}
+    <div style="font-size:12px; font-weight:700; color:var(--sub,#9ca3af); margin:10px 2px 4px;">🔔 الإشعارات العادية</div>
+  ` : '';
+  if(list.length===0 && issues.length===0){
     listEl.innerHTML = '<p style="text-align:center; color:var(--sub,#9ca3af); padding:20px 0;">مفيش إشعارات دلوقتي</p>';
     return;
   }
-  listEl.innerHTML = list.map(n=>{
+  const regularHtml = list.length ? list.map(n=>{
     const icon = NOTIF_TYPE_ICON[n.type] || '🔔';
     const unreadStyle = n.isRead ? '' : 'border-inline-start:3px solid var(--danger,#e5484d);';
     return `<div class="card" style="margin-bottom:0; padding:12px 14px; cursor:pointer; ${unreadStyle}" onclick="markNotifRead('${n.id}')">
@@ -2812,7 +2855,8 @@ function renderNotifModal(){
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') : (issues.length ? '<p style="text-align:center; color:var(--sub,#9ca3af); padding:10px 0; font-size:12.5px;">مفيش إشعارات عادية دلوقتي</p>' : '');
+  listEl.innerHTML = issuesHtml + regularHtml;
 }
 
 function formatNotifTime(iso){
