@@ -268,7 +268,7 @@
   .list-info{min-width:0; flex:1 1 auto;}
   .list-name{font-weight:700; font-size:14.5px; white-space:normal; overflow-wrap:break-word; word-break:break-word; font-family:'Cairo',sans-serif; line-height:1.4;}
   .list-sub{font-size:12px; color:var(--muted); margin-top:2px; white-space:normal; overflow-wrap:break-word; word-break:break-word; line-height:1.5;}
-  .list-actions{display:flex; gap:6px; align-items:center; flex-wrap:wrap; flex-shrink:0;}
+  .list-actions{display:flex; gap:6px; align-items:center; flex-wrap:wrap; flex:0 1 auto; min-width:0; max-width:100%;}
   .list-actions .badge{border:1px solid var(--border); background:var(--paper);}
   .search-box{display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--border); border-radius:14px; padding:11px 14px; margin-bottom:12px;}
   .search-box input{border:none; outline:none; flex:1; font-size:14px; font-family:inherit; background:transparent; color:var(--ink);}
@@ -3990,7 +3990,7 @@ async function initSuperAdminScreen(){
           </div>
         </div>
       </div>
-      <div class="list-actions" style="flex-wrap:wrap;">
+      <div class="list-actions" style="flex:1 1 100%; flex-wrap:wrap;">
         <button class="badge" onclick="startImpersonation({role:'ADMIN', personId:null, centerId:'${c.id}', label:'مؤسسة: ${escAttr(c.name)}'})">👁 دخول كأدمن</button>
         <button class="badge" onclick="openQuickJumpModal('${c.id}','${escAttr(c.name)}')">🎭 دخول بأي حساب</button>
         <button class="badge" onclick="openTimeSimModal('${c.id}','${escAttr(c.name)}', ${c.simulated_time_offset_ms||0})">⏱ محاكاة الوقت</button>
