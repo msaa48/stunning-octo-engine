@@ -4261,9 +4261,23 @@ function renderQuickJumpList(){
         <div class="list-avatar" style="background:linear-gradient(135deg,#4a3d7a,#6553a0);">${avatarInitial(p.name)}</div>
         <div class="list-info"><div class="list-name">${p.name}</div></div>
       </div>
-      <button class="badge" onclick="closeModal('sa-quickjump-modal-bg'); startImpersonation({role:'${role}', personId:'${p.id}', centerId:'${quickJumpCenterId}', label:'${escAttr(p.name)}'});">دخول 🎭</button>
+      <div class="list-actions">
+        <button class="badge" onclick="quickJumpEdit('${quickJumpActiveTab}','${p.id}')">✏️ تعديل</button>
+        <button class="badge" onclick="closeModal('sa-quickjump-modal-bg'); startImpersonation({role:'${role}', personId:'${p.id}', centerId:'${quickJumpCenterId}', label:'${escAttr(p.name)}'});">دخول 🎭</button>
+      </div>
     </div>
   `).join('') || '<div class="empty">مفيش نتايج</div>';
+}
+
+// مالك المنصة: تعديل بيانات أي شخص في أي مركز مباشرةً (بيدخل كأدمن المركز وبيفتح نافذة التعديل الكاملة)
+async function quickJumpEdit(type, id){
+  const centerName = (saCentersCache.find(c=>c.id===quickJumpCenterId)||{}).name || '';
+  closeModal('sa-quickjump-modal-bg');
+  await startImpersonation({role:'ADMIN', personId:null, centerId:quickJumpCenterId, label:'مؤسسة: '+centerName});
+  const exists = (loadDB()[type]||[]).some(x=>x.id===id);
+  if(!exists){ showToast('⚠️ مقدرتش أفتح بيانات الشخص ده'); return; }
+  openAdminSection(type);
+  openAdminEditModal(type, id);
 }
 
 function renderInvoicesList(){
