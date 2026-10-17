@@ -108,3 +108,6 @@ create policy "teacher reads own teacher_raises" on public.teacher_raises
 for select using (
   "current_role"() = 'TEACHER' and center_id = current_center_id() and teacher_id = current_person_id()
 );
+
+-- 5) إعدادات حساب تقييم المدرّسين (بيحفظها المدير من ⚙️ الإعدادات) — عمود JSON واحد، بدون أي حذف
+alter table public.app_settings add column if not exists teacher_eval_config jsonb;

@@ -1233,6 +1233,40 @@
         </div>
       </div>
 
+      <div class="card" id="eval-settings-card">
+        <div class="settings-head">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#93610f);">⭐</div>
+          <div class="section-title" style="margin:0;">تقييم أداء المدرّسين</div>
+        </div>
+        <div style="font-size:12.5px; color:var(--muted); line-height:1.8; margin-bottom:14px;">
+          كل معيار بيتحسب من 5 والنتيجة متوسط مرجّح. الأوزان نسب نسبية بتتحوّل تلقائي لـ100% على المعايير المفعّلة بس.
+          التغيير بيتطبق على التقييمات المحسوبة من تاني (آخر 6 شهور) أول ما تفتح تاب "تقييم أداء المدرّسين".
+        </div>
+        <div id="eval-criteria-rows"></div>
+        <div id="eval-weights-summary" style="font-size:12.5px; color:var(--muted); margin:-4px 0 16px;"></div>
+        <div class="settings-field">
+          <label>ميعاد التأخير (الحضور بعده يعتبر متأخر)</label>
+          <input type="time" id="ev-late-time">
+        </div>
+        <div class="settings-field">
+          <label>أيام الإجازة الأسبوعية (مش بتتحسب من أيام الشغل المتوقعة)</label>
+          <div id="eval-offdays-row" style="display:flex; flex-wrap:wrap; gap:10px 14px;"></div>
+        </div>
+        <div class="settings-field">
+          <label>عدد الأحداث المتوقع تسجيلها لكل طالب في كل يوم حضور</label>
+          <input type="number" id="ev-logging-per" min="0.1" max="50" step="0.1">
+        </div>
+        <div class="settings-field">
+          <label>شرائح سرعة الرد (بالدقايق) — لحد كل رقم تاخد الدرجة المكتوبة، وأكتر من آخر رقم = 1</label>
+          <div id="eval-response-rows" style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;"></div>
+        </div>
+        <div class="settings-field">
+          <label>الحد الأدنى لمتوسط الدورة للأهلية لمراجعة العلاوة (من 5)</label>
+          <input type="number" id="ev-raise-threshold" min="1" max="5" step="0.1">
+        </div>
+        <button class="badge" type="button" onclick="resetEvalConfigDefaults()">↺ استرجاع القيم الافتراضية</button>
+      </div>
+
       <div class="card">
         <div class="settings-head">
           <div class="list-avatar" style="background:linear-gradient(135deg,#b5722e,#d9924a);">🎫</div>
@@ -1439,7 +1473,8 @@ function rowsToDB(rows){
     renewalReminderSessionsBefore: rows.appSettings.renewal_reminder_sessions_before ?? 3,
     financialClosingDay: rows.appSettings.financial_closing_day ?? 1,
     institutionBillingGraceDays: rows.billingGraceDays ?? 3,
-    paymentInstructions: rows.appSettings.payment_instructions || ''
+    paymentInstructions: rows.appSettings.payment_instructions || '',
+    evalConfig: normalizeEvalConfig(rows.appSettings.teacher_eval_config)
   } : {
     raiseCycleMonths:4, teacherPayoutBasis:'sessions', allowAssistants:false,
     whoCanAssignAssistants:'teacher_only', defaultPaymentMode:'monthly',
@@ -2776,6 +2811,88 @@ function renderPlatformSubCard(){
     '<div style="color:var(--muted);">'+graceLine+'</div>';
 }
 
+/* ---------- إعدادات حساب التقييم (فورم + قراءة + تحقق) ---------- */
+function fillEvalSettingsForm(cfg){
+  const rows = document.getElementById('eval-criteria-rows');
+  if(!rows) return;
+  rows.innerHTML = EVAL_CRITERIA_META.map(m=>{
+    const c = cfg.criteria[m.key];
+    return `<div class="settings-field">
+      <label style="display:flex; align-items:center; gap:8px; color:var(--text,inherit); font-size:14px; font-weight:700;">
+        <input type="checkbox" id="ev-en-${m.key}" ${c.enabled?'checked':''} onchange="updateEvalWeightsSummary()" style="width:18px; height:18px;"> ${m.label}
+      </label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="number" id="ev-w-${m.key}" min="0" max="100" step="1" value="${c.weight}" oninput="updateEvalWeightsSummary()" style="max-width:100px;">
+        <span style="font-size:12px; color:var(--muted);">الوزن — ${m.hint}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('ev-late-time').value = pad2(cfg.lateHour)+':'+pad2(cfg.lateMinute);
+  document.getElementById('eval-offdays-row').innerHTML = EVAL_DAY_NAMES.map((n,i)=>
+    `<label style="display:flex; align-items:center; gap:5px; font-size:13px; color:var(--text,inherit); margin:0;">
+      <input type="checkbox" id="ev-off-${i}" ${cfg.offDays.includes(i)?'checked':''} style="width:16px; height:16px;"> ${n}</label>`).join('');
+  document.getElementById('ev-logging-per').value = cfg.loggingEventsPerStudentPerDay;
+  const scoreOf = [5,4,3,2];
+  document.getElementById('eval-response-rows').innerHTML = cfg.responseMinutes.map((m,i)=>
+    `<div><div style="font-size:11.5px; color:var(--muted); margin-bottom:3px;">${scoreOf[i]} درجات لو ≤</div>
+      <input type="number" id="ev-resp-${i}" min="1" max="10080" step="1" value="${m}"></div>`).join('');
+  document.getElementById('ev-raise-threshold').value = cfg.raiseThreshold;
+  updateEvalWeightsSummary();
+}
+
+// بيرجّع {cfg} لو الفورم سليم، أو {error} برسالة واضحة
+function readEvalSettingsForm(){
+  const cfg = JSON.parse(JSON.stringify(DEFAULT_EVAL_CONFIG));
+  for(const m of EVAL_CRITERIA_META){
+    const w = Number(document.getElementById('ev-w-'+m.key).value);
+    if(!isFinite(w) || w<0 || w>100) return {error:`وزن "${m.label}" لازم رقم من 0 لـ100`};
+    cfg.criteria[m.key] = { enabled: document.getElementById('ev-en-'+m.key).checked, weight: w };
+  }
+  if(!Object.keys(cfg.criteria).some(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0)) return {error:'لازم معيار واحد على الأقل يكون مفعّل ووزنه أكبر من صفر'};
+  const t = /^(\d{1,2}):(\d{2})$/.exec(document.getElementById('ev-late-time').value || '');
+  if(!t || +t[1]>23 || +t[2]>59) return {error:'ميعاد التأخير مش صحيح'};
+  cfg.lateHour = +t[1]; cfg.lateMinute = +t[2];
+  cfg.offDays = [0,1,2,3,4,5,6].filter(i=> document.getElementById('ev-off-'+i).checked);
+  if(cfg.offDays.length>=7) return {error:'لازم يكون في يوم شغل واحد على الأقل في الأسبوع'};
+  const per = Number(document.getElementById('ev-logging-per').value);
+  if(!isFinite(per) || per<0.1 || per>50) return {error:'عدد الأحداث المتوقع لكل طالب لازم رقم من 0.1 لـ50'};
+  cfg.loggingEventsPerStudentPerDay = per;
+  const rm = [0,1,2,3].map(i=> Number(document.getElementById('ev-resp-'+i).value));
+  if(!rm.every((n,i)=> isFinite(n) && n>0 && n<=10080 && (i===0 || n>rm[i-1]))) return {error:'شرائح سرعة الرد لازم أرقام موجبة وتصاعدية (كل رقم أكبر من اللي قبله)'};
+  cfg.responseMinutes = rm;
+  const th = Number(document.getElementById('ev-raise-threshold').value);
+  if(!isFinite(th) || th<1 || th>5) return {error:'حد الأهلية للعلاوة لازم رقم من 1 لـ5'};
+  cfg.raiseThreshold = th;
+  return {cfg};
+}
+
+function evalWeightsSummaryHtml(cfg){
+  const eff = evalEffectiveWeights(cfg);
+  return EVAL_CRITERIA_META.map(m=>
+    eff[m.key]!=null ? `${m.label}: <b>${Math.round(eff[m.key])}%</b>` : `<span style="color:var(--muted);">${m.label}: معطّل</span>`
+  ).join(' · ');
+}
+function updateEvalWeightsSummary(){
+  const el = document.getElementById('eval-weights-summary');
+  if(!el) return;
+  const tmp = JSON.parse(JSON.stringify(DEFAULT_EVAL_CONFIG));
+  EVAL_CRITERIA_META.forEach(m=>{
+    const en = document.getElementById('ev-en-'+m.key), w = document.getElementById('ev-w-'+m.key);
+    if(en && w) tmp.criteria[m.key] = { enabled: en.checked, weight: Math.max(0, Number(w.value)||0) };
+  });
+  const any = Object.keys(tmp.criteria).some(k=> tmp.criteria[k].enabled && tmp.criteria[k].weight>0);
+  el.innerHTML = any ? 'الأوزان الفعلية بعد التحويل: ' + evalWeightsSummaryHtml(tmp) : '<span style="color:var(--danger);">⚠️ لازم معيار واحد على الأقل مفعّل ووزنه أكبر من صفر</span>';
+}
+function resetEvalConfigDefaults(){
+  fillEvalSettingsForm(normalizeEvalConfig(null));
+  showToast('اترجعت القيم الافتراضية — اضغط "حفظ" لتأكيدها');
+}
+// زرار "تخصيص معايير التقييم" في تاب التقييم — يفتح الإعدادات وينزل لكارت التقييم
+function openEvalSettings(){
+  openAdminSettingsScreen();
+  setTimeout(()=>{ const c = document.getElementById('eval-settings-card'); if(c) c.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+}
+
 function openAdminSettingsScreen(){
   const db = loadDB();
   const s = db.settings;
@@ -2793,6 +2910,7 @@ function openAdminSettingsScreen(){
   document.getElementById('set-paymentInstructions').value = s.paymentInstructions || '';
   document.getElementById('set-allowAssistants').checked = !!s.allowAssistants;
   document.getElementById('set-whoCanAssignAssistants').value = s.whoCanAssignAssistants || 'teacher_only';
+  fillEvalSettingsForm(getEvalConfig(db));
   showScreen('admin-settings-screen');
 }
 
@@ -2809,8 +2927,12 @@ async function saveAdminSettings(){
   if(!financialClosingDay || financialClosingDay<1 || financialClosingDay>28){ showToast('يوم التقفيل المالي لازم يكون من 1 لـ28'); return; }
   if(isNaN(institutionBillingGraceDays) || institutionBillingGraceDays<0 || institutionBillingGraceDays>30){ showToast('مهلة السماح لازم رقم من 0 لـ30 يوم'); return; }
 
+  const evalRes = readEvalSettingsForm();
+  if(evalRes.error){ showToast(evalRes.error); return; }
+
   const db = loadDB();
   db.settings = {
+    evalConfig: evalRes.cfg,
     raiseCycleMonths,
     teacherPayoutBasis: document.getElementById('set-teacherPayoutBasis').value,
     allowAssistants: document.getElementById('set-allowAssistants').checked,
@@ -2824,7 +2946,14 @@ async function saveAdminSettings(){
   };
   const result = await saveDB(db);
   if(!result.ok){ showToast('⚠️ فشل حفظ الإعدادات على السيرفر'); return; }
-  showToast('تم حفظ الإعدادات');
+  // معايير التقييم بتتحفظ في عمود مستقل (teacher_eval_config) عشان لو العمود لسه مش متضاف على الداتابيز
+  // مايبوّظش حفظ باقي الإعدادات — بنبلّغ المدير بوضوح بدل ما نفشل بصمت
+  let evalSaved = true;
+  if(session.centerId){
+    const { error: evErr } = await supabaseClient.from('app_settings').update({ teacher_eval_config: evalRes.cfg }).eq('center_id', session.centerId);
+    if(evErr){ evalSaved = false; console.error('فشل حفظ معايير التقييم', evErr); }
+  }
+  showToast(evalSaved ? 'تم حفظ الإعدادات' : '⚠️ اتحفظت الإعدادات، لكن معايير التقييم محتاجة تحديث لقاعدة البيانات (عمود teacher_eval_config) وإلا هترجع للافتراضي');
   showScreen('admin-screen');
   renderAdminList();
 }
@@ -2991,11 +3120,11 @@ function showTeacherMenu(){
 }
 
 /* ---------- Teacher's own attendance (check-in/out), for admin tracking ---------- */
-const TEACHER_LATE_HOUR = 8, TEACHER_LATE_MIN = 30; // بعد الساعة دي تعتبر متأخرة (تقدر تغيرها براحتك)
-
-function isLateCheckIn(iso){
+// ميعاد التأخير بيتقرا من إعدادات التقييم (الأدمن يغيّره من ⚙️ إعدادات النظام). المدرّس بيشوف الافتراضي لو الإعدادات مش متاحة له.
+function isLateCheckIn(iso, cfg){
+  cfg = cfg || getEvalConfig();
   const d = new Date(iso);
-  return d.getHours() > TEACHER_LATE_HOUR || (d.getHours()===TEACHER_LATE_HOUR && d.getMinutes() > TEACHER_LATE_MIN);
+  return d.getHours() > cfg.lateHour || (d.getHours()===cfg.lateHour && d.getMinutes() > cfg.lateMinute);
 }
 
 async function logTeacherAttendance(type){
@@ -5645,14 +5774,20 @@ function renderAdminListInner(){
   else if(adminActiveTab==='teacherEvaluations'){
     const dbFresh = ensureAutoEvalsUpToDate(6);
     const cycle = dbFresh.settings.raiseCycleMonths || 4;
+    const evalCfg = getEvalConfig(dbFresh);
     const items = dbFresh.teachers.filter(t=> matchesSearch(t.name));
     el.innerHTML = `
       <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <div style="font-size:13px; color:var(--muted);">دورة مراجعة العلاوة الحالية</div>
-          <div style="font-weight:700;">كل ${cycle} شهور</div>
+          <div style="font-weight:700;">كل ${cycle} شهور · الأهلية من ${evalCfg.raiseThreshold}/5</div>
         </div>
         <button class="badge" onclick="openAdminSettingsScreen()">تغيير المدة</button>
+      </div>
+      <div class="card">
+        <div style="font-size:13px; color:var(--muted); margin-bottom:6px;">معايير التقييم الحالية</div>
+        <div style="font-size:13px; line-height:1.9;">${evalWeightsSummaryHtml(evalCfg)}</div>
+        <button class="badge admin" style="margin-top:8px;" onclick="openEvalSettings()">⚙️ تخصيص معايير التقييم</button>
       </div>
       ${searchBoxHtml('دور باسم مدرّس...')}
       ${items.map(t=>{
@@ -5660,7 +5795,7 @@ function renderAdminListInner(){
         const latest = evals[0];
         const recent = evals.slice(0, cycle);
         const cycleAvg = recent.length ? recent.reduce((s,e)=>s+e.overallScore,0)/recent.length : null;
-        const eligible = cycleAvg !== null && cycleAvg >= 3.5 && recent.length >= cycle;
+        const eligible = cycleAvg !== null && cycleAvg >= evalCfg.raiseThreshold && recent.length >= cycle;
         return `<div class="list-row" style="cursor:pointer;" onclick="openTeacherEvalModal('${t.id}')">
           <div class="list-row-main">
             <div class="list-avatar" style="background:linear-gradient(135deg,#f59e0b,#b45309);">${avatarInitial(t.name)}</div>
@@ -7364,22 +7499,84 @@ async function toggleComplaintStatus(id){
 //  - الانضباط في التسجيل: مدى انتظامه في تسجيل أحداث يومية لطلاب مجموعته
 //  - سرعة الرد على أولياء الأمور: متوسط وقت رده على رسائل الشات
 // كل معيار بيتحسب من 5، والمتوسط المرجّح هو overallScore بتاع الشهر.
-const AUTO_SCORE_WEIGHTS = { attendance: 0.30, punctuality: 0.25, logging: 0.25, response: 0.20 };
+// ===== إعدادات حساب التقييم (قابلة للتخصيص من ⚙️ إعدادات النظام > تقييم أداء المدرّسين) =====
+// بتتخزن في app_settings.teacher_eval_config (JSON). أي قيمة ناقصة أو غلط بترجع للافتراضي بدل ما تكسر الحساب.
+const DEFAULT_EVAL_CONFIG = {
+  criteria: {
+    attendance:  { enabled:true, weight:30 },
+    punctuality: { enabled:true, weight:25 },
+    logging:     { enabled:true, weight:25 },
+    response:    { enabled:true, weight:20 }
+  },
+  lateHour: 8, lateMinute: 30,          // بعد الميعاد ده الحضور يعتبر متأخر
+  offDays: [5],                         // أيام الإجازة الأسبوعية (0=الأحد ... 5=الجمعة ... 6=السبت)
+  loggingEventsPerStudentPerDay: 1,     // عدد الأحداث المتوقع تسجيلها لكل طالب في كل يوم حضور
+  responseMinutes: [15, 60, 180, 1440], // سرعة الرد: لحد كل حد = 5 / 4 / 3 / 2 درجات، وأكتر منه = 1
+  raiseThreshold: 3.5                   // الحد الأدنى لمتوسط الدورة عشان المدرّس يتأهل لمراجعة العلاوة
+};
+const EVAL_CRITERIA_META = [
+  { key:'attendance',  label:'الانتظام',                       hint:'أيام الحضور الفعلية ÷ أيام الشغل في الشهر' },
+  { key:'punctuality', label:'الالتزام بالمواعيد',             hint:'نسبة مرات الحضور قبل ميعاد التأخير' },
+  { key:'logging',     label:'الانضباط في التسجيل',            hint:'الأحداث اللي سجلها لطلاب مجموعاته ÷ المتوقع' },
+  { key:'response',    label:'سرعة الرد على أولياء الأمور',    hint:'متوسط وقت رده على رسائل الشات' }
+];
+const EVAL_DAY_NAMES = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+
+function normalizeEvalConfig(raw){
+  const d = DEFAULT_EVAL_CONFIG;
+  const c = JSON.parse(JSON.stringify(d));
+  if(!raw || typeof raw!=='object') return c;
+  const num = (v, lo, hi, dflt)=>{ const n = Number(v); return (v!==null && v!=='' && isFinite(n) && n>=lo && n<=hi) ? n : dflt; };
+  Object.keys(c.criteria).forEach(k=>{
+    const r = raw.criteria && raw.criteria[k];
+    if(r && typeof r==='object'){
+      c.criteria[k].enabled = r.enabled!==false;
+      c.criteria[k].weight = num(r.weight, 0, 100, d.criteria[k].weight);
+    }
+  });
+  c.lateHour = Math.round(num(raw.lateHour, 0, 23, d.lateHour));
+  c.lateMinute = Math.round(num(raw.lateMinute, 0, 59, d.lateMinute));
+  if(Array.isArray(raw.offDays)){
+    const od = [...new Set(raw.offDays.map(Number).filter(n=> Number.isInteger(n) && n>=0 && n<=6))];
+    if(od.length < 7) c.offDays = od; // لو كل الأيام إجازة نرجع للافتراضي
+  }
+  c.loggingEventsPerStudentPerDay = num(raw.loggingEventsPerStudentPerDay, 0.1, 50, d.loggingEventsPerStudentPerDay);
+  if(Array.isArray(raw.responseMinutes) && raw.responseMinutes.length===4){
+    const rm = raw.responseMinutes.map(Number);
+    const ok = rm.every((n,i)=> isFinite(n) && n>0 && n<=10080 && (i===0 || n>rm[i-1]));
+    if(ok) c.responseMinutes = rm;
+  }
+  c.raiseThreshold = num(raw.raiseThreshold, 1, 5, d.raiseThreshold);
+  return c;
+}
+function getEvalConfig(db){
+  db = db || loadDB();
+  return normalizeEvalConfig(db && db.settings ? db.settings.evalConfig : null);
+}
+// الأوزان الفعلية (نسب مئوية من 100) للمعايير المفعّلة بس
+function evalEffectiveWeights(cfg){
+  const active = Object.keys(cfg.criteria).filter(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0);
+  const total = active.reduce((t,k)=> t + cfg.criteria[k].weight, 0);
+  const out = {};
+  active.forEach(k=>{ out[k] = total ? (cfg.criteria[k].weight/total)*100 : 0; });
+  return out;
+}
 
 function monthKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
 
-function workingDaysInMonth(year, monthIndex0, uptoDate){
-  // بافتراض إجازة يوم الجمعة بس — غيّرها هنا لو عندكم إجازة تانية
+function workingDaysInMonth(year, monthIndex0, uptoDate, offDays){
+  offDays = offDays || DEFAULT_EVAL_CONFIG.offDays; // أيام الإجازة الأسبوعية من الإعدادات
   const end = uptoDate ? uptoDate.getDate() : new Date(year, monthIndex0+1, 0).getDate();
   let count = 0;
   for(let d=1; d<=end; d++){
-    const day = new Date(year, monthIndex0, d).getDay(); // 5 = الجمعة
-    if(day !== 5) count++;
+    const day = new Date(year, monthIndex0, d).getDay();
+    if(!offDays.includes(day)) count++;
   }
   return count;
 }
 
 function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
+  const cfg = getEvalConfig(db);
   const monthStart = new Date(year, monthIndex0, 1);
   const monthEnd = new Date(year, monthIndex0+1, 0, 23,59,59);
   const now = getSystemNow();
@@ -7387,21 +7584,22 @@ function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
   const effectiveEnd = isCurrentMonth ? now : monthEnd;
 
   const teacher = db.teachers.find(t=>t.id===teacherId);
-  const myChildren = teacher ? db.children.filter(c=> teacher.classroomIds.includes(c.classroomId)) : [];
+  // الطالب ممكن يكون في أكتر من مجموعة (classroomIds)، فبنقارن بالمصفوفة مش بحقل مفرد
+  const myChildren = teacher ? db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid))) : [];
 
   // 1) الانتظام والالتزام بالمواعيد
   const attRecords = db.teacherAttendance.filter(r=> r.teacherId===teacherId && new Date(r.time)>=monthStart && new Date(r.time)<=effectiveEnd);
   const checkIns = attRecords.filter(r=>r.type==='CHECK_IN');
   const daysAttended = new Set(checkIns.map(r=> new Date(r.time).toDateString())).size;
-  const expectedDays = workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd) || 1;
+  const expectedDays = workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd, cfg.offDays) || 1;
   const attendanceScore = Math.min(5, (daysAttended/expectedDays) * 5);
-  const onTimeCount = checkIns.filter(r=> !isLateCheckIn(r.time)).length;
+  const onTimeCount = checkIns.filter(r=> !isLateCheckIn(r.time, cfg)).length;
   const punctualityScore = checkIns.length ? (onTimeCount/checkIns.length)*5 : null;
 
-  // 2) الانضباط في تسجيل الأحداث اليومية (بافتراض حدث واحد على الأقل لكل طالب في كل يوم حضور كحد أدنى مقبول)
+  // 2) الانضباط في تسجيل الأحداث اليومية (المتوقع = أيام الحضور × عدد الطلاب × المتوقع لكل طالب في اليوم)
   const childIds = myChildren.map(c=>c.id);
   const loggedEvents = db.events.filter(e=> childIds.includes(e.childId) && new Date(e.eventTime)>=monthStart && new Date(e.eventTime)<=effectiveEnd);
-  const expectedEvents = Math.max(1, daysAttended * myChildren.length);
+  const expectedEvents = Math.max(1, daysAttended * myChildren.length * cfg.loggingEventsPerStudentPerDay);
   const loggingScore = myChildren.length ? Math.min(5, (loggedEvents.length/expectedEvents)*5) : null;
 
   // 3) سرعة الرد على رسائل أولياء الأمور
@@ -7422,23 +7620,25 @@ function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
   let responseScore = null;
   if(responseTimesMin.length){
     const avgMin = responseTimesMin.reduce((a,b)=>a+b,0)/responseTimesMin.length;
-    responseScore = avgMin<=15 ? 5 : avgMin<=60 ? 4 : avgMin<=180 ? 3 : avgMin<=1440 ? 2 : 1;
+    const [t5,t4,t3,t2] = cfg.responseMinutes;
+    responseScore = avgMin<=t5 ? 5 : avgMin<=t4 ? 4 : avgMin<=t3 ? 3 : avgMin<=t2 ? 2 : 1;
   }
 
-  // تجميع المعايير المتاحة بس (لو معيار مفيش بيانات كافية له، بيتشال من المتوسط بدل ما يفتري النتيجة بالسلب)
-  const parts = [
-    {key:'attendance', score:attendanceScore, weight:AUTO_SCORE_WEIGHTS.attendance},
-    {key:'punctuality', score:punctualityScore, weight:AUTO_SCORE_WEIGHTS.punctuality},
-    {key:'logging', score:loggingScore, weight:AUTO_SCORE_WEIGHTS.logging},
-    {key:'response', score:responseScore, weight:AUTO_SCORE_WEIGHTS.response}
-  ].filter(p=> p.score !== null);
-  const totalWeight = parts.reduce((s,p)=>s+p.weight,0) || 1;
-  const overallScore = parts.reduce((s,p)=> s + p.score*p.weight, 0) / totalWeight;
+  // تجميع المعايير المفعّلة اللي ليها بيانات بس (المعيار المعطّل أو اللي مفيش له بيانات بيتشال من المتوسط بدل ما يتحسب صفر)
+  const raw = { attendance:attendanceScore, punctuality:punctualityScore, logging:loggingScore, response:responseScore };
+  const parts = Object.keys(raw)
+    .filter(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0 && raw[k] !== null)
+    .map(k=> ({key:k, score:raw[k], weight:cfg.criteria[k].weight}));
+  const totalWeight = parts.reduce((s,p)=>s+p.weight,0);
+  const overallScore = totalWeight ? parts.reduce((s,p)=> s + p.score*p.weight, 0) / totalWeight : 0;
 
+  // المعيار المعطّل بيتخزن null عشان يظهر "معطّل" في الواجهة ومايتحسبش
+  const scores = {};
+  Object.keys(raw).forEach(k=>{ scores[k] = cfg.criteria[k].enabled ? raw[k] : null; });
   return {
-    scores: { attendance: attendanceScore, punctuality: punctualityScore, logging: loggingScore, response: responseScore },
+    scores,
     overallScore,
-    hasData: checkIns.length>0 || loggedEvents.length>0
+    hasData: (checkIns.length>0 || loggedEvents.length>0) && parts.length>0
   };
 }
 
@@ -7581,7 +7781,8 @@ function openTeacherEvalModal(teacherId){
   const cycle = db.settings.raiseCycleMonths || 4;
   const recent = evals.slice(0, cycle);
   const cycleAvg = recent.length ? recent.reduce((s,e)=>s+e.overallScore,0)/recent.length : null;
-  const eligible = cycleAvg !== null && cycleAvg >= 3.5 && recent.length >= cycle;
+  const evalCfg = getEvalConfig(db);
+  const eligible = cycleAvg !== null && cycleAvg >= evalCfg.raiseThreshold && recent.length >= cycle;
   const form = document.getElementById('teacher-eval-form');
   const labelize = {attendance:'الانتظام', punctuality:'الالتزام بالمواعيد', logging:'الانضباط في التسجيل', response:'سرعة الرد على الأهالي'};
   const latest = evals[0];
@@ -7589,7 +7790,7 @@ function openTeacherEvalModal(teacherId){
     <div style="font-size:13px; color:var(--muted);">آخر شهر محسوب: ${latest?latest.month:'مفيش بيانات كفاية لسه'}</div>
     ${latest ? `
       <div style="font-weight:700; font-size:20px;">${latest.overallScore.toFixed(1)} / 5 ⭐</div>
-      ${Object.entries(latest.scores).map(([k,v])=> v!==null ? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${labelize[k]}</span><span>${v.toFixed(1)}/5</span></div>` : `<div style="display:flex; justify-content:space-between; font-size:13px; color:var(--muted);"><span>${labelize[k]}</span><span>مفيش بيانات كفاية</span></div>`).join('')}
+      ${Object.entries(latest.scores).map(([k,v])=> v!==null ? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${labelize[k]}</span><span>${v.toFixed(1)}/5</span></div>` : `<div style="display:flex; justify-content:space-between; font-size:13px; color:var(--muted);"><span>${labelize[k]}</span><span>${evalCfg.criteria[k] && !evalCfg.criteria[k].enabled ? 'معطّل' : 'مفيش بيانات كفاية'}</span></div>`).join('')}
     ` : '<div class="empty">لسه محصلش نشاط كفاية (حضور/تسجيل أحداث) عشان نحسب تقييم أوتوماتيكي</div>'}
     <div style="border-top:1px solid var(--line); padding-top:8px; margin-top:4px;">
       <div style="font-size:13px; color:var(--muted);">متوسط آخر ${cycle} شهور (دورة العلاوة الحالية)</div>
