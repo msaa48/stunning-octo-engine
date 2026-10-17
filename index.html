@@ -621,12 +621,16 @@
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
+    <div id="teacher-summary" class="card" style="display:none; margin-bottom:12px;"></div>
     <div class="tab-menu" id="teacher-tab-menu">
       <button class="tab-card teacher" id="teacher-tab-log" onclick="switchTeacherTab('log')"><span class="tc-icon">📝</span><span class="tc-label">تسجيل اليوم</span></button>
       <button class="tab-card teacher" id="teacher-tab-attendance" onclick="switchTeacherTab('attendance')"><span class="tc-icon">🕒</span><span class="tc-label">حضوري وانصرافي</span></button>
       <button class="tab-card teacher" id="teacher-tab-schedule" onclick="switchTeacherTab('schedule')"><span class="tc-icon">📅</span><span class="tc-label">جدولي الأسبوعي</span></button>
       <button class="tab-card teacher" id="teacher-tab-chat" onclick="switchTeacherTab('chat')"><span class="tc-icon">💬</span><span class="tc-label">شات الأهالي</span></button>
       <button class="tab-card teacher" id="teacher-tab-payouts" onclick="switchTeacherTab('payouts')"><span class="tc-icon">💰</span><span class="tc-label">مرتبي</span></button>
+      <button class="tab-card teacher" id="teacher-tab-evals" onclick="switchTeacherTab('evals')"><span class="tc-icon">⭐</span><span class="tc-label">تقييم أدائي</span></button>
+      <button class="tab-card teacher" id="teacher-tab-calendar" onclick="switchTeacherTab('calendar')"><span class="tc-icon">🗓️</span><span class="tc-label">تقويم السنتر</span></button>
+      <button class="tab-card teacher" id="teacher-tab-history" onclick="switchTeacherTab('history')"><span class="tc-icon">🗂️</span><span class="tc-label">سجل الحصص</span></button>
     </div>
     <button class="tab-back" id="teacher-tab-back" onclick="history.back()" style="display:none;">→ رجوع للقائمة</button>
 
@@ -687,6 +691,7 @@
 
     <div id="teacher-panel-chat" style="display:none;">
       <div class="section-title" style="margin-top:0;">شات مع ولي أمر الطالب المختار</div>
+      <select id="teacher-chat-child-select" style="width:100%; margin-bottom:10px;" onchange="selectTeacherChild(this.value)"></select>
       <div class="timeline" id="teacher-chat-view" style="margin-bottom:12px;"></div>
       <div style="display:flex; gap:8px;">
         <input type="text" id="teacher-chat-input" placeholder="اكتب رسالة..." style="flex:1;">
@@ -697,6 +702,23 @@
     <div id="teacher-panel-payouts" style="display:none;">
       <div class="section-title" style="margin-top:0;">💰 كشوف مرتبي</div>
       <div id="teacher-payouts-view"></div>
+    </div>
+
+    <div id="teacher-panel-evals" style="display:none;">
+      <div class="section-title" style="margin-top:0;">⭐ تقييم أدائي الشهري</div>
+      <div id="teacher-evals-view"></div>
+    </div>
+
+    <div id="teacher-panel-calendar" style="display:none;">
+      <div class="section-title" style="margin-top:0;">🗓️ تقويم السنتر</div>
+      <div class="timeline" id="teacher-calendar-view"></div>
+    </div>
+
+    <div id="teacher-panel-history" style="display:none;">
+      <div class="section-title" style="margin-top:0;">🗂️ حضور الطلاب اللي سجلته (آخر 30 يوم)</div>
+      <div class="timeline" id="teacher-history-attendance"></div>
+      <div class="section-title">🎫 سجل الاستثناءات</div>
+      <div class="timeline" id="teacher-history-exceptions"></div>
     </div>
   </div>
 </div>
@@ -1339,6 +1361,18 @@ let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخ
 let simulatedTimeOffsetMs = 0;
 function getSystemNow(){ return new Date(Date.now() + simulatedTimeOffsetMs); }
 
+// تعقيم أي نص جاي من مستخدم قبل ما يدخل innerHTML (منع XSS) — لازم يتطبق على أي اسم/رسالة/ملاحظة/سبب
+function esc(v){
+  return String(v==null?'':v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// رابط صورة آمن للاستخدام داخل src="" (http/https/data:image فقط)
+function safeImgSrc(u){
+  const s = String(u||'');
+  return /^(https?:\/\/|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(s) ? esc(s) : '';
+}
+
 // ===== تواريخ بالتوقيت المحلي =====
 // toISOString() بيحوّل لـUTC، فبين 12 و3 الفجر بتوقيت مصر بيرجّع تاريخ اليوم اللي قبله، وفي أي حساب بـnew Date('YYYY-MM-DDT00:00:00') بيرجّع يوم ناقص
 function pad2(n){ return String(n).padStart(2,'0'); }
@@ -1973,6 +2007,7 @@ let impersonationStack = [];
 let pendingRole = null;
 let pendingPersonId = null;
 let parentPollTimer = null;
+let teacherPollTimer = null;
 
 const EVENT_META = {
   CHECK_IN:{em:'✅', label:'حضور الحصة'},
@@ -2159,6 +2194,7 @@ function showScreen(id, opts){
   void target.offsetWidth; /* force reflow to restart animation */
   target.style.animation = '';
   if(id !== 'parent-screen' && parentPollTimer){ clearInterval(parentPollTimer); parentPollTimer=null; }
+  if(id !== 'teacher-screen' && teacherPollTimer){ clearInterval(teacherPollTimer); teacherPollTimer=null; }
   // زرار الوضع الليلي بيتخفى في أي شاشة فيها topbar عشان مايغطيش زرار الخروج
   const themeBtn = document.getElementById('theme-toggle');
   if(themeBtn) themeBtn.style.display = (id === 'login-screen') ? 'flex' : 'none';
@@ -2920,18 +2956,25 @@ function isToday(iso){
 
 /* ========================= TEACHER ========================= */
 let teacherActiveChildId = null;
+const TEACHER_TABS = ['log','attendance','schedule','chat','payouts','evals','calendar','history'];
 
 function switchTeacherTab(tab){
   pushOrReplaceTabState('teacher-screen', tab);
   document.getElementById('teacher-tab-menu').style.display = 'none';
   document.getElementById('teacher-tab-back').style.display = 'flex';
-  ['log','attendance','schedule','chat','payouts'].forEach(t=>{
+  TEACHER_TABS.forEach(t=>{
     document.getElementById('teacher-tab-'+t).classList.toggle('active', t===tab);
     document.getElementById('teacher-panel-'+t).style.display = t===tab ? 'block':'none';
   });
   if(tab==='attendance') renderTeacherAttendance();
   if(tab==='schedule') renderTeacherSchedule();
   if(tab==='chat') renderTeacherChat();
+  if(tab==='calendar') renderTeacherCalendar();
+  if(tab==='history') renderTeacherHistory();
+  if(tab==='evals'){
+    renderTeacherEvalsOwn();
+    fetchDBFromSupabase().then(()=> renderTeacherEvalsOwn());
+  }
   if(tab==='payouts'){
     renderTeacherPayouts();
     fetchDBFromSupabase().then(()=> { renderTeacherPayouts(); updateNotifBadge(); });
@@ -2941,9 +2984,10 @@ function switchTeacherTab(tab){
 function showTeacherMenu(){
   document.getElementById('teacher-tab-menu').style.display = 'grid';
   document.getElementById('teacher-tab-back').style.display = 'none';
-  ['log','attendance','schedule','chat','payouts'].forEach(t=>{
+  TEACHER_TABS.forEach(t=>{
     document.getElementById('teacher-panel-'+t).style.display = 'none';
   });
+  renderTeacherSummary();
 }
 
 /* ---------- Teacher's own attendance (check-in/out), for admin tracking ---------- */
@@ -3046,14 +3090,126 @@ function renderTeacherPayouts(){
   }).join('');
 }
 
+/* ---------- ملخص سريع أعلى قائمة المعلم ---------- */
+function renderTeacherSummary(){
+  const el = document.getElementById('teacher-summary');
+  if(!el) return;
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  if(!teacher){ el.style.display='none'; return; }
+  const today = localDateStr();
+  const todayAtt = (db.attendance||[]).filter(a=> a.sessionDate===today && teacher.classroomIds.includes(a.classroomId)).length;
+  const pending = (db.attendanceExceptions||[]).filter(x=> x.status==='pending' && teacher.classroomIds.includes(x.classroomId)).length;
+  const unread = (db.notifications||[]).filter(n=>!n.isRead).length;
+  const myTodayAtt = (db.teacherAttendance||[]).filter(r=> r.teacherId===session.personId && isToday(r.time));
+  const checkedIn = myTodayAtt.some(r=>r.type==='CHECK_IN');
+  const stat = (n,label,warn)=>`<div style="flex:1; text-align:center;"><div style="font-size:20px; font-weight:800; ${warn&&n>0?'color:var(--danger);':''}">${n}</div><div style="font-size:11px; color:var(--muted);">${label}</div></div>`;
+  el.style.display = 'block';
+  el.innerHTML = `<div style="display:flex; gap:8px;">
+      ${stat(todayAtt,'حضور طلاب النهارده')}
+      ${stat(pending,'طلبات استثناء معلّقة',true)}
+      ${stat(unread,'إشعارات جديدة')}
+    </div>
+    ${checkedIn ? '' : `<div style="margin-top:8px; font-size:12px; color:var(--danger); text-align:center;">⚠️ لسه ما سجلتش حضورك النهارده</div>`}`;
+}
+
+/* ---------- تقييم أدائي (قراءة فقط) ---------- */
+function renderTeacherEvalsOwn(){
+  const el = document.getElementById('teacher-evals-view');
+  if(!el) return;
+  const db = loadDB();
+  const labelize = {attendance:'الانتظام', punctuality:'الالتزام بالمواعيد', logging:'الانضباط في التسجيل', response:'سرعة الرد على الأهالي'};
+  const list = (db.teacherEvaluations||[])
+    .filter(e=> e.teacherId===session.personId && e.source==='AUTO')
+    .sort((a,b)=> String(b.month).localeCompare(String(a.month)));
+  if(list.length===0){ el.innerHTML = '<div class="empty">لسه مفيش تقييم شهري ليك — بيظهر بعد ما يتحسب أول شهر</div>'; return; }
+  el.innerHTML = list.map(e=>{
+    const rows = Object.keys(labelize).filter(k=> e.scores && e.scores[k]!=null).map(k=>
+      `<div style="display:flex; justify-content:space-between; font-size:13px; margin-top:4px;"><span>${labelize[k]}</span><b>${Number(e.scores[k]).toFixed(1)}/5</b></div>`).join('');
+    return `<div class="card" style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:700;">${esc(e.month)}</div>
+        <div style="font-size:20px; font-weight:800;">${Number(e.overallScore||0).toFixed(1)}/5 ⭐</div>
+      </div>
+      ${rows}
+      ${e.note ? `<div style="font-size:12px; color:var(--muted); margin-top:6px;">${esc(e.note)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+/* ---------- تقويم السنتر (قراءة فقط) ---------- */
+function renderTeacherCalendar(){
+  const el = document.getElementById('teacher-calendar-view');
+  if(!el) return;
+  const db = loadDB();
+  const today = localDateStr();
+  const list = [...(db.calendarEvents||[])].filter(ev=>ev.date).sort((a,b)=> a.date.localeCompare(b.date));
+  if(list.length===0){ el.innerHTML = '<div class="empty">لا يوجد أحداث حاليًا</div>'; return; }
+  el.innerHTML = list.map(ev=>`
+    <div class="tl-item" style="${ev.date<today?'opacity:.55;':''}">
+      <div class="tl-em">📅</div>
+      <div class="tl-body"><div class="tl-title">${esc(ev.title)}</div>${ev.note?`<div class="tl-note">${esc(ev.note)}</div>`:''}</div>
+      <div class="tl-time">${new Date(ev.date+'T00:00:00').toLocaleDateString('ar-EG')}</div>
+    </div>`).join('');
+}
+
+/* ---------- سجل حضور الطلاب والاستثناءات ---------- */
+function renderTeacherHistory(){
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const attEl = document.getElementById('teacher-history-attendance');
+  const exEl = document.getElementById('teacher-history-exceptions');
+  if(!teacher || !attEl || !exEl) return;
+  const cutoff = localDateStr(new Date(getSystemNow().getTime() - 30*86400000));
+  const att = (db.attendance||[])
+    .filter(a=> teacher.classroomIds.includes(a.classroomId) && a.sessionDate>=cutoff)
+    .sort((a,b)=> b.sessionDate.localeCompare(a.sessionDate));
+  const groups = {};
+  att.forEach(a=>{ const k = a.sessionDate+'|'+a.classroomId; (groups[k]=groups[k]||[]).push(a); });
+  const keys = Object.keys(groups);
+  attEl.innerHTML = keys.length ? keys.map(k=>{
+    const [d,cid] = k.split('|');
+    const room = db.classrooms.find(r=>r.id===cid);
+    const names = groups[k].map(a=> esc(db.children.find(c=>c.id===a.childId)?.name||'—')).join('، ');
+    return `<div class="tl-item">
+      <div class="tl-em">✅</div>
+      <div class="tl-body"><div class="tl-title">${esc(room?room.name:'')} — ${groups[k].length} طالب</div><div class="tl-note">${names}</div></div>
+      <div class="tl-time">${new Date(d+'T00:00:00').toLocaleDateString('ar-EG')}</div>
+    </div>`;
+  }).join('') : '<div class="empty">مفيش حضور مسجل في آخر 30 يوم</div>';
+
+  const stLabel = {approved:'موافَق عليه', rejected:'مرفوض', pending:'معلّق'};
+  const exs = (db.attendanceExceptions||[])
+    .filter(x=> teacher.classroomIds.includes(x.classroomId))
+    .sort((a,b)=> String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+    .slice(0,50);
+  exEl.innerHTML = exs.length ? exs.map(x=>{
+    const child = db.children.find(c=>c.id===x.childId);
+    const room = db.classrooms.find(r=>r.id===x.classroomId);
+    const who = x.grantedByRole==='admin' ? 'المدير' : x.grantedByRole==='teacher' ? 'المدرّس' : 'أسيستنت (طلب)';
+    return `<div class="tl-item">
+      <div class="tl-em">🎫</div>
+      <div class="tl-body"><div class="tl-title">${esc(child?child.name:'—')} · ${esc(room?room.name:'')}</div>
+        <div class="tl-note">${who} · ${esc(x.reason||'بدون سبب مكتوب')}${x.flaggedUnjustified?' · ⚠️ اتعلّم غير مبرر':''}</div></div>
+      <span class="badge ${x.status==='approved'?'resolved':''}">${stLabel[x.status]||esc(x.status)}</span>
+    </div>`;
+  }).join('') : '<div class="empty">مفيش استثناءات</div>';
+}
+
 function renderTeacherChat(){
   const db = loadDB();
+  const chatSel = document.getElementById('teacher-chat-child-select');
+  const mainSel = document.getElementById('teacher-child-select');
+  if(chatSel && mainSel){
+    if(chatSel.innerHTML !== mainSel.innerHTML) chatSel.innerHTML = mainSel.innerHTML;
+    if(teacherActiveChildId) chatSel.value = teacherActiveChildId;
+  }
   const list = db.messages.filter(m=>m.childId===teacherActiveChildId).sort((a,b)=> new Date(a.time)-new Date(b.time));
   const el = document.getElementById('teacher-chat-view');
   el.innerHTML = list.length ? list.map(m=>`
     <div class="tl-item">
       <div class="tl-em">${m.sender==='PARENT'?'👨‍👩‍👧':'👩‍🏫'}</div>
-      <div class="tl-body"><div class="tl-title">${m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس')}</div><div class="tl-note">${m.text}</div></div>
+      <div class="tl-body"><div class="tl-title">${esc(m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس'))}</div><div class="tl-note">${esc(m.text)}</div></div>
       <div class="tl-time">${timeStr(m.time)}</div>
     </div>`).join('') : '<div class="empty">مفيش رسائل لسه مع ولي أمر الطالب ده</div>';
 }
@@ -3100,7 +3256,7 @@ function initTeacherScreen(){
     sel.innerHTML = myChildren.map(c=>{
       // نعرض بس اسم المجموعة (المجموعات) المشتركة بين الطالب والمدرّس ده، عشان لو الطالب مسجل في مجموعات تانية عند مدرّسين تانيين ميظهرش لبس
       const sharedRooms = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid)).map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
-      return `<option value="${c.id}">${c.name} — ${sharedRooms}</option>`;
+      return `<option value="${esc(c.id)}">${esc(c.name)} — ${esc(sharedRooms)}</option>`;
     }).join('');
     teacherActiveChildId = myChildren[0].id;
   }
@@ -3108,6 +3264,16 @@ function initTeacherScreen(){
   renderTeacherPendingExceptions();
   renderTeacherLog();
   showTeacherMenu();
+  // تحديث تلقائي كل 30 ثانية (رسائل أولياء الأمور + طلبات استثناء الأسيستنت + الإشعارات)
+  if(teacherPollTimer) clearInterval(teacherPollTimer);
+  teacherPollTimer = setInterval(async ()=>{
+    if(document.hidden || session.role!=='TEACHER') return;
+    try{ await fetchDBFromSupabase(); }catch(e){ return; }
+    renderTeacherPendingExceptions();
+    renderTeacherChat();
+    if(document.getElementById('teacher-tab-menu').style.display!=='none') renderTeacherSummary();
+    updateNotifBadge();
+  }, 30000);
 }
 
 // طلبات الاستثناء اللي الأسيستنت بعتها ولسه pending، لطلاب مجموعات المدرّس ده بس
@@ -3124,8 +3290,8 @@ function renderTeacherPendingExceptions(){
     const child = db.children.find(c=>c.id===x.childId);
     const room = db.classrooms.find(r=>r.id===x.classroomId);
     return `<div class="timeline-item">
-      <div><b>${child?child.name:''}</b> — ${room?room.name:''}</div>
-      <div style="font-size:12px; color:var(--muted);">السبب: ${x.reason||''}</div>
+      <div><b>${esc(child?child.name:'')}</b> — ${esc(room?room.name:'')}</div>
+      <div style="font-size:12px; color:var(--muted);">السبب: ${esc(x.reason||'')}</div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button class="badge admin" onclick="resolveAssistantException('${x.id}','approved')">✅ موافقة</button>
         <button class="badge" style="color:var(--danger);" onclick="confirmAction('متأكد إنك عايز ترفض استثناء الحضور ده؟', ()=>resolveAssistantException('${x.id}','rejected'))">✕ رفض</button>
@@ -3199,7 +3365,7 @@ function renderTeacherStudentGrid(){
       const room = db.classrooms.find(r=>r.id===cid);
       const already = (db.attendance||[]).some(a=> a.childId===c.id && a.classroomId===cid && a.sessionDate===todayStr);
       return `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:4px;" onclick="event.stopPropagation();">
-        <span style="font-size:11px; color:var(--muted);">${room?room.name:''}</span>
+        <span style="font-size:11px; color:var(--muted);">${esc(room?room.name:'')}</span>
         ${already
           ? `<span class="sc-badge resolved" style="font-size:11px;">✅ اتسجل حضوره النهارده</span>`
           : `<button class="badge admin" style="font-size:11px; padding:3px 8px;" onclick="recordSessionAttendance('${c.id}','${cid}')">تسجيل حضور</button>`}
@@ -3207,11 +3373,11 @@ function renderTeacherStudentGrid(){
     }).join('');
     return `<div class="student-card ${isActive?'active':''}" onclick="selectTeacherChild('${c.id}')">
       <div class="sc-photo">
-        ${c.photoUrl ? `<img src="${c.photoUrl}" alt="">` : '🧑\u200d🎓'}
+        ${safeImgSrc(c.photoUrl) ? `<img src="${safeImgSrc(c.photoUrl)}" alt="">` : '🧑\u200d🎓'}
         <input type="file" accept="image/*" onclick="event.stopPropagation();" onchange="uploadChildPhoto('${c.id}', this.files[0])">
       </div>
-      <div class="sc-name">${c.name}</div>
-      <div class="sc-sub">${sharedRooms}</div>
+      <div class="sc-name">${esc(c.name)}</div>
+      <div class="sc-sub">${esc(sharedRooms)}</div>
       <div class="sc-badges">
         <span class="sc-badge ${effort===null?'pending':'effort'}">${effort===null?'مجهودي: —':'مجهودي '+effort+'%'}</span>
         <span class="sc-badge pending">مستوى: قريبًا</span>
@@ -3300,7 +3466,7 @@ function initAssistantScreen(){
     assistantActiveTeacherId = teachers[0].id;
   } else {
     sel.style.display = 'block';
-    sel.innerHTML = teachers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    sel.innerHTML = teachers.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
     assistantActiveTeacherId = teachers[0].id;
     sel.value = assistantActiveTeacherId;
   }
@@ -3329,7 +3495,7 @@ function renderAssistantStudentGrid(){
       const already = (db.attendance||[]).some(a=> a.childId===c.id && a.classroomId===cid && a.sessionDate===todayStr);
       const enrollment = (db.enrollments||[]).find(e=> e.childId===c.id && e.classroomId===cid);
       return `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap;">
-        <span style="font-size:11px; color:var(--muted);">${room?room.name:''}</span>
+        <span style="font-size:11px; color:var(--muted);">${esc(room?room.name:'')}</span>
         <span style="display:flex; gap:4px;">
           ${already
             ? `<span class="sc-badge resolved" style="font-size:11px;">✅ اتسجل حضوره</span>`
@@ -3339,9 +3505,9 @@ function renderAssistantStudentGrid(){
       </div>`;
     }).join('');
     return `<div class="student-card">
-      <div class="sc-photo">${c.photoUrl ? `<img src="${c.photoUrl}" alt="">` : '🧑\u200d🎓'}</div>
-      <div class="sc-name">${c.name}</div>
-      <div class="sc-sub">${sharedRooms}</div>
+      <div class="sc-photo">${safeImgSrc(c.photoUrl) ? `<img src="${safeImgSrc(c.photoUrl)}" alt="">` : '🧑\u200d🎓'}</div>
+      <div class="sc-name">${esc(c.name)}</div>
+      <div class="sc-sub">${esc(sharedRooms)}</div>
       <div style="border-top:1px solid var(--border); margin-top:8px; padding-top:6px;">${rows}</div>
     </div>`;
   }).join('');
@@ -3436,15 +3602,15 @@ function renderTeacherTasksToday(){
   const blocks = subjectIds.map(sid=>{
     const subj = db.subjects.find(s=>s.id===sid);
     const tasks = (db.subjectTasks||[]).filter(t=>t.subjectId===sid).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
-    if(tasks.length===0) return `<div style="padding:6px 4px; font-size:13px; color:var(--muted);">${subj?subj.name:''}: لسه مفيش مهام معرّفة لهذه المادة (المدير يقدر يضيفها من تاب "المواد")</div>`;
+    if(tasks.length===0) return `<div style="padding:6px 4px; font-size:13px; color:var(--muted);">${esc(subj?subj.name:'')}: لسه مفيش مهام معرّفة لهذه المادة (المدير يقدر يضيفها من تاب "المواد")</div>`;
     const rows = tasks.map(t=>{
       const done = (db.taskCompletions||[]).some(c=> c.childId===child.id && c.subjectId===sid && c.taskId===t.id && c.date===todayStr && c.done);
       return `<div class="task-check-row">
         <input type="checkbox" ${done?'checked':''} onchange="toggleTaskCompletion('${child.id}','${sid}','${t.id}', this.checked)">
-        <span>${t.name}</span>
+        <span>${esc(t.name)}</span>
       </div>`;
     }).join('');
-    return `<div style="margin-bottom:10px;"><div style="font-weight:700; font-size:13px; margin-bottom:4px;">${subj?subj.name:'مادة'}</div>${rows}</div>`;
+    return `<div style="margin-bottom:10px;"><div style="font-weight:700; font-size:13px; margin-bottom:4px;">${esc(subj?subj.name:'مادة')}</div>${rows}</div>`;
   }).join('');
   el.innerHTML = blocks || '<div class="empty">مفيش مواد مسجلة بجدولك لهذا الطالب</div>';
 }
@@ -3490,24 +3656,27 @@ function renderTeacherEvals(){
   el.innerHTML = list.map(e=>{
     const subj = db.subjects.find(s=>s.id===e.subjectId);
     const r = ratingMeta[e.rating];
+    const mine = e.teacherId===session.personId; // المعلم يعدّل/يحذف تقييماته هو بس
     return `<div class="tl-item">
       <div class="tl-em">${r?r.em:'📊'}</div>
       <div class="tl-body">
-        <div class="tl-title">${subj?subj.name:'مادة محذوفة'} — ${r?r.label:''}</div>
-        ${e.note?`<div class="tl-note">${e.note}</div>`:''}
+        <div class="tl-title">${esc(subj?subj.name:'مادة محذوفة')} — ${r?r.label:''}</div>
+        ${e.note?`<div class="tl-note">${esc(e.note)}</div>`:''}
       </div>
       <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
         <div class="tl-time">${new Date(e.date).toLocaleDateString('ar-EG')}</div>
-        <div style="display:flex; gap:6px;">
+        ${mine ? `<div style="display:flex; gap:6px;">
           <span style="cursor:pointer; color:var(--muted); font-size:12px;" onclick="openEvalBox('${e.id}')">تعديل</span>
           <span style="cursor:pointer; color:var(--danger); font-size:12px;" onclick="deleteEvaluation('${e.id}')">حذف</span>
-        </div>
+        </div>` : ''}
       </div>
     </div>`;
   }).join('');
 }
 
 function deleteEvaluation(evalId){
+  const ev = loadDB().evaluations.find(e=>e.id===evalId);
+  if(ev && ev.teacherId && ev.teacherId!==session.personId){ showToast('تقدر تحذف تقييماتك إنت بس'); return; }
   confirmAction('متأكد إنك عايز تمسح التقييم ده؟', async ()=>{
     const { error } = await supabaseClient.from('evaluations').delete().eq('id', evalId);
     if(error){ showToast('تعذّر حذف التقييم'); return; }
@@ -3521,6 +3690,8 @@ function deleteEvaluation(evalId){
 }
 
 function deleteEvent(eventId){
+  const evt = loadDB().events.find(e=>e.id===eventId);
+  if(evt && evt.teacherId && evt.teacherId!==session.personId){ showToast('تقدر تحذف الأحداث اللي سجلتها إنت بس'); return; }
   confirmAction('متأكد إنك عايز تمسح الحدث ده؟', async ()=>{
     const { error } = await supabaseClient.from('events').delete().eq('id', eventId);
     if(error){ showToast('تعذّر حذف الحدث'); return; }
@@ -3547,10 +3718,10 @@ function renderTimeline(elId, events, allowDelete){
     return `<div class="tl-item">
       <div class="tl-em">${meta.em}</div>
       <div class="tl-body">
-        ${allowDelete ? `<div style="float:left; cursor:pointer; color:var(--danger); font-size:12px;" onclick="deleteEvent('${e.id}')">حذف ✕</div>` : ''}
-        <div class="tl-title">${title}</div>
-        ${note ? `<div class="tl-note">${note}</div>` : ''}
-        ${e.metadata && e.metadata.photoData ? `<img src="${e.metadata.photoData}" style="max-width:100%; border-radius:8px; margin-top:6px; display:block;">` : ''}
+        ${allowDelete && (!e.teacherId || e.teacherId===session.personId) ? `<div style="float:left; cursor:pointer; color:var(--danger); font-size:12px;" onclick="deleteEvent('${esc(e.id)}')">حذف ✕</div>` : ''}
+        <div class="tl-title">${esc(title)}</div>
+        ${note ? `<div class="tl-note">${esc(note)}</div>` : ''}
+        ${e.metadata && e.metadata.photoData && safeImgSrc(e.metadata.photoData) ? `<img src="${safeImgSrc(e.metadata.photoData)}" style="max-width:100%; border-radius:8px; margin-top:6px; display:block;">` : ''}
       </div>
       <div class="tl-time">${timeStr(e.eventTime)}</div>
     </div>`;
@@ -3568,6 +3739,7 @@ async function logEvent(type, em, label, metadata, note){
     childId: teacherActiveChildId,
     eventType: type,
     eventTime,
+    teacherId: session.personId,
     metadata: metadata || {},
     note: note || ''
   };
@@ -3617,19 +3789,38 @@ function closeQrBox(){
   document.getElementById('qr-modal-bg').classList.remove('show');
 }
 
+// تسجيل "وصول" الطالب بالـQR لازم يعدّي على نفس فحص الدفع بتاع جدول attendance (وإلا كان بيتخطاه)
+// بنسجّل الحضور تلقائي بس لو للطالب مجموعة واحدة مشتركة مع المدرّس (لو أكتر من واحدة مش واضح أنهي حصة)
+function qrAlsoRecordAttendance(type, childId){
+  if(type!=='CHECK_IN' || !childId) return;
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const child = db.children.find(c=>c.id===childId);
+  if(!teacher || !child) return;
+  const rooms = (child.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
+  if(rooms.length!==1) return;
+  const today = localDateStr();
+  const already = (db.attendance||[]).some(a=> a.childId===childId && a.classroomId===rooms[0] && a.sessionDate===today);
+  if(!already) recordSessionAttendance(childId, rooms[0]);
+}
+
 function confirmQrScan(){
   const type = qrCtx.type;
+  const childId = teacherActiveChildId;
   const meta = type==='CHECK_IN' ? {em:'✅', label:'وصول الطالب'} : {em:'🚪', label:'انصراف الطالب'};
   const db = loadDB();
-  const alreadyToday = db.events.some(e=> e.childId===teacherActiveChildId && e.eventType===type && isToday(e.eventTime));
+  const alreadyToday = db.events.some(e=> e.childId===childId && e.eventType===type && isToday(e.eventTime));
+  const token = qrCurrentToken;
   closeQrBox();
+  const doLog = async ()=>{
+    await logEvent(type, meta.em, meta.label, {qrToken: token, scannedByDevice: getDeviceId()});
+    qrAlsoRecordAttendance(type, childId);
+  };
   if(alreadyToday){
-    confirmAction(`${meta.label} اتسجل بالفعل النهارده لهذا الطالب. متأكد إنك عايز تسجله تاني؟`, ()=>{
-      logEvent(type, meta.em, meta.label, {qrToken: qrCurrentToken, scannedByDevice: getDeviceId()});
-    });
+    confirmAction(`${meta.label} اتسجل بالفعل النهارده لهذا الطالب. متأكد إنك عايز تسجله تاني؟`, doLog);
     return;
   }
-  logEvent(type, meta.em, meta.label, {qrToken: qrCurrentToken, scannedByDevice: getDeviceId()});
+  doLog();
 }
 
 /* ---------- Device lock (simulated — real enforcement needs a backend) ---------- */
@@ -3676,7 +3867,7 @@ function openEvalBox(editId){
   const grades = rooms.map(r=>r.grade);
   const subjectsForGrade = db.subjects.filter(s=> s.grade==='ALL' || grades.includes(s.grade));
   const sel = document.getElementById('eval-subject');
-  sel.innerHTML = subjectsForGrade.map(s=>`<option value="${s.id}" ${existing&&existing.subjectId===s.id?'selected':''}>${s.name}</option>`).join('') || '<option value="">لا يوجد مواد لمراحل مجموعات الطالب ده</option>';
+  sel.innerHTML = subjectsForGrade.map(s=>`<option value="${esc(s.id)}" ${existing&&existing.subjectId===s.id?'selected':''}>${esc(s.name)}</option>`).join('') || '<option value="">لا يوجد مواد لمراحل مجموعات الطالب ده</option>';
   if(existing) document.getElementById('eval-rating').value = existing.rating;
   document.getElementById('eval-note').value = existing ? (existing.note||'') : '';
   document.querySelector('#eval-modal-bg h3').textContent = existing ? '📊 تعديل تقييم مادة دراسية' : '📊 تقييم مادة دراسية';
@@ -3692,6 +3883,7 @@ async function saveEval(){
   if(evalEditId){
     const item = db.evaluations.find(e=>e.id===evalEditId);
     if(!item){ evalEditId = null; return; }
+    if(item.teacherId && item.teacherId!==session.personId){ showToast('تقدر تعدّل تقييماتك إنت بس'); evalEditId = null; return; }
     const updatedPayload = {childId:item.childId, subjectId, rating, note, teacherId:item.teacherId, date:item.date};
     const { error } = await supabaseClient.from('evaluations').update({subject_id: subjectId, payload: updatedPayload}).eq('id', evalEditId);
     if(error){ showToast('تعذّر تعديل التقييم'); return; }
@@ -3822,7 +4014,7 @@ function renderParentChat(){
   el.innerHTML = list.length ? list.map(m=>`
     <div class="tl-item">
       <div class="tl-em">${m.sender==='PARENT'?'👨‍👩‍👧':'👩‍🏫'}</div>
-      <div class="tl-body"><div class="tl-title">${m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس')}</div><div class="tl-note">${m.text}</div></div>
+      <div class="tl-body"><div class="tl-title">${esc(m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس'))}</div><div class="tl-note">${esc(m.text)}</div></div>
       <div class="tl-time">${timeStr(m.time)}</div>
     </div>`).join('') : '<div class="empty">ابدأ المحادثة مع مدرّس ابنك</div>';
 }
@@ -3882,7 +4074,7 @@ function renderParentCalendar(){
   el.innerHTML = list.map(ev=>`
     <div class="tl-item">
       <div class="tl-em">📅</div>
-      <div class="tl-body"><div class="tl-title">${ev.title}</div>${ev.note?`<div class="tl-note">${ev.note}</div>`:''}</div>
+      <div class="tl-body"><div class="tl-title">${esc(ev.title)}</div>${ev.note?`<div class="tl-note">${esc(ev.note)}</div>`:''}</div>
       <div class="tl-time">${new Date(ev.date).toLocaleDateString('ar-EG')}</div>
     </div>`).join('');
 }
@@ -3940,7 +4132,7 @@ function renderParentComplaints(){
     <div class="tl-item">
       <div class="tl-em">💬</div>
       <div class="tl-body">
-        <div class="tl-title">${c.message}</div>
+        <div class="tl-title">${esc(c.message)}</div>
         <div class="tl-note">${new Date(c.submittedAt).toLocaleDateString('ar-EG')} — ${timeStr(c.submittedAt)}</div>
       </div>
       <div><span class="badge ${c.status==='PENDING'?'pending':'resolved'}">${c.status==='PENDING'?'قيد المراجعة':'تم الحل'}</span></div>
@@ -4541,10 +4733,10 @@ function renderGlobalSearchResults(query){
     return;
   }
   resultsEl.innerHTML = matches.map(m=>`
-    <div class="list-row" style="cursor:pointer;" onclick="selectGlobalSearchResult('${m.tab}', '${m.text.replace(/'/g,"\\'")}')">
+    <div class="list-row" style="cursor:pointer;" onclick="selectGlobalSearchResult('${esc(m.tab)}', ${esc(JSON.stringify(m.text))})">
       <div class="list-row-main">
         <div class="list-avatar" style="background:${m.color};">${m.icon}</div>
-        <div class="list-info"><div class="list-name">${m.text}</div><div class="list-sub">${m.sub} · ${ADMIN_TAB_META[m.tab].label}</div></div>
+        <div class="list-info"><div class="list-name">${esc(m.text)}</div><div class="list-sub">${esc(m.sub)} · ${ADMIN_TAB_META[m.tab].label}</div></div>
       </div>
     </div>`).join('');
 }
@@ -5590,7 +5782,7 @@ function renderAdminListInner(){
       return `<div class="list-row">
         <div class="list-row-main" style="cursor:pointer;" onclick="toggleComplaintStatus('${c.id}')">
           <div class="list-avatar" style="background:linear-gradient(135deg,#f43f5e,#e11d48);">💬</div>
-          <div class="list-info"><div class="list-name">${c.message}</div><div class="list-sub">${parent?parent.name:'—'} — ${new Date(c.submittedAt).toLocaleDateString('ar-EG')}</div></div>
+          <div class="list-info"><div class="list-name">${esc(c.message)}</div><div class="list-sub">${esc(parent?parent.name:'—')} — ${new Date(c.submittedAt).toLocaleDateString('ar-EG')}</div></div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap;">
           <span class="badge ${c.status==='PENDING'?'pending':'resolved'}" style="cursor:pointer;" onclick="toggleComplaintStatus('${c.id}')">${c.status==='PENDING'?'قيد المراجعة':'تم الحل'}</span>
