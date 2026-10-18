@@ -85,6 +85,10 @@ create or replace function public.stamp_teacher_attendance_time()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare v_off bigint;
 begin
+  -- نختم وقت المعلم بس. المدير بيعمل upsert لكل سجلات الحضور مع أي حفظ، ومينفعش نعدّل أوقاتها القديمة
+  if "current_role"() is distinct from 'TEACHER' then
+    return new;
+  end if;
   select coalesce(simulated_time_offset_ms, 0) into v_off from centers where id = new.center_id;
   new.payload := jsonb_set(
     coalesce(new.payload, '{}'::jsonb), '{time}',
