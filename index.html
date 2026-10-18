@@ -1239,7 +1239,7 @@
           <div class="section-title" style="margin:0;">تقييم أداء المدرّسين</div>
         </div>
         <div style="font-size:12.5px; color:var(--muted); line-height:1.8; margin-bottom:14px;">
-          كل معيار بيتحسب من 5 والنتيجة متوسط مرجّح. الأوزان نسب نسبية بتتحوّل تلقائي لـ100% على المعايير المفعّلة بس.
+          ركّب منطق التقييم بنفسك: كل معيار بيقيس حاجة من بيانات السنتر (الحضور، الرد، التسجيل...) ويتحوّل لدرجة من 5 بالطريقة اللي تحددها، والنتيجة متوسط مرجّح. الأوزان نسب نسبية بتتحوّل تلقائي لـ100% على المعايير المفعّلة بس.
           التغيير بيتطبق على التقييمات المحسوبة من تاني (آخر 6 شهور) أول ما تفتح تاب "تقييم أداء المدرّسين".
         </div>
         <div id="eval-criteria-rows"></div>
@@ -1253,19 +1253,18 @@
           <div id="eval-offdays-row" style="display:flex; flex-wrap:wrap; gap:10px 14px;"></div>
         </div>
         <div class="settings-field">
-          <label>عدد الأحداث المتوقع تسجيلها لكل طالب في كل يوم حضور</label>
-          <input type="number" id="ev-logging-per" min="0.1" max="50" step="0.1">
-        </div>
-        <div class="settings-field">
-          <label>شرائح سرعة الرد (بالدقايق) — لحد كل رقم تاخد الدرجة المكتوبة، وأكتر من آخر رقم = 1</label>
-          <div id="eval-response-rows" style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;"></div>
-        </div>
-        <div class="settings-field">
           <label>الحد الأدنى لمتوسط الدورة للأهلية لمراجعة العلاوة (من 5)</label>
           <input type="number" id="ev-raise-threshold" min="1" max="5" step="0.1">
         </div>
         <button class="badge" type="button" onclick="resetEvalConfigDefaults()">↺ استرجاع القيم الافتراضية</button>
+        <div style="border-top:1px dashed var(--border,#ddd); margin-top:16px; padding-top:12px;">
+          <div style="font-weight:700; font-size:14px; margin-bottom:8px;">🧪 جرّب قبل ما تحفظ</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;"><select id="ev-prev-teacher"></select><select id="ev-prev-month"></select>
+            <button class="badge" type="button" onclick="runEvalPreview()">احسب</button></div>
+          <div id="ev-prev-out" style="margin-top:8px;"></div>
+        </div>
       </div>
+      <style>.ev-sub{font-size:12px; color:var(--muted);} .ev-card select,.ev-card input[type=number],.ev-card input[type=text]{max-width:100%;}</style>
 
       <div class="card">
         <div class="settings-head">
@@ -2811,81 +2810,190 @@ function renderPlatformSubCard(){
     '<div style="color:var(--muted);">'+graceLine+'</div>';
 }
 
-/* ---------- إعدادات حساب التقييم (فورم + قراءة + تحقق) ---------- */
+/* ---------- إعدادات حساب التقييم (محرّر المعايير: مسودة في الذاكرة + تحقق + معاينة) ---------- */
+let evalDraft = null; // نسخة شغالة من الإعدادات بتتعدّل في الواجهة ومتتحفظش غير بزرار "حفظ"
+function evUnit(kind){ return kind==='ratio' ? '%' : kind==='minutes' ? 'دقيقة' : kind==='days' ? 'يوم' : ''; }
+function evK(kind){ return kind==='ratio' ? 100 : 1; }
 function fillEvalSettingsForm(cfg){
-  const rows = document.getElementById('eval-criteria-rows');
-  if(!rows) return;
-  rows.innerHTML = EVAL_CRITERIA_META.map(m=>{
-    const c = cfg.criteria[m.key];
-    return `<div class="settings-field">
-      <label style="display:flex; align-items:center; gap:8px; color:var(--text,inherit); font-size:14px; font-weight:700;">
-        <input type="checkbox" id="ev-en-${m.key}" ${c.enabled?'checked':''} onchange="updateEvalWeightsSummary()" style="width:18px; height:18px;"> ${m.label}
-      </label>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <input type="number" id="ev-w-${m.key}" min="0" max="100" step="1" value="${c.weight}" oninput="updateEvalWeightsSummary()" style="max-width:100px;">
-        <span style="font-size:12px; color:var(--muted);">الوزن — ${m.hint}</span>
-      </div>
-    </div>`;
-  }).join('');
+  if(!document.getElementById('eval-criteria-rows')) return;
+  evalDraft = JSON.parse(JSON.stringify(cfg));
   document.getElementById('ev-late-time').value = pad2(cfg.lateHour)+':'+pad2(cfg.lateMinute);
   document.getElementById('eval-offdays-row').innerHTML = EVAL_DAY_NAMES.map((n,i)=>
     `<label style="display:flex; align-items:center; gap:5px; font-size:13px; color:var(--text,inherit); margin:0;">
       <input type="checkbox" id="ev-off-${i}" ${cfg.offDays.includes(i)?'checked':''} style="width:16px; height:16px;"> ${n}</label>`).join('');
-  document.getElementById('ev-logging-per').value = cfg.loggingEventsPerStudentPerDay;
-  const scoreOf = [5,4,3,2];
-  document.getElementById('eval-response-rows').innerHTML = cfg.responseMinutes.map((m,i)=>
-    `<div><div style="font-size:11.5px; color:var(--muted); margin-bottom:3px;">${scoreOf[i]} درجات لو ≤</div>
-      <input type="number" id="ev-resp-${i}" min="1" max="10080" step="1" value="${m}"></div>`).join('');
   document.getElementById('ev-raise-threshold').value = cfg.raiseThreshold;
+  renderEvalEditor();
+  renderEvalPreviewControls();
+}
+function renderEvalEditor(){
+  const box = document.getElementById('eval-criteria-rows');
+  if(!box || !evalDraft) return;
+  box.innerHTML = evalDraft.criteria.map((c,i)=>{
+    const m = EVAL_METRICS[c.metric], k = evK(m.kind), u = evUnit(m.kind);
+    const inp = 'style="width:100%;"';
+    let scoring;
+    if(c.scoring.mode==='linear'){
+      scoring = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+        <div><div class="ev-sub">صفر درجة عند ${u?'('+u+')':''}</div><input type="number" step="any" value="${c.scoring.from*k}" onchange="evSetScore(${i},'from',this.value)" ${inp}></div>
+        <div><div class="ev-sub">5 درجات عند ${u?'('+u+')':''}</div><input type="number" step="any" value="${c.scoring.to*k}" onchange="evSetScore(${i},'to',this.value)" ${inp}></div>
+      </div><div class="ev-sub" style="margin-top:4px;">وبينهم بتتحسب الدرجة تدريجيًا (ينفع الرقم الأول أكبر من التاني لو الأقل أحسن).</div>`;
+    } else {
+      scoring = `<div class="ev-sub" style="margin-bottom:4px;">لو القيمة <select onchange="evSetScore(${i},'op',this.value)"><option value="lte" ${c.scoring.op==='lte'?'selected':''}>أقل من أو تساوي (الأقل أحسن)</option><option value="gte" ${c.scoring.op==='gte'?'selected':''}>أكبر من أو تساوي (الأكتر أحسن)</option></select></div>
+        ${c.scoring.steps.map((st,j)=>`<div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
+          <input type="number" step="any" value="${st.limit*k}" onchange="evSetStep(${i},${j},'limit',this.value)" style="flex:1;"><span class="ev-sub">${u}</span>
+          <span class="ev-sub">←</span>
+          <input type="number" step="0.1" min="0" max="5" value="${st.score}" onchange="evSetStep(${i},${j},'score',this.value)" style="width:70px;"><span class="ev-sub">درجة</span>
+          <button type="button" class="badge" onclick="evDelStep(${i},${j})" ${c.scoring.steps.length<=1?'disabled':''}>✕</button></div>`).join('')}
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="badge" onclick="evAddStep(${i})" ${c.scoring.steps.length>=EVAL_MAX_STEPS?'disabled':''}>+ شريحة</button>
+          <span class="ev-sub">وغير كده يطلع:</span>
+          <input type="number" step="0.1" min="0" max="5" value="${c.scoring.fallback}" onchange="evSetScore(${i},'fallback',this.value)" style="width:70px;"><span class="ev-sub">درجة</span></div>`;
+    }
+    const params = (m.params||[]).map(p=>`<div style="margin-top:8px;"><div class="ev-sub">${esc(p.label)}</div>
+      <input type="number" min="${p.min}" max="${p.max}" step="${p.step}" value="${c.params[p.key]}" onchange="evSetParam(${i},'${p.key}',this.value)" ${inp}></div>`).join('');
+    return `<div class="ev-card" style="border:1px solid var(--border,#ddd); border-radius:12px; padding:12px; margin-bottom:12px; ${c.enabled?'':'opacity:.6;'}">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" ${c.enabled?'checked':''} onchange="evSet(${i},'enabled',this.checked)" style="width:18px; height:18px;">
+        <input type="text" maxlength="40" value="${esc(c.label)}" onchange="evSet(${i},'label',this.value)" style="flex:1; font-weight:700;">
+        <button type="button" class="badge" onclick="evDelCriterion(${i})" title="حذف المعيار">🗑</button>
+      </div>
+      <div class="ev-sub" style="margin:8px 0 4px;">بيقيس: <select onchange="evSetMetric(${i},this.value)">${Object.keys(EVAL_METRICS).map(key=>`<option value="${key}" ${key===c.metric?'selected':''}>${esc(EVAL_METRICS[key].label)}</option>`).join('')}</select></div>
+      <div class="ev-sub">${esc(m.desc)}</div>
+      ${params}
+      <div style="margin-top:10px;"><div class="ev-sub" style="margin-bottom:4px;">طريقة تحويله لدرجة من 5:
+        <select onchange="evSetMode(${i},this.value)"><option value="linear" ${c.scoring.mode==='linear'?'selected':''}>تدريجي (من - إلى)</option><option value="tiers" ${c.scoring.mode==='tiers'?'selected':''}>شرائح</option></select></div>
+        ${scoring}</div>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+        <span class="ev-sub">الوزن:</span><input type="number" min="0" max="100" step="1" value="${c.weight}" oninput="evSet(${i},'weight',this.value,true)" style="width:80px;">
+        <span class="ev-sub">لو مفيش بيانات:</span>
+        <select onchange="evSet(${i},'whenNoData',this.value)"><option value="skip" ${c.whenNoData==='skip'?'selected':''}>اتجاهله</option><option value="zero" ${c.whenNoData==='zero'?'selected':''}>احسبه صفر</option></select>
+      </div>
+    </div>`;
+  }).join('') + `<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+      <select id="ev-add-metric">${Object.keys(EVAL_METRICS).map(key=>`<option value="${key}">${esc(EVAL_METRICS[key].label)}</option>`).join('')}</select>
+      <button type="button" class="badge" onclick="evAddCriterion()" ${evalDraft.criteria.length>=EVAL_MAX_CRITERIA?'disabled':''}>+ إضافة معيار</button></div>`;
   updateEvalWeightsSummary();
 }
+function evSet(i, f, v, noRender){
+  const c = evalDraft.criteria[i]; if(!c) return;
+  if(f==='weight') c.weight = Math.max(0, Math.min(100, Number(v)||0));
+  else if(f==='label') c.label = String(v).trim().slice(0,40) || EVAL_METRICS[c.metric].label;
+  else c[f] = v;
+  if(f==='enabled' || f==='label') renderEvalEditor(); else updateEvalWeightsSummary();
+}
+function evSetParam(i,key,v){ const c=evalDraft.criteria[i]; const p=EVAL_METRICS[c.metric].params.find(x=>x.key===key); c.params[key]=evalNum(v,p.min,p.max,p.def); renderEvalEditor(); }
+function evSetMetric(i, metric){
+  const c = evalDraft.criteria[i], m = EVAL_METRICS[metric]; if(!m) return;
+  const oldDefault = EVAL_METRICS[c.metric].label;
+  c.metric = metric; c.params = {}; (m.params||[]).forEach(p=> c.params[p.key]=p.def);
+  c.scoring = JSON.parse(JSON.stringify(m.scoring));
+  if(c.label===oldDefault) c.label = m.label;
+  renderEvalEditor();
+}
+function evSetMode(i, mode){
+  const c = evalDraft.criteria[i], m = EVAL_METRICS[c.metric];
+  if(mode==='linear') c.scoring = JSON.parse(JSON.stringify(m.linear));
+  else c.scoring = m.scoring.mode==='tiers' ? JSON.parse(JSON.stringify(m.scoring))
+    : { mode:'tiers', op: m.better==='low'?'lte':'gte', steps: m.better==='low' ? [{limit:m.linear.to===0?1:m.linear.to,score:5},{limit:(m.linear.from||10)/2,score:3}] : [{limit:m.linear.to,score:5},{limit:(m.linear.to)/2,score:3}], fallback:1 };
+  renderEvalEditor();
+}
+function evSetScore(i,f,v){
+  const c = evalDraft.criteria[i], k = evK(EVAL_METRICS[c.metric].kind), n = Number(v);
+  if(v==='' || !isFinite(n)){ renderEvalEditor(); return; }
+  if(f==='from' || f==='to') c.scoring[f] = n/k;
+  else if(f==='fallback') c.scoring.fallback = Math.max(0, Math.min(5, n));
+  else c.scoring[f] = v;
+  renderEvalEditor();
+}
+function evSetStep(i,j,f,v){
+  const c = evalDraft.criteria[i], k = evK(EVAL_METRICS[c.metric].kind), n = Number(v);
+  if(v==='' || !isFinite(n)){ renderEvalEditor(); return; }
+  c.scoring.steps[j][f] = f==='limit' ? n/k : Math.max(0, Math.min(5, n));
+  renderEvalEditor();
+}
+function evAddStep(i){
+  const s = evalDraft.criteria[i].scoring; if(s.steps.length>=EVAL_MAX_STEPS) return;
+  const last = s.steps[s.steps.length-1];
+  s.steps.push({ limit: last ? last.limit + (s.op==='lte' ? 1 : -1) * (Math.abs(last.limit)||1) : 1, score: 2 }); renderEvalEditor();
+}
+function evDelStep(i,j){ const s=evalDraft.criteria[i].scoring; if(s.steps.length>1){ s.steps.splice(j,1); renderEvalEditor(); } }
+function evAddCriterion(){
+  if(evalDraft.criteria.length>=EVAL_MAX_CRITERIA) return;
+  const metric = document.getElementById('ev-add-metric').value, m = EVAL_METRICS[metric]; if(!m) return;
+  const used = new Set(evalDraft.criteria.map(c=>c.id));
+  const params = {}; (m.params||[]).forEach(p=> params[p.key]=p.def);
+  evalDraft.criteria.push({ id:newEvalCriterionId(used), label:m.label, metric, params, scoring:JSON.parse(JSON.stringify(m.scoring)), weight:10, enabled:true, whenNoData:'skip' });
+  renderEvalEditor();
+}
+function evDelCriterion(i){
+  if(evalDraft.criteria.length<=1){ showToast('لازم يفضل معيار واحد على الأقل'); return; }
+  evalDraft.criteria.splice(i,1); renderEvalEditor();
+}
 
-// بيرجّع {cfg} لو الفورم سليم، أو {error} برسالة واضحة
+// بيرجّع {cfg} لو الإعدادات سليمة، أو {error} برسالة واضحة
 function readEvalSettingsForm(){
-  const cfg = JSON.parse(JSON.stringify(DEFAULT_EVAL_CONFIG));
-  for(const m of EVAL_CRITERIA_META){
-    const w = Number(document.getElementById('ev-w-'+m.key).value);
-    if(!isFinite(w) || w<0 || w>100) return {error:`وزن "${m.label}" لازم رقم من 0 لـ100`};
-    cfg.criteria[m.key] = { enabled: document.getElementById('ev-en-'+m.key).checked, weight: w };
+  if(!evalDraft) return {error:'إعدادات التقييم لسه متحمّلتش'};
+  const cfg = JSON.parse(JSON.stringify(evalDraft));
+  for(const c of cfg.criteria){
+    if(!c.label) return {error:'كل معيار لازم له اسم'};
+    if(!isFinite(c.weight) || c.weight<0 || c.weight>100) return {error:`وزن "${c.label}" لازم رقم من 0 لـ100`};
+    const s = c.scoring;
+    if(s.mode==='linear' && s.from===s.to) return {error:`في "${c.label}": الرقمين (صفر درجة / 5 درجات) لازم يختلفوا`};
+    if(s.mode==='tiers'){
+      const lims = s.steps.map(x=>x.limit);
+      if(new Set(lims).size!==lims.length) return {error:`في "${c.label}": في شريحتين بنفس الرقم`};
+      if(s.steps.some(x=>!isFinite(x.limit) || !isFinite(x.score) || x.score<0 || x.score>5)) return {error:`في "${c.label}": الشرائح لازم أرقام والدرجات من 0 لـ5`};
+    }
   }
-  if(!Object.keys(cfg.criteria).some(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0)) return {error:'لازم معيار واحد على الأقل يكون مفعّل ووزنه أكبر من صفر'};
+  if(!cfg.criteria.some(k=> k.enabled && k.weight>0)) return {error:'لازم معيار واحد على الأقل يكون مفعّل ووزنه أكبر من صفر'};
   const t = /^(\d{1,2}):(\d{2})$/.exec(document.getElementById('ev-late-time').value || '');
   if(!t || +t[1]>23 || +t[2]>59) return {error:'ميعاد التأخير مش صحيح'};
   cfg.lateHour = +t[1]; cfg.lateMinute = +t[2];
   cfg.offDays = [0,1,2,3,4,5,6].filter(i=> document.getElementById('ev-off-'+i).checked);
   if(cfg.offDays.length>=7) return {error:'لازم يكون في يوم شغل واحد على الأقل في الأسبوع'};
-  const per = Number(document.getElementById('ev-logging-per').value);
-  if(!isFinite(per) || per<0.1 || per>50) return {error:'عدد الأحداث المتوقع لكل طالب لازم رقم من 0.1 لـ50'};
-  cfg.loggingEventsPerStudentPerDay = per;
-  const rm = [0,1,2,3].map(i=> Number(document.getElementById('ev-resp-'+i).value));
-  if(!rm.every((n,i)=> isFinite(n) && n>0 && n<=10080 && (i===0 || n>rm[i-1]))) return {error:'شرائح سرعة الرد لازم أرقام موجبة وتصاعدية (كل رقم أكبر من اللي قبله)'};
-  cfg.responseMinutes = rm;
   const th = Number(document.getElementById('ev-raise-threshold').value);
   if(!isFinite(th) || th<1 || th>5) return {error:'حد الأهلية للعلاوة لازم رقم من 1 لـ5'};
   cfg.raiseThreshold = th;
-  return {cfg};
+  return {cfg: normalizeEvalConfig(cfg)};
 }
 
 function evalWeightsSummaryHtml(cfg){
   const eff = evalEffectiveWeights(cfg);
-  return EVAL_CRITERIA_META.map(m=>
-    eff[m.key]!=null ? `${m.label}: <b>${Math.round(eff[m.key])}%</b>` : `<span style="color:var(--muted);">${m.label}: معطّل</span>`
+  return cfg.criteria.map(c=>
+    eff[c.id]!=null ? `${esc(c.label)}: <b>${Math.round(eff[c.id])}%</b>` : `<span style="color:var(--muted);">${esc(c.label)}: معطّل</span>`
   ).join(' · ');
 }
 function updateEvalWeightsSummary(){
   const el = document.getElementById('eval-weights-summary');
-  if(!el) return;
-  const tmp = JSON.parse(JSON.stringify(DEFAULT_EVAL_CONFIG));
-  EVAL_CRITERIA_META.forEach(m=>{
-    const en = document.getElementById('ev-en-'+m.key), w = document.getElementById('ev-w-'+m.key);
-    if(en && w) tmp.criteria[m.key] = { enabled: en.checked, weight: Math.max(0, Number(w.value)||0) };
-  });
-  const any = Object.keys(tmp.criteria).some(k=> tmp.criteria[k].enabled && tmp.criteria[k].weight>0);
-  el.innerHTML = any ? 'الأوزان الفعلية بعد التحويل: ' + evalWeightsSummaryHtml(tmp) : '<span style="color:var(--danger);">⚠️ لازم معيار واحد على الأقل مفعّل ووزنه أكبر من صفر</span>';
+  if(!el || !evalDraft) return;
+  const any = evalDraft.criteria.some(k=> k.enabled && k.weight>0);
+  el.innerHTML = any ? 'الأوزان الفعلية بعد التحويل: ' + evalWeightsSummaryHtml(evalDraft) : '<span style="color:var(--danger);">⚠️ لازم معيار واحد على الأقل مفعّل ووزنه أكبر من صفر</span>';
 }
 function resetEvalConfigDefaults(){
-  fillEvalSettingsForm(normalizeEvalConfig(null));
+  fillEvalSettingsForm(defaultEvalConfig());
   showToast('اترجعت القيم الافتراضية — اضغط "حفظ" لتأكيدها');
+}
+
+// "جرّب قبل ما تحفظ": يحسب تقييم مدرّس في شهر باستخدام المسودة الحالية (من غير حفظ)
+function renderEvalPreviewControls(){
+  const db = loadDB(), tSel = document.getElementById('ev-prev-teacher'), mSel = document.getElementById('ev-prev-month');
+  if(!tSel || !mSel) return;
+  tSel.innerHTML = (db.teachers||[]).map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('') || '<option value="">مفيش مدرّسين</option>';
+  const now = getSystemNow();
+  mSel.innerHTML = [0,1,2,3,4,5].map(i=>{ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); return `<option value="${d.getFullYear()}-${d.getMonth()}">${monthKey(d)}</option>`; }).join('');
+  document.getElementById('ev-prev-out').innerHTML = '';
+}
+function runEvalPreview(){
+  const out = document.getElementById('ev-prev-out');
+  const r = readEvalSettingsForm();
+  if(r.error){ out.innerHTML = `<span style="color:var(--danger);">⚠️ ${esc(r.error)}</span>`; return; }
+  const tid = document.getElementById('ev-prev-teacher').value, mv = (document.getElementById('ev-prev-month').value||'').split('-');
+  if(!tid || mv.length!==2){ out.innerHTML = 'اختار مدرّس وشهر'; return; }
+  const d = computeTeacherScoreDetail(loadDB(), tid, +mv[0], +mv[1], r.cfg);
+  out.innerHTML = d.rows.map(x=>{
+    const k = x.enabled ? (x.score!==null ? `<b>${x.score.toFixed(1)}/5</b>` : '<span style="color:var(--muted);">مفيش بيانات</span>') : '<span style="color:var(--muted);">معطّل</span>';
+    return `<div style="display:flex; justify-content:space-between; gap:8px; font-size:13px; margin-top:4px;"><span>${esc(x.label)} <span style="color:var(--muted);">(${evalFmtValue(x.value, x.kind)})</span></span>${k}</div>`;
+  }).join('') + `<div style="margin-top:8px; font-weight:800;">الإجمالي: ${d.hasData ? d.overallScore.toFixed(2)+'/5' : 'مفيش بيانات كفاية'}</div>`;
 }
 // زرار "تخصيص معايير التقييم" في تاب التقييم — يفتح الإعدادات وينزل لكارت التقييم
 function openEvalSettings(){
@@ -3247,14 +3355,13 @@ function renderTeacherEvalsOwn(){
   const el = document.getElementById('teacher-evals-view');
   if(!el) return;
   const db = loadDB();
-  const labelize = {attendance:'الانتظام', punctuality:'الالتزام بالمواعيد', logging:'الانضباط في التسجيل', response:'سرعة الرد على الأهالي'};
   const list = (db.teacherEvaluations||[])
     .filter(e=> e.teacherId===session.personId && e.source==='AUTO')
     .sort((a,b)=> String(b.month).localeCompare(String(a.month)));
   if(list.length===0){ el.innerHTML = '<div class="empty">لسه مفيش تقييم شهري ليك — بيظهر بعد ما يتحسب أول شهر</div>'; return; }
   el.innerHTML = list.map(e=>{
-    const rows = Object.keys(labelize).filter(k=> e.scores && e.scores[k]!=null).map(k=>
-      `<div style="display:flex; justify-content:space-between; font-size:13px; margin-top:4px;"><span>${labelize[k]}</span><b>${Number(e.scores[k]).toFixed(1)}/5</b></div>`).join('');
+    const rows = Object.keys(e.scores||{}).filter(k=> e.scores[k]!=null).map(k=>
+      `<div style="display:flex; justify-content:space-between; font-size:13px; margin-top:4px;"><span>${esc(evalLabelOf(e,k))}</span><b>${Number(e.scores[k]).toFixed(1)}/5</b></div>`).join('');
     return `<div class="card" style="margin-bottom:10px;">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <div style="font-weight:700;">${esc(e.month)}</div>
@@ -7493,79 +7600,215 @@ async function toggleComplaintStatus(id){
 }
 
 /* ========================= TEACHER PERFORMANCE EVALUATION — AUTOMATIC ========================= */
-// النظام بيحسب تقييم كل مدرّس شهريًا لوحده من بيانات فعلية في النظام (مفيش تقييم يدوي من المدير):
-//  - الانتظام: نسبة أيام حضوره فعليًا من أيام الشغل المتوقعة في الشهر
-//  - الالتزام بالمواعيد: نسبة مرات الحضور في الميعاد (قبل 8:30)
-//  - الانضباط في التسجيل: مدى انتظامه في تسجيل أحداث يومية لطلاب مجموعته
-//  - سرعة الرد على أولياء الأمور: متوسط وقت رده على رسائل الشات
-// كل معيار بيتحسب من 5، والمتوسط المرجّح هو overallScore بتاع الشهر.
-// ===== إعدادات حساب التقييم (قابلة للتخصيص من ⚙️ إعدادات النظام > تقييم أداء المدرّسين) =====
-// بتتخزن في app_settings.teacher_eval_config (JSON). أي قيمة ناقصة أو غلط بترجع للافتراضي بدل ما تكسر الحساب.
-const DEFAULT_EVAL_CONFIG = {
-  criteria: {
-    attendance:  { enabled:true, weight:30 },
-    punctuality: { enabled:true, weight:25 },
-    logging:     { enabled:true, weight:25 },
-    response:    { enabled:true, weight:20 }
-  },
-  lateHour: 8, lateMinute: 30,          // بعد الميعاد ده الحضور يعتبر متأخر
-  offDays: [5],                         // أيام الإجازة الأسبوعية (0=الأحد ... 5=الجمعة ... 6=السبت)
-  loggingEventsPerStudentPerDay: 1,     // عدد الأحداث المتوقع تسجيلها لكل طالب في كل يوم حضور
-  responseMinutes: [15, 60, 180, 1440], // سرعة الرد: لحد كل حد = 5 / 4 / 3 / 2 درجات، وأكتر منه = 1
-  raiseThreshold: 3.5                   // الحد الأدنى لمتوسط الدورة عشان المدرّس يتأهل لمراجعة العلاوة
-};
-const EVAL_CRITERIA_META = [
-  { key:'attendance',  label:'الانتظام',                       hint:'أيام الحضور الفعلية ÷ أيام الشغل في الشهر' },
-  { key:'punctuality', label:'الالتزام بالمواعيد',             hint:'نسبة مرات الحضور قبل ميعاد التأخير' },
-  { key:'logging',     label:'الانضباط في التسجيل',            hint:'الأحداث اللي سجلها لطلاب مجموعاته ÷ المتوقع' },
-  { key:'response',    label:'سرعة الرد على أولياء الأمور',    hint:'متوسط وقت رده على رسائل الشات' }
-];
+// النظام بيحسب تقييم كل مدرّس شهريًا لوحده من بيانات فعلية في النظام (مفيش تقييم يدوي من المدير).
+// المدير هو اللي بيحدد منطق التقييم من ⚙️ إعدادات النظام > تقييم أداء المدرّسين: بيركّب معايير من "قياسات" جاهزة،
+// وكل معيار ليه طريقة تحويل لدرجة من 5 ووزن. النتيجة النهائية = متوسط مرجّح للمعايير المفعّلة اللي ليها بيانات.
+// أمان: مفيش أي كود حر بيتنفّذ (الموقع عام) — القياسات وطرق التحويل معرّفة هنا بس، والمدير بيختار منها ويظبط الأرقام.
+// بتتخزن في app_settings.teacher_eval_config (JSON، version 2). أي قيمة ناقصة أو غلط بترجع للافتراضي بدل ما تكسر الحساب.
 const EVAL_DAY_NAMES = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+const EVAL_MAX_CRITERIA = 12;
+const EVAL_MAX_STEPS = 6;
 
-function normalizeEvalConfig(raw){
-  const d = DEFAULT_EVAL_CONFIG;
-  const c = JSON.parse(JSON.stringify(d));
-  if(!raw || typeof raw!=='object') return c;
-  const num = (v, lo, hi, dflt)=>{ const n = Number(v); return (v!==null && v!=='' && isFinite(n) && n>=lo && n<=hi) ? n : dflt; };
-  Object.keys(c.criteria).forEach(k=>{
-    const r = raw.criteria && raw.criteria[k];
-    if(r && typeof r==='object'){
-      c.criteria[k].enabled = r.enabled!==false;
-      c.criteria[k].weight = num(r.weight, 0, 100, d.criteria[k].weight);
+// ---- كتالوج القياسات: كل قياس بيرجّع {value, hasData} من بيانات المدرّس في الشهر ----
+// kind: ratio (نسبة)، count (عدد)، minutes (دقايق)، days (أيام) — better: الأحسن إيه (high = كل ما زاد أحسن)
+const EVAL_METRICS = {
+  attendance_ratio: {
+    label:'نسبة أيام الحضور', kind:'ratio', better:'high',
+    desc:'أيام حضوره الفعلية ÷ أيام الشغل المتوقعة في الشهر',
+    scoring:{mode:'linear', from:0, to:1}, linear:{mode:'linear', from:0, to:1}, params:[],
+    compute:(x)=>({ value: x.daysAttended / x.expectedDays, hasData:true })
+  },
+  on_time_ratio: {
+    label:'نسبة الحضور في الميعاد', kind:'ratio', better:'high',
+    desc:'مرات الحضور قبل ميعاد التأخير ÷ كل مرات الحضور',
+    scoring:{mode:'linear', from:0, to:1}, linear:{mode:'linear', from:0, to:1}, params:[],
+    compute:(x)=>({ value: x.checkIns.length ? (x.checkIns.length - x.lateCount)/x.checkIns.length : null, hasData: x.checkIns.length>0 })
+  },
+  late_checkins_count: {
+    label:'عدد مرات التأخير', kind:'count', better:'low',
+    desc:'عدد مرات الحضور بعد ميعاد التأخير في الشهر',
+    scoring:{mode:'linear', from:10, to:0}, linear:{mode:'linear', from:10, to:0}, params:[],
+    compute:(x)=>({ value: x.lateCount, hasData: x.checkIns.length>0 })
+  },
+  absence_days: {
+    label:'عدد أيام الغياب', kind:'days', better:'low',
+    desc:'أيام الشغل المتوقعة اللي ما سجّلش فيها حضور',
+    scoring:{mode:'linear', from:6, to:0}, linear:{mode:'linear', from:6, to:0}, params:[],
+    compute:(x)=>({ value: Math.max(0, x.expectedDays - x.daysAttended), hasData:true })
+  },
+  checkout_ratio: {
+    label:'نسبة تسجيل الانصراف', kind:'ratio', better:'high',
+    desc:'أيام سجّل فيها انصراف ÷ أيام سجّل فيها حضور',
+    scoring:{mode:'linear', from:0, to:1}, linear:{mode:'linear', from:0, to:1}, params:[],
+    compute:(x)=>({ value: x.daysAttended ? x.daysWithCheckout/x.daysAttended : null, hasData: x.daysAttended>0 })
+  },
+  logging_ratio: {
+    label:'الانضباط في تسجيل الأحداث', kind:'ratio', better:'high',
+    desc:'الأحداث اللي سجلها لطلاب مجموعاته ÷ المتوقع (أيام حضوره × عدد طلابه × المتوقع لكل طالب في اليوم)',
+    scoring:{mode:'linear', from:0, to:1}, linear:{mode:'linear', from:0, to:1},
+    params:[{key:'perStudentPerDay', label:'عدد الأحداث المتوقع لكل طالب في كل يوم حضور', min:0.1, max:50, step:0.1, def:1}],
+    compute:(x,p)=>({ value: x.loggedEvents / Math.max(1, x.daysAttended * x.myChildren.length * (p.perStudentPerDay||1)), hasData: x.myChildren.length>0 })
+  },
+  avg_reply_minutes: {
+    label:'متوسط سرعة الرد على أولياء الأمور', kind:'minutes', better:'low',
+    desc:'متوسط الوقت بين رسالة ولي الأمر ورد المدرّس عليها (كل ما قلّ أحسن)',
+    scoring:{mode:'tiers', op:'lte', steps:[{limit:15,score:5},{limit:60,score:4},{limit:180,score:3},{limit:1440,score:2}], fallback:1},
+    linear:{mode:'linear', from:1440, to:15}, params:[],
+    compute:(x)=>({ value: x.replyMinutes.length ? x.replyMinutes.reduce((a,b)=>a+b,0)/x.replyMinutes.length : null, hasData: x.replyMinutes.length>0 })
+  },
+  student_attendance_count: {
+    label:'عدد تسجيلات حضور الطلاب', kind:'count', better:'high',
+    desc:'عدد مرات تسجيل حضور طلاب بواسطته في الشهر',
+    scoring:{mode:'linear', from:0, to:100}, linear:{mode:'linear', from:0, to:100}, params:[],
+    compute:(x)=>({ value: x.attendanceCount, hasData: x.roomIds.length>0 })
+  },
+  evaluations_given_count: {
+    label:'عدد تقييمات الطلاب اللي كتبها', kind:'count', better:'high',
+    desc:'عدد تقييمات المواد اللي كتبها لطلابه في الشهر',
+    scoring:{mode:'linear', from:0, to:20}, linear:{mode:'linear', from:0, to:20}, params:[],
+    compute:(x)=>({ value: x.evaluationsGiven, hasData: x.myChildren.length>0 })
+  },
+  tasks_done_count: {
+    label:'عدد المهام اليومية المنجزة', kind:'count', better:'high',
+    desc:'عدد المهام اللي علّم عليها منجزة لطلابه في الشهر',
+    scoring:{mode:'linear', from:0, to:100}, linear:{mode:'linear', from:0, to:100}, params:[],
+    compute:(x)=>({ value: x.tasksDone, hasData: x.myChildren.length>0 })
+  }
+};
+
+function evalFmtValue(v, kind){
+  if(v===null || v===undefined || !isFinite(v)) return '—';
+  if(kind==='ratio') return Math.round(v*100) + '%';
+  if(kind==='minutes') return v>=120 ? (v/60).toFixed(1) + ' ساعة' : Math.round(v) + ' دقيقة';
+  if(kind==='days') return (Math.round(v*10)/10) + ' يوم';
+  return String(Math.round(v*10)/10);
+}
+
+// ---- الإعدادات الافتراضية (نفس منطق التقييم القديم بالظبط) ----
+function defaultEvalConfig(){
+  return {
+    version: 2,
+    criteria: [
+      { id:'attendance',  label:'الانتظام',                    metric:'attendance_ratio', params:{}, scoring:{mode:'linear', from:0, to:1}, weight:30, enabled:true, whenNoData:'skip' },
+      { id:'punctuality', label:'الالتزام بالمواعيد',          metric:'on_time_ratio',    params:{}, scoring:{mode:'linear', from:0, to:1}, weight:25, enabled:true, whenNoData:'skip' },
+      { id:'logging',     label:'الانضباط في التسجيل',         metric:'logging_ratio',    params:{perStudentPerDay:1}, scoring:{mode:'linear', from:0, to:1}, weight:25, enabled:true, whenNoData:'skip' },
+      { id:'response',    label:'سرعة الرد على أولياء الأمور', metric:'avg_reply_minutes', params:{},
+        scoring:{mode:'tiers', op:'lte', steps:[{limit:15,score:5},{limit:60,score:4},{limit:180,score:3},{limit:1440,score:2}], fallback:1}, weight:20, enabled:true, whenNoData:'skip' }
+    ],
+    lateHour: 8, lateMinute: 30,   // بعد الميعاد ده الحضور يعتبر متأخر
+    offDays: [5],                  // أيام الإجازة الأسبوعية (0=الأحد ... 5=الجمعة ... 6=السبت)
+    raiseThreshold: 3.5            // الحد الأدنى لمتوسط الدورة عشان المدرّس يتأهل لمراجعة العلاوة
+  };
+}
+
+function evalNum(v, lo, hi, dflt){
+  const n = (v===null || v==='' || v===undefined) ? NaN : Number(v);
+  return (isFinite(n) && n>=lo && n<=hi) ? n : dflt;
+}
+function newEvalCriterionId(used){
+  let id;
+  do{ id = 'c' + Math.random().toString(36).slice(2,8); }while(used.has(id));
+  return id;
+}
+
+function normalizeEvalScoring(s, dflt){
+  if(s && typeof s==='object'){
+    if(s.mode==='linear'){
+      const from = Number(s.from), to = Number(s.to);
+      if(s.from!=null && s.to!=null && isFinite(from) && isFinite(to) && from!==to && Math.abs(from)<=1e6 && Math.abs(to)<=1e6) return { mode:'linear', from, to };
+    } else if(s.mode==='tiers' && (s.op==='lte' || s.op==='gte') && Array.isArray(s.steps) && s.steps.length>=1 && s.steps.length<=EVAL_MAX_STEPS){
+      const steps = s.steps.map(st=>({ limit:Number(st && st.limit), score:Number(st && st.score) }));
+      const ok = steps.every(st=> isFinite(st.limit) && Math.abs(st.limit)<=1e6 && isFinite(st.score) && st.score>=0 && st.score<=5)
+        && new Set(steps.map(st=>st.limit)).size === steps.length;
+      const fb = Number(s.fallback);
+      if(ok && s.fallback!=null && isFinite(fb) && fb>=0 && fb<=5) return { mode:'tiers', op:s.op, steps, fallback:fb };
+    }
+  }
+  return JSON.parse(JSON.stringify(dflt));
+}
+
+function normalizeEvalCriterion(r, usedIds){
+  if(!r || typeof r!=='object') return null;
+  const m = EVAL_METRICS[r.metric];
+  if(!m) return null; // قياس مش معروف (اتشال أو اتكتب غلط) — نتجاهل المعيار بدل ما نكسر الحساب
+  let id = (typeof r.id==='string' && /^[a-zA-Z0-9_]{1,24}$/.test(r.id)) ? r.id : null;
+  if(!id || usedIds.has(id)) id = newEvalCriterionId(usedIds);
+  usedIds.add(id);
+  const params = {};
+  (m.params||[]).forEach(p=>{ params[p.key] = evalNum(r.params && r.params[p.key], p.min, p.max, p.def); });
+  return {
+    id,
+    label: (typeof r.label==='string' && r.label.trim()) ? r.label.trim().slice(0,40) : m.label,
+    metric: r.metric,
+    params,
+    scoring: normalizeEvalScoring(r.scoring, m.scoring),
+    weight: evalNum(r.weight, 0, 100, 10),
+    enabled: r.enabled!==false,
+    whenNoData: r.whenNoData==='zero' ? 'zero' : 'skip'
+  };
+}
+
+// إعدادات النسخة الأولى (criteria كـobject + responseMinutes...) بتتحوّل تلقائي للشكل الجديد
+function migrateEvalConfigV1(raw){
+  const base = defaultEvalConfig().criteria;
+  base.forEach(c=>{
+    const r = raw.criteria && raw.criteria[c.id];
+    if(r && typeof r==='object'){ c.enabled = r.enabled!==false; c.weight = evalNum(r.weight, 0, 100, c.weight); }
+    if(c.id==='logging') c.params.perStudentPerDay = evalNum(raw.loggingEventsPerStudentPerDay, 0.1, 50, 1);
+    if(c.id==='response' && Array.isArray(raw.responseMinutes) && raw.responseMinutes.length===4){
+      const rm = raw.responseMinutes.map(Number);
+      if(rm.every((n,i)=> isFinite(n) && n>0 && n<=10080 && (i===0 || n>rm[i-1]))) c.scoring.steps = rm.map((n,i)=>({ limit:n, score:5-i }));
     }
   });
-  c.lateHour = Math.round(num(raw.lateHour, 0, 23, d.lateHour));
-  c.lateMinute = Math.round(num(raw.lateMinute, 0, 59, d.lateMinute));
+  return base;
+}
+
+function normalizeEvalConfig(raw){
+  const d = defaultEvalConfig();
+  if(!raw || typeof raw!=='object') return d;
+  const c = {
+    version: 2,
+    criteria: null,
+    lateHour: Math.round(evalNum(raw.lateHour, 0, 23, d.lateHour)),
+    lateMinute: Math.round(evalNum(raw.lateMinute, 0, 59, d.lateMinute)),
+    offDays: d.offDays,
+    raiseThreshold: evalNum(raw.raiseThreshold, 1, 5, d.raiseThreshold)
+  };
   if(Array.isArray(raw.offDays)){
     const od = [...new Set(raw.offDays.map(Number).filter(n=> Number.isInteger(n) && n>=0 && n<=6))];
     if(od.length < 7) c.offDays = od; // لو كل الأيام إجازة نرجع للافتراضي
   }
-  c.loggingEventsPerStudentPerDay = num(raw.loggingEventsPerStudentPerDay, 0.1, 50, d.loggingEventsPerStudentPerDay);
-  if(Array.isArray(raw.responseMinutes) && raw.responseMinutes.length===4){
-    const rm = raw.responseMinutes.map(Number);
-    const ok = rm.every((n,i)=> isFinite(n) && n>0 && n<=10080 && (i===0 || n>rm[i-1]));
-    if(ok) c.responseMinutes = rm;
+  let list = null;
+  if(Array.isArray(raw.criteria)){
+    const used = new Set();
+    list = raw.criteria.slice(0, EVAL_MAX_CRITERIA).map(r=> normalizeEvalCriterion(r, used)).filter(Boolean);
+  } else if(raw.criteria && typeof raw.criteria==='object'){
+    list = migrateEvalConfigV1(raw);
   }
-  c.raiseThreshold = num(raw.raiseThreshold, 1, 5, d.raiseThreshold);
+  if(!list || !list.some(k=> k.enabled && k.weight>0)) list = d.criteria;
+  c.criteria = list;
   return c;
 }
 function getEvalConfig(db){
   db = db || loadDB();
   return normalizeEvalConfig(db && db.settings ? db.settings.evalConfig : null);
 }
-// الأوزان الفعلية (نسب مئوية من 100) للمعايير المفعّلة بس
+// الأوزان الفعلية (نسب مئوية من 100) للمعايير المفعّلة بس — بالـid
 function evalEffectiveWeights(cfg){
-  const active = Object.keys(cfg.criteria).filter(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0);
-  const total = active.reduce((t,k)=> t + cfg.criteria[k].weight, 0);
+  const active = cfg.criteria.filter(k=> k.enabled && k.weight>0);
+  const total = active.reduce((t,k)=> t + k.weight, 0);
   const out = {};
-  active.forEach(k=>{ out[k] = total ? (cfg.criteria[k].weight/total)*100 : 0; });
+  active.forEach(k=>{ out[k.id] = total ? (k.weight/total)*100 : 0; });
   return out;
 }
 
+const EVAL_OLD_LABELS = {attendance:'الانتظام', punctuality:'الالتزام بالمواعيد', logging:'الانضباط في التسجيل', response:'سرعة الرد على الأهالي'};
+// اسم المعيار كما كان وقت حساب التقييم (محفوظ مع التقييم)، وللتقييمات القديمة بنرجع للأسماء الأصلية
+function evalLabelOf(ev, key){ return (ev.labels && ev.labels[key]) || EVAL_OLD_LABELS[key] || key; }
 function monthKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
 
 function workingDaysInMonth(year, monthIndex0, uptoDate, offDays){
-  offDays = offDays || DEFAULT_EVAL_CONFIG.offDays; // أيام الإجازة الأسبوعية من الإعدادات
+  offDays = offDays || defaultEvalConfig().offDays; // أيام الإجازة الأسبوعية من الإعدادات
   const end = uptoDate ? uptoDate.getDate() : new Date(year, monthIndex0+1, 0).getDate();
   let count = 0;
   for(let d=1; d<=end; d++){
@@ -7575,71 +7818,93 @@ function workingDaysInMonth(year, monthIndex0, uptoDate, offDays){
   return count;
 }
 
-function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
-  const cfg = getEvalConfig(db);
+// ---- بيانات المدرّس الخام للشهر (بتتحسب مرة واحدة وكل القياسات بتقرا منها) ----
+function buildEvalContext(db, teacherId, year, monthIndex0, cfg){
   const monthStart = new Date(year, monthIndex0, 1);
   const monthEnd = new Date(year, monthIndex0+1, 0, 23,59,59);
   const now = getSystemNow();
   const isCurrentMonth = (year===now.getFullYear() && monthIndex0===now.getMonth());
   const effectiveEnd = isCurrentMonth ? now : monthEnd;
+  const inRange = iso => { const t = new Date(iso); return t>=monthStart && t<=effectiveEnd; };
+  const dFrom = localDateStr(monthStart), dTo = localDateStr(effectiveEnd);
+  const inDay = s => !!s && s>=dFrom && s<=dTo;
 
-  const teacher = db.teachers.find(t=>t.id===teacherId);
+  const teacher = (db.teachers||[]).find(t=>t.id===teacherId);
+  const roomIds = teacher ? (teacher.classroomIds||[]) : [];
   // الطالب ممكن يكون في أكتر من مجموعة (classroomIds)، فبنقارن بالمصفوفة مش بحقل مفرد
-  const myChildren = teacher ? db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid))) : [];
-
-  // 1) الانتظام والالتزام بالمواعيد
-  const attRecords = db.teacherAttendance.filter(r=> r.teacherId===teacherId && new Date(r.time)>=monthStart && new Date(r.time)<=effectiveEnd);
-  const checkIns = attRecords.filter(r=>r.type==='CHECK_IN');
-  const daysAttended = new Set(checkIns.map(r=> new Date(r.time).toDateString())).size;
-  const expectedDays = workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd, cfg.offDays) || 1;
-  const attendanceScore = Math.min(5, (daysAttended/expectedDays) * 5);
-  const onTimeCount = checkIns.filter(r=> !isLateCheckIn(r.time, cfg)).length;
-  const punctualityScore = checkIns.length ? (onTimeCount/checkIns.length)*5 : null;
-
-  // 2) الانضباط في تسجيل الأحداث اليومية (المتوقع = أيام الحضور × عدد الطلاب × المتوقع لكل طالب في اليوم)
+  const myChildren = teacher ? (db.children||[]).filter(c=> (c.classroomIds||[]).some(cid=> roomIds.includes(cid))) : [];
   const childIds = myChildren.map(c=>c.id);
-  const loggedEvents = db.events.filter(e=> childIds.includes(e.childId) && new Date(e.eventTime)>=monthStart && new Date(e.eventTime)<=effectiveEnd);
-  const expectedEvents = Math.max(1, daysAttended * myChildren.length * cfg.loggingEventsPerStudentPerDay);
-  const loggingScore = myChildren.length ? Math.min(5, (loggedEvents.length/expectedEvents)*5) : null;
 
-  // 3) سرعة الرد على رسائل أولياء الأمور
-  const myMsgs = db.messages.filter(m=> childIds.includes(m.childId) && new Date(m.time)>=monthStart && new Date(m.time)<=effectiveEnd).sort((a,b)=> new Date(a.time)-new Date(b.time));
-  const responseTimesMin = [];
+  const att = (db.teacherAttendance||[]).filter(r=> r.teacherId===teacherId && inRange(r.time));
+  const checkIns = att.filter(r=>r.type==='CHECK_IN');
+  const checkOuts = att.filter(r=>r.type==='CHECK_OUT');
+  const daysAttended = new Set(checkIns.map(r=> new Date(r.time).toDateString())).size;
+  const daysWithCheckout = new Set(checkOuts.map(r=> new Date(r.time).toDateString())).size;
+  const expectedDays = workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd, cfg.offDays) || 1;
+  const lateCount = checkIns.filter(r=> isLateCheckIn(r.time, cfg)).length;
+
+  const loggedEvents = (db.events||[]).filter(e=> childIds.includes(e.childId) && inRange(e.eventTime)).length;
+
+  const myMsgs = (db.messages||[]).filter(m=> childIds.includes(m.childId) && inRange(m.time)).sort((a,b)=> new Date(a.time)-new Date(b.time));
   const byChild = {};
-  myMsgs.forEach(m=>{
-    if(!byChild[m.childId]) byChild[m.childId] = [];
-    byChild[m.childId].push(m);
-  });
+  myMsgs.forEach(m=>{ (byChild[m.childId] = byChild[m.childId] || []).push(m); });
+  const replyMinutes = [];
   Object.values(byChild).forEach(thread=>{
     for(let i=0;i<thread.length-1;i++){
       if(thread[i].sender==='PARENT' && thread[i+1].sender==='TEACHER'){
-        responseTimesMin.push((new Date(thread[i+1].time) - new Date(thread[i].time)) / 60000);
+        replyMinutes.push((new Date(thread[i+1].time) - new Date(thread[i].time)) / 60000);
       }
     }
   });
-  let responseScore = null;
-  if(responseTimesMin.length){
-    const avgMin = responseTimesMin.reduce((a,b)=>a+b,0)/responseTimesMin.length;
-    const [t5,t4,t3,t2] = cfg.responseMinutes;
-    responseScore = avgMin<=t5 ? 5 : avgMin<=t4 ? 4 : avgMin<=t3 ? 3 : avgMin<=t2 ? 2 : 1;
-  }
 
-  // تجميع المعايير المفعّلة اللي ليها بيانات بس (المعيار المعطّل أو اللي مفيش له بيانات بيتشال من المتوسط بدل ما يتحسب صفر)
-  const raw = { attendance:attendanceScore, punctuality:punctualityScore, logging:loggingScore, response:responseScore };
-  const parts = Object.keys(raw)
-    .filter(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0 && raw[k] !== null)
-    .map(k=> ({key:k, score:raw[k], weight:cfg.criteria[k].weight}));
-  const totalWeight = parts.reduce((s,p)=>s+p.weight,0);
-  const overallScore = totalWeight ? parts.reduce((s,p)=> s + p.score*p.weight, 0) / totalWeight : 0;
+  const attendanceCount = (db.attendance||[]).filter(a=> a.teacherId===teacherId && inDay(a.sessionDate)).length;
+  const evaluationsGiven = (db.evaluations||[]).filter(e=> e.teacherId===teacherId && e.date && inRange(e.date)).length;
+  const tasksDone = (db.taskCompletions||[]).filter(c=> c.teacherId===teacherId && c.done && inDay(c.date)).length;
 
-  // المعيار المعطّل بيتخزن null عشان يظهر "معطّل" في الواجهة ومايتحسبش
-  const scores = {};
-  Object.keys(raw).forEach(k=>{ scores[k] = cfg.criteria[k].enabled ? raw[k] : null; });
   return {
-    scores,
-    overallScore,
-    hasData: (checkIns.length>0 || loggedEvents.length>0) && parts.length>0
+    teacher, roomIds, myChildren, checkIns, daysAttended, daysWithCheckout, expectedDays, lateCount,
+    loggedEvents, replyMinutes, attendanceCount, evaluationsGiven, tasksDone,
+    hasActivity: checkIns.length>0 || loggedEvents>0 || attendanceCount>0 || evaluationsGiven>0 || tasksDone>0
   };
+}
+
+// بيحوّل قيمة القياس لدرجة من 5 حسب طريقة التحويل (متدرّج أو شرائح)
+function evalScoreFromValue(value, scoring){
+  if(value===null || value===undefined || !isFinite(value)) return null;
+  let s;
+  if(scoring.mode==='tiers'){
+    const steps = scoring.steps.slice().sort((a,b)=> scoring.op==='lte' ? a.limit-b.limit : b.limit-a.limit);
+    const hit = steps.find(st=> scoring.op==='lte' ? value<=st.limit : value>=st.limit);
+    s = hit ? hit.score : scoring.fallback;
+  } else {
+    s = ((value - scoring.from) / (scoring.to - scoring.from)) * 5;
+  }
+  return Math.max(0, Math.min(5, s));
+}
+
+// الحساب بالتفصيل (بيستخدمه التقييم الشهري وكمان "جرّب قبل ما تحفظ" في الإعدادات)
+function computeTeacherScoreDetail(db, teacherId, year, monthIndex0, cfg){
+  cfg = cfg || getEvalConfig(db);
+  const x = buildEvalContext(db, teacherId, year, monthIndex0, cfg);
+  const rows = cfg.criteria.map(c=>{
+    const m = EVAL_METRICS[c.metric];
+    const r = m.compute(x, c.params || {});
+    let score = r.hasData ? evalScoreFromValue(r.value, c.scoring) : null;
+    if(score===null && c.enabled && c.whenNoData==='zero') score = 0;
+    return { id:c.id, label:c.label, metric:c.metric, kind:m.kind, enabled:c.enabled, weight:c.weight, value:r.value, hasData:r.hasData, score };
+  });
+  // المعيار المعطّل أو اللي مفيش له بيانات (وإعداده "نتجاهله") بيتشال من المتوسط بدل ما يتحسب صفر
+  const parts = rows.filter(r=> r.enabled && r.weight>0 && r.score!==null);
+  const totalWeight = parts.reduce((s,p)=> s + p.weight, 0);
+  const overallScore = totalWeight ? parts.reduce((s,p)=> s + p.score*p.weight, 0) / totalWeight : 0;
+  const scores = {}, labels = {};
+  rows.forEach(r=>{ scores[r.id] = r.enabled ? r.score : null; labels[r.id] = r.label; });
+  return { rows, scores, labels, overallScore, hasData: x.hasActivity && parts.length>0 };
+}
+
+function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
+  const d = computeTeacherScoreDetail(db, teacherId, year, monthIndex0);
+  return { scores:d.scores, labels:d.labels, overallScore:d.overallScore, hasData:d.hasData };
 }
 
 // بتتأكد إن كل شهر فات فيه بيانات كافية له تقييم محسوب ومحفوظ (زي job شهري تلقائي، هنا بيتنفذ أول ما المدير يفتح الشاشة)
@@ -7653,12 +7918,12 @@ function ensureAutoEvalsUpToDate(months){
       const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
       const key = monthKey(d);
       const exists = db.teacherEvaluations.find(e=> e.teacherId===t.id && e.month===key && e.source==='AUTO');
-      const {scores, overallScore, hasData} = computeAutoTeacherScore(db, t.id, d.getFullYear(), d.getMonth());
+      const {scores, labels, overallScore, hasData} = computeAutoTeacherScore(db, t.id, d.getFullYear(), d.getMonth());
       if(!hasData) continue; // متسجلش تقييم لشهر مفيهوش أي نشاط خالص
       if(exists){
-        exists.scores = scores; exists.overallScore = overallScore; // تحديث الشهر الحالي أول بأول
+        exists.scores = scores; exists.labels = labels; exists.overallScore = overallScore; // تحديث الشهر الحالي أول بأول
       } else {
-        db.teacherEvaluations.push({ id: uid('teval'), teacherId: t.id, month: key, source:'AUTO', scores, overallScore, note: '' });
+        db.teacherEvaluations.push({ id: uid('teval'), teacherId: t.id, month: key, source:'AUTO', scores, labels, overallScore, note: '' });
       }
       changed = true;
     }
@@ -7784,13 +8049,12 @@ function openTeacherEvalModal(teacherId){
   const evalCfg = getEvalConfig(db);
   const eligible = cycleAvg !== null && cycleAvg >= evalCfg.raiseThreshold && recent.length >= cycle;
   const form = document.getElementById('teacher-eval-form');
-  const labelize = {attendance:'الانتظام', punctuality:'الالتزام بالمواعيد', logging:'الانضباط في التسجيل', response:'سرعة الرد على الأهالي'};
   const latest = evals[0];
   form.innerHTML = `
     <div style="font-size:13px; color:var(--muted);">آخر شهر محسوب: ${latest?latest.month:'مفيش بيانات كفاية لسه'}</div>
     ${latest ? `
       <div style="font-weight:700; font-size:20px;">${latest.overallScore.toFixed(1)} / 5 ⭐</div>
-      ${Object.entries(latest.scores).map(([k,v])=> v!==null ? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${labelize[k]}</span><span>${v.toFixed(1)}/5</span></div>` : `<div style="display:flex; justify-content:space-between; font-size:13px; color:var(--muted);"><span>${labelize[k]}</span><span>${evalCfg.criteria[k] && !evalCfg.criteria[k].enabled ? 'معطّل' : 'مفيش بيانات كفاية'}</span></div>`).join('')}
+      ${Object.entries(latest.scores).map(([k,v])=> v!==null ? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${esc(evalLabelOf(latest,k))}</span><span>${v.toFixed(1)}/5</span></div>` : `<div style="display:flex; justify-content:space-between; font-size:13px; color:var(--muted);"><span>${esc(evalLabelOf(latest,k))}</span><span>${(evalCfg.criteria.find(c=>c.id===k)||{enabled:true}).enabled===false ? 'معطّل' : 'مفيش بيانات كفاية'}</span></div>`).join('')}
     ` : '<div class="empty">لسه محصلش نشاط كفاية (حضور/تسجيل أحداث) عشان نحسب تقييم أوتوماتيكي</div>'}
     <div style="border-top:1px solid var(--line); padding-top:8px; margin-top:4px;">
       <div style="font-size:13px; color:var(--muted);">متوسط آخر ${cycle} شهور (دورة العلاوة الحالية)</div>
