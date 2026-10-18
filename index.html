@@ -621,12 +621,16 @@
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
   <div class="container">
+    <div id="teacher-summary" class="card" style="display:none; margin-bottom:12px;"></div>
     <div class="tab-menu" id="teacher-tab-menu">
       <button class="tab-card teacher" id="teacher-tab-log" onclick="switchTeacherTab('log')"><span class="tc-icon">📝</span><span class="tc-label">تسجيل اليوم</span></button>
       <button class="tab-card teacher" id="teacher-tab-attendance" onclick="switchTeacherTab('attendance')"><span class="tc-icon">🕒</span><span class="tc-label">حضوري وانصرافي</span></button>
       <button class="tab-card teacher" id="teacher-tab-schedule" onclick="switchTeacherTab('schedule')"><span class="tc-icon">📅</span><span class="tc-label">جدولي الأسبوعي</span></button>
       <button class="tab-card teacher" id="teacher-tab-chat" onclick="switchTeacherTab('chat')"><span class="tc-icon">💬</span><span class="tc-label">شات الأهالي</span></button>
       <button class="tab-card teacher" id="teacher-tab-payouts" onclick="switchTeacherTab('payouts')"><span class="tc-icon">💰</span><span class="tc-label">مرتبي</span></button>
+      <button class="tab-card teacher" id="teacher-tab-evals" onclick="switchTeacherTab('evals')"><span class="tc-icon">⭐</span><span class="tc-label">تقييم أدائي</span></button>
+      <button class="tab-card teacher" id="teacher-tab-calendar" onclick="switchTeacherTab('calendar')"><span class="tc-icon">🗓️</span><span class="tc-label">تقويم السنتر</span></button>
+      <button class="tab-card teacher" id="teacher-tab-history" onclick="switchTeacherTab('history')"><span class="tc-icon">🗂️</span><span class="tc-label">سجل الحصص</span></button>
     </div>
     <button class="tab-back" id="teacher-tab-back" onclick="history.back()" style="display:none;">→ رجوع للقائمة</button>
 
@@ -687,6 +691,7 @@
 
     <div id="teacher-panel-chat" style="display:none;">
       <div class="section-title" style="margin-top:0;">شات مع ولي أمر الطالب المختار</div>
+      <select id="teacher-chat-child-select" style="width:100%; margin-bottom:10px;" onchange="selectTeacherChild(this.value)"></select>
       <div class="timeline" id="teacher-chat-view" style="margin-bottom:12px;"></div>
       <div style="display:flex; gap:8px;">
         <input type="text" id="teacher-chat-input" placeholder="اكتب رسالة..." style="flex:1;">
@@ -697,6 +702,23 @@
     <div id="teacher-panel-payouts" style="display:none;">
       <div class="section-title" style="margin-top:0;">💰 كشوف مرتبي</div>
       <div id="teacher-payouts-view"></div>
+    </div>
+
+    <div id="teacher-panel-evals" style="display:none;">
+      <div class="section-title" style="margin-top:0;">⭐ تقييم أدائي الشهري</div>
+      <div id="teacher-evals-view"></div>
+    </div>
+
+    <div id="teacher-panel-calendar" style="display:none;">
+      <div class="section-title" style="margin-top:0;">🗓️ تقويم السنتر</div>
+      <div class="timeline" id="teacher-calendar-view"></div>
+    </div>
+
+    <div id="teacher-panel-history" style="display:none;">
+      <div class="section-title" style="margin-top:0;">🗂️ حضور الطلاب اللي سجلته (آخر 30 يوم)</div>
+      <div class="timeline" id="teacher-history-attendance"></div>
+      <div class="section-title">🎫 سجل الاستثناءات</div>
+      <div class="timeline" id="teacher-history-exceptions"></div>
     </div>
   </div>
 </div>
@@ -1211,6 +1233,40 @@
         </div>
       </div>
 
+      <div class="card" id="eval-settings-card">
+        <div class="settings-head">
+          <div class="list-avatar" style="background:linear-gradient(135deg,#c9a45c,#93610f);">⭐</div>
+          <div class="section-title" style="margin:0;">تقييم أداء المدرّسين</div>
+        </div>
+        <div style="font-size:12.5px; color:var(--muted); line-height:1.8; margin-bottom:14px;">
+          كل معيار بيتحسب من 5 والنتيجة متوسط مرجّح. الأوزان نسب نسبية بتتحوّل تلقائي لـ100% على المعايير المفعّلة بس.
+          التغيير بيتطبق على التقييمات المحسوبة من تاني (آخر 6 شهور) أول ما تفتح تاب "تقييم أداء المدرّسين".
+        </div>
+        <div id="eval-criteria-rows"></div>
+        <div id="eval-weights-summary" style="font-size:12.5px; color:var(--muted); margin:-4px 0 16px;"></div>
+        <div class="settings-field">
+          <label>ميعاد التأخير (الحضور بعده يعتبر متأخر)</label>
+          <input type="time" id="ev-late-time">
+        </div>
+        <div class="settings-field">
+          <label>أيام الإجازة الأسبوعية (مش بتتحسب من أيام الشغل المتوقعة)</label>
+          <div id="eval-offdays-row" style="display:flex; flex-wrap:wrap; gap:10px 14px;"></div>
+        </div>
+        <div class="settings-field">
+          <label>عدد الأحداث المتوقع تسجيلها لكل طالب في كل يوم حضور</label>
+          <input type="number" id="ev-logging-per" min="0.1" max="50" step="0.1">
+        </div>
+        <div class="settings-field">
+          <label>شرائح سرعة الرد (بالدقايق) — لحد كل رقم تاخد الدرجة المكتوبة، وأكتر من آخر رقم = 1</label>
+          <div id="eval-response-rows" style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px;"></div>
+        </div>
+        <div class="settings-field">
+          <label>الحد الأدنى لمتوسط الدورة للأهلية لمراجعة العلاوة (من 5)</label>
+          <input type="number" id="ev-raise-threshold" min="1" max="5" step="0.1">
+        </div>
+        <button class="badge" type="button" onclick="resetEvalConfigDefaults()">↺ استرجاع القيم الافتراضية</button>
+      </div>
+
       <div class="card">
         <div class="settings-head">
           <div class="list-avatar" style="background:linear-gradient(135deg,#b5722e,#d9924a);">🎫</div>
@@ -1339,6 +1395,18 @@ let dbCache = null; // مليان بعد fetchDBFromSupabase() لحظة الدخ
 let simulatedTimeOffsetMs = 0;
 function getSystemNow(){ return new Date(Date.now() + simulatedTimeOffsetMs); }
 
+// تعقيم أي نص جاي من مستخدم قبل ما يدخل innerHTML (منع XSS) — لازم يتطبق على أي اسم/رسالة/ملاحظة/سبب
+function esc(v){
+  return String(v==null?'':v)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// رابط صورة آمن للاستخدام داخل src="" (http/https/data:image فقط)
+function safeImgSrc(u){
+  const s = String(u||'');
+  return /^(https?:\/\/|data:image\/(png|jpe?g|gif|webp);base64,)/i.test(s) ? esc(s) : '';
+}
+
 // ===== تواريخ بالتوقيت المحلي =====
 // toISOString() بيحوّل لـUTC، فبين 12 و3 الفجر بتوقيت مصر بيرجّع تاريخ اليوم اللي قبله، وفي أي حساب بـnew Date('YYYY-MM-DDT00:00:00') بيرجّع يوم ناقص
 function pad2(n){ return String(n).padStart(2,'0'); }
@@ -1405,7 +1473,8 @@ function rowsToDB(rows){
     renewalReminderSessionsBefore: rows.appSettings.renewal_reminder_sessions_before ?? 3,
     financialClosingDay: rows.appSettings.financial_closing_day ?? 1,
     institutionBillingGraceDays: rows.billingGraceDays ?? 3,
-    paymentInstructions: rows.appSettings.payment_instructions || ''
+    paymentInstructions: rows.appSettings.payment_instructions || '',
+    evalConfig: normalizeEvalConfig(rows.appSettings.teacher_eval_config)
   } : {
     raiseCycleMonths:4, teacherPayoutBasis:'sessions', allowAssistants:false,
     whoCanAssignAssistants:'teacher_only', defaultPaymentMode:'monthly',
@@ -1973,6 +2042,7 @@ let impersonationStack = [];
 let pendingRole = null;
 let pendingPersonId = null;
 let parentPollTimer = null;
+let teacherPollTimer = null;
 
 const EVENT_META = {
   CHECK_IN:{em:'✅', label:'حضور الحصة'},
@@ -2159,6 +2229,7 @@ function showScreen(id, opts){
   void target.offsetWidth; /* force reflow to restart animation */
   target.style.animation = '';
   if(id !== 'parent-screen' && parentPollTimer){ clearInterval(parentPollTimer); parentPollTimer=null; }
+  if(id !== 'teacher-screen' && teacherPollTimer){ clearInterval(teacherPollTimer); teacherPollTimer=null; }
   // زرار الوضع الليلي بيتخفى في أي شاشة فيها topbar عشان مايغطيش زرار الخروج
   const themeBtn = document.getElementById('theme-toggle');
   if(themeBtn) themeBtn.style.display = (id === 'login-screen') ? 'flex' : 'none';
@@ -2740,6 +2811,88 @@ function renderPlatformSubCard(){
     '<div style="color:var(--muted);">'+graceLine+'</div>';
 }
 
+/* ---------- إعدادات حساب التقييم (فورم + قراءة + تحقق) ---------- */
+function fillEvalSettingsForm(cfg){
+  const rows = document.getElementById('eval-criteria-rows');
+  if(!rows) return;
+  rows.innerHTML = EVAL_CRITERIA_META.map(m=>{
+    const c = cfg.criteria[m.key];
+    return `<div class="settings-field">
+      <label style="display:flex; align-items:center; gap:8px; color:var(--text,inherit); font-size:14px; font-weight:700;">
+        <input type="checkbox" id="ev-en-${m.key}" ${c.enabled?'checked':''} onchange="updateEvalWeightsSummary()" style="width:18px; height:18px;"> ${m.label}
+      </label>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="number" id="ev-w-${m.key}" min="0" max="100" step="1" value="${c.weight}" oninput="updateEvalWeightsSummary()" style="max-width:100px;">
+        <span style="font-size:12px; color:var(--muted);">الوزن — ${m.hint}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('ev-late-time').value = pad2(cfg.lateHour)+':'+pad2(cfg.lateMinute);
+  document.getElementById('eval-offdays-row').innerHTML = EVAL_DAY_NAMES.map((n,i)=>
+    `<label style="display:flex; align-items:center; gap:5px; font-size:13px; color:var(--text,inherit); margin:0;">
+      <input type="checkbox" id="ev-off-${i}" ${cfg.offDays.includes(i)?'checked':''} style="width:16px; height:16px;"> ${n}</label>`).join('');
+  document.getElementById('ev-logging-per').value = cfg.loggingEventsPerStudentPerDay;
+  const scoreOf = [5,4,3,2];
+  document.getElementById('eval-response-rows').innerHTML = cfg.responseMinutes.map((m,i)=>
+    `<div><div style="font-size:11.5px; color:var(--muted); margin-bottom:3px;">${scoreOf[i]} درجات لو ≤</div>
+      <input type="number" id="ev-resp-${i}" min="1" max="10080" step="1" value="${m}"></div>`).join('');
+  document.getElementById('ev-raise-threshold').value = cfg.raiseThreshold;
+  updateEvalWeightsSummary();
+}
+
+// بيرجّع {cfg} لو الفورم سليم، أو {error} برسالة واضحة
+function readEvalSettingsForm(){
+  const cfg = JSON.parse(JSON.stringify(DEFAULT_EVAL_CONFIG));
+  for(const m of EVAL_CRITERIA_META){
+    const w = Number(document.getElementById('ev-w-'+m.key).value);
+    if(!isFinite(w) || w<0 || w>100) return {error:`وزن "${m.label}" لازم رقم من 0 لـ100`};
+    cfg.criteria[m.key] = { enabled: document.getElementById('ev-en-'+m.key).checked, weight: w };
+  }
+  if(!Object.keys(cfg.criteria).some(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0)) return {error:'لازم معيار واحد على الأقل يكون مفعّل ووزنه أكبر من صفر'};
+  const t = /^(\d{1,2}):(\d{2})$/.exec(document.getElementById('ev-late-time').value || '');
+  if(!t || +t[1]>23 || +t[2]>59) return {error:'ميعاد التأخير مش صحيح'};
+  cfg.lateHour = +t[1]; cfg.lateMinute = +t[2];
+  cfg.offDays = [0,1,2,3,4,5,6].filter(i=> document.getElementById('ev-off-'+i).checked);
+  if(cfg.offDays.length>=7) return {error:'لازم يكون في يوم شغل واحد على الأقل في الأسبوع'};
+  const per = Number(document.getElementById('ev-logging-per').value);
+  if(!isFinite(per) || per<0.1 || per>50) return {error:'عدد الأحداث المتوقع لكل طالب لازم رقم من 0.1 لـ50'};
+  cfg.loggingEventsPerStudentPerDay = per;
+  const rm = [0,1,2,3].map(i=> Number(document.getElementById('ev-resp-'+i).value));
+  if(!rm.every((n,i)=> isFinite(n) && n>0 && n<=10080 && (i===0 || n>rm[i-1]))) return {error:'شرائح سرعة الرد لازم أرقام موجبة وتصاعدية (كل رقم أكبر من اللي قبله)'};
+  cfg.responseMinutes = rm;
+  const th = Number(document.getElementById('ev-raise-threshold').value);
+  if(!isFinite(th) || th<1 || th>5) return {error:'حد الأهلية للعلاوة لازم رقم من 1 لـ5'};
+  cfg.raiseThreshold = th;
+  return {cfg};
+}
+
+function evalWeightsSummaryHtml(cfg){
+  const eff = evalEffectiveWeights(cfg);
+  return EVAL_CRITERIA_META.map(m=>
+    eff[m.key]!=null ? `${m.label}: <b>${Math.round(eff[m.key])}%</b>` : `<span style="color:var(--muted);">${m.label}: معطّل</span>`
+  ).join(' · ');
+}
+function updateEvalWeightsSummary(){
+  const el = document.getElementById('eval-weights-summary');
+  if(!el) return;
+  const tmp = JSON.parse(JSON.stringify(DEFAULT_EVAL_CONFIG));
+  EVAL_CRITERIA_META.forEach(m=>{
+    const en = document.getElementById('ev-en-'+m.key), w = document.getElementById('ev-w-'+m.key);
+    if(en && w) tmp.criteria[m.key] = { enabled: en.checked, weight: Math.max(0, Number(w.value)||0) };
+  });
+  const any = Object.keys(tmp.criteria).some(k=> tmp.criteria[k].enabled && tmp.criteria[k].weight>0);
+  el.innerHTML = any ? 'الأوزان الفعلية بعد التحويل: ' + evalWeightsSummaryHtml(tmp) : '<span style="color:var(--danger);">⚠️ لازم معيار واحد على الأقل مفعّل ووزنه أكبر من صفر</span>';
+}
+function resetEvalConfigDefaults(){
+  fillEvalSettingsForm(normalizeEvalConfig(null));
+  showToast('اترجعت القيم الافتراضية — اضغط "حفظ" لتأكيدها');
+}
+// زرار "تخصيص معايير التقييم" في تاب التقييم — يفتح الإعدادات وينزل لكارت التقييم
+function openEvalSettings(){
+  openAdminSettingsScreen();
+  setTimeout(()=>{ const c = document.getElementById('eval-settings-card'); if(c) c.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+}
+
 function openAdminSettingsScreen(){
   const db = loadDB();
   const s = db.settings;
@@ -2757,6 +2910,7 @@ function openAdminSettingsScreen(){
   document.getElementById('set-paymentInstructions').value = s.paymentInstructions || '';
   document.getElementById('set-allowAssistants').checked = !!s.allowAssistants;
   document.getElementById('set-whoCanAssignAssistants').value = s.whoCanAssignAssistants || 'teacher_only';
+  fillEvalSettingsForm(getEvalConfig(db));
   showScreen('admin-settings-screen');
 }
 
@@ -2773,8 +2927,12 @@ async function saveAdminSettings(){
   if(!financialClosingDay || financialClosingDay<1 || financialClosingDay>28){ showToast('يوم التقفيل المالي لازم يكون من 1 لـ28'); return; }
   if(isNaN(institutionBillingGraceDays) || institutionBillingGraceDays<0 || institutionBillingGraceDays>30){ showToast('مهلة السماح لازم رقم من 0 لـ30 يوم'); return; }
 
+  const evalRes = readEvalSettingsForm();
+  if(evalRes.error){ showToast(evalRes.error); return; }
+
   const db = loadDB();
   db.settings = {
+    evalConfig: evalRes.cfg,
     raiseCycleMonths,
     teacherPayoutBasis: document.getElementById('set-teacherPayoutBasis').value,
     allowAssistants: document.getElementById('set-allowAssistants').checked,
@@ -2788,7 +2946,14 @@ async function saveAdminSettings(){
   };
   const result = await saveDB(db);
   if(!result.ok){ showToast('⚠️ فشل حفظ الإعدادات على السيرفر'); return; }
-  showToast('تم حفظ الإعدادات');
+  // معايير التقييم بتتحفظ في عمود مستقل (teacher_eval_config) عشان لو العمود لسه مش متضاف على الداتابيز
+  // مايبوّظش حفظ باقي الإعدادات — بنبلّغ المدير بوضوح بدل ما نفشل بصمت
+  let evalSaved = true;
+  if(session.centerId){
+    const { error: evErr } = await supabaseClient.from('app_settings').update({ teacher_eval_config: evalRes.cfg }).eq('center_id', session.centerId);
+    if(evErr){ evalSaved = false; console.error('فشل حفظ معايير التقييم', evErr); }
+  }
+  showToast(evalSaved ? 'تم حفظ الإعدادات' : '⚠️ اتحفظت الإعدادات، لكن معايير التقييم محتاجة تحديث لقاعدة البيانات (عمود teacher_eval_config) وإلا هترجع للافتراضي');
   showScreen('admin-screen');
   renderAdminList();
 }
@@ -2920,18 +3085,25 @@ function isToday(iso){
 
 /* ========================= TEACHER ========================= */
 let teacherActiveChildId = null;
+const TEACHER_TABS = ['log','attendance','schedule','chat','payouts','evals','calendar','history'];
 
 function switchTeacherTab(tab){
   pushOrReplaceTabState('teacher-screen', tab);
   document.getElementById('teacher-tab-menu').style.display = 'none';
   document.getElementById('teacher-tab-back').style.display = 'flex';
-  ['log','attendance','schedule','chat','payouts'].forEach(t=>{
+  TEACHER_TABS.forEach(t=>{
     document.getElementById('teacher-tab-'+t).classList.toggle('active', t===tab);
     document.getElementById('teacher-panel-'+t).style.display = t===tab ? 'block':'none';
   });
   if(tab==='attendance') renderTeacherAttendance();
   if(tab==='schedule') renderTeacherSchedule();
   if(tab==='chat') renderTeacherChat();
+  if(tab==='calendar') renderTeacherCalendar();
+  if(tab==='history') renderTeacherHistory();
+  if(tab==='evals'){
+    renderTeacherEvalsOwn();
+    fetchDBFromSupabase().then(()=> renderTeacherEvalsOwn());
+  }
   if(tab==='payouts'){
     renderTeacherPayouts();
     fetchDBFromSupabase().then(()=> { renderTeacherPayouts(); updateNotifBadge(); });
@@ -2941,17 +3113,18 @@ function switchTeacherTab(tab){
 function showTeacherMenu(){
   document.getElementById('teacher-tab-menu').style.display = 'grid';
   document.getElementById('teacher-tab-back').style.display = 'none';
-  ['log','attendance','schedule','chat','payouts'].forEach(t=>{
+  TEACHER_TABS.forEach(t=>{
     document.getElementById('teacher-panel-'+t).style.display = 'none';
   });
+  renderTeacherSummary();
 }
 
 /* ---------- Teacher's own attendance (check-in/out), for admin tracking ---------- */
-const TEACHER_LATE_HOUR = 8, TEACHER_LATE_MIN = 30; // بعد الساعة دي تعتبر متأخرة (تقدر تغيرها براحتك)
-
-function isLateCheckIn(iso){
+// ميعاد التأخير بيتقرا من إعدادات التقييم (الأدمن يغيّره من ⚙️ إعدادات النظام). المدرّس بيشوف الافتراضي لو الإعدادات مش متاحة له.
+function isLateCheckIn(iso, cfg){
+  cfg = cfg || getEvalConfig();
   const d = new Date(iso);
-  return d.getHours() > TEACHER_LATE_HOUR || (d.getHours()===TEACHER_LATE_HOUR && d.getMinutes() > TEACHER_LATE_MIN);
+  return d.getHours() > cfg.lateHour || (d.getHours()===cfg.lateHour && d.getMinutes() > cfg.lateMinute);
 }
 
 async function logTeacherAttendance(type){
@@ -3046,14 +3219,126 @@ function renderTeacherPayouts(){
   }).join('');
 }
 
+/* ---------- ملخص سريع أعلى قائمة المعلم ---------- */
+function renderTeacherSummary(){
+  const el = document.getElementById('teacher-summary');
+  if(!el) return;
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  if(!teacher){ el.style.display='none'; return; }
+  const today = localDateStr();
+  const todayAtt = (db.attendance||[]).filter(a=> a.sessionDate===today && teacher.classroomIds.includes(a.classroomId)).length;
+  const pending = (db.attendanceExceptions||[]).filter(x=> x.status==='pending' && teacher.classroomIds.includes(x.classroomId)).length;
+  const unread = (db.notifications||[]).filter(n=>!n.isRead).length;
+  const myTodayAtt = (db.teacherAttendance||[]).filter(r=> r.teacherId===session.personId && isToday(r.time));
+  const checkedIn = myTodayAtt.some(r=>r.type==='CHECK_IN');
+  const stat = (n,label,warn)=>`<div style="flex:1; text-align:center;"><div style="font-size:20px; font-weight:800; ${warn&&n>0?'color:var(--danger);':''}">${n}</div><div style="font-size:11px; color:var(--muted);">${label}</div></div>`;
+  el.style.display = 'block';
+  el.innerHTML = `<div style="display:flex; gap:8px;">
+      ${stat(todayAtt,'حضور طلاب النهارده')}
+      ${stat(pending,'طلبات استثناء معلّقة',true)}
+      ${stat(unread,'إشعارات جديدة')}
+    </div>
+    ${checkedIn ? '' : `<div style="margin-top:8px; font-size:12px; color:var(--danger); text-align:center;">⚠️ لسه ما سجلتش حضورك النهارده</div>`}`;
+}
+
+/* ---------- تقييم أدائي (قراءة فقط) ---------- */
+function renderTeacherEvalsOwn(){
+  const el = document.getElementById('teacher-evals-view');
+  if(!el) return;
+  const db = loadDB();
+  const labelize = {attendance:'الانتظام', punctuality:'الالتزام بالمواعيد', logging:'الانضباط في التسجيل', response:'سرعة الرد على الأهالي'};
+  const list = (db.teacherEvaluations||[])
+    .filter(e=> e.teacherId===session.personId && e.source==='AUTO')
+    .sort((a,b)=> String(b.month).localeCompare(String(a.month)));
+  if(list.length===0){ el.innerHTML = '<div class="empty">لسه مفيش تقييم شهري ليك — بيظهر بعد ما يتحسب أول شهر</div>'; return; }
+  el.innerHTML = list.map(e=>{
+    const rows = Object.keys(labelize).filter(k=> e.scores && e.scores[k]!=null).map(k=>
+      `<div style="display:flex; justify-content:space-between; font-size:13px; margin-top:4px;"><span>${labelize[k]}</span><b>${Number(e.scores[k]).toFixed(1)}/5</b></div>`).join('');
+    return `<div class="card" style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-weight:700;">${esc(e.month)}</div>
+        <div style="font-size:20px; font-weight:800;">${Number(e.overallScore||0).toFixed(1)}/5 ⭐</div>
+      </div>
+      ${rows}
+      ${e.note ? `<div style="font-size:12px; color:var(--muted); margin-top:6px;">${esc(e.note)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+/* ---------- تقويم السنتر (قراءة فقط) ---------- */
+function renderTeacherCalendar(){
+  const el = document.getElementById('teacher-calendar-view');
+  if(!el) return;
+  const db = loadDB();
+  const today = localDateStr();
+  const list = [...(db.calendarEvents||[])].filter(ev=>ev.date).sort((a,b)=> a.date.localeCompare(b.date));
+  if(list.length===0){ el.innerHTML = '<div class="empty">لا يوجد أحداث حاليًا</div>'; return; }
+  el.innerHTML = list.map(ev=>`
+    <div class="tl-item" style="${ev.date<today?'opacity:.55;':''}">
+      <div class="tl-em">📅</div>
+      <div class="tl-body"><div class="tl-title">${esc(ev.title)}</div>${ev.note?`<div class="tl-note">${esc(ev.note)}</div>`:''}</div>
+      <div class="tl-time">${new Date(ev.date+'T00:00:00').toLocaleDateString('ar-EG')}</div>
+    </div>`).join('');
+}
+
+/* ---------- سجل حضور الطلاب والاستثناءات ---------- */
+function renderTeacherHistory(){
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const attEl = document.getElementById('teacher-history-attendance');
+  const exEl = document.getElementById('teacher-history-exceptions');
+  if(!teacher || !attEl || !exEl) return;
+  const cutoff = localDateStr(new Date(getSystemNow().getTime() - 30*86400000));
+  const att = (db.attendance||[])
+    .filter(a=> teacher.classroomIds.includes(a.classroomId) && a.sessionDate>=cutoff)
+    .sort((a,b)=> b.sessionDate.localeCompare(a.sessionDate));
+  const groups = {};
+  att.forEach(a=>{ const k = a.sessionDate+'|'+a.classroomId; (groups[k]=groups[k]||[]).push(a); });
+  const keys = Object.keys(groups);
+  attEl.innerHTML = keys.length ? keys.map(k=>{
+    const [d,cid] = k.split('|');
+    const room = db.classrooms.find(r=>r.id===cid);
+    const names = groups[k].map(a=> esc(db.children.find(c=>c.id===a.childId)?.name||'—')).join('، ');
+    return `<div class="tl-item">
+      <div class="tl-em">✅</div>
+      <div class="tl-body"><div class="tl-title">${esc(room?room.name:'')} — ${groups[k].length} طالب</div><div class="tl-note">${names}</div></div>
+      <div class="tl-time">${new Date(d+'T00:00:00').toLocaleDateString('ar-EG')}</div>
+    </div>`;
+  }).join('') : '<div class="empty">مفيش حضور مسجل في آخر 30 يوم</div>';
+
+  const stLabel = {approved:'موافَق عليه', rejected:'مرفوض', pending:'معلّق'};
+  const exs = (db.attendanceExceptions||[])
+    .filter(x=> teacher.classroomIds.includes(x.classroomId))
+    .sort((a,b)=> String(b.createdAt||'').localeCompare(String(a.createdAt||'')))
+    .slice(0,50);
+  exEl.innerHTML = exs.length ? exs.map(x=>{
+    const child = db.children.find(c=>c.id===x.childId);
+    const room = db.classrooms.find(r=>r.id===x.classroomId);
+    const who = x.grantedByRole==='admin' ? 'المدير' : x.grantedByRole==='teacher' ? 'المدرّس' : 'أسيستنت (طلب)';
+    return `<div class="tl-item">
+      <div class="tl-em">🎫</div>
+      <div class="tl-body"><div class="tl-title">${esc(child?child.name:'—')} · ${esc(room?room.name:'')}</div>
+        <div class="tl-note">${who} · ${esc(x.reason||'بدون سبب مكتوب')}${x.flaggedUnjustified?' · ⚠️ اتعلّم غير مبرر':''}</div></div>
+      <span class="badge ${x.status==='approved'?'resolved':''}">${stLabel[x.status]||esc(x.status)}</span>
+    </div>`;
+  }).join('') : '<div class="empty">مفيش استثناءات</div>';
+}
+
 function renderTeacherChat(){
   const db = loadDB();
+  const chatSel = document.getElementById('teacher-chat-child-select');
+  const mainSel = document.getElementById('teacher-child-select');
+  if(chatSel && mainSel){
+    if(chatSel.innerHTML !== mainSel.innerHTML) chatSel.innerHTML = mainSel.innerHTML;
+    if(teacherActiveChildId) chatSel.value = teacherActiveChildId;
+  }
   const list = db.messages.filter(m=>m.childId===teacherActiveChildId).sort((a,b)=> new Date(a.time)-new Date(b.time));
   const el = document.getElementById('teacher-chat-view');
   el.innerHTML = list.length ? list.map(m=>`
     <div class="tl-item">
       <div class="tl-em">${m.sender==='PARENT'?'👨‍👩‍👧':'👩‍🏫'}</div>
-      <div class="tl-body"><div class="tl-title">${m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس')}</div><div class="tl-note">${m.text}</div></div>
+      <div class="tl-body"><div class="tl-title">${esc(m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس'))}</div><div class="tl-note">${esc(m.text)}</div></div>
       <div class="tl-time">${timeStr(m.time)}</div>
     </div>`).join('') : '<div class="empty">مفيش رسائل لسه مع ولي أمر الطالب ده</div>';
 }
@@ -3100,7 +3385,7 @@ function initTeacherScreen(){
     sel.innerHTML = myChildren.map(c=>{
       // نعرض بس اسم المجموعة (المجموعات) المشتركة بين الطالب والمدرّس ده، عشان لو الطالب مسجل في مجموعات تانية عند مدرّسين تانيين ميظهرش لبس
       const sharedRooms = (c.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid)).map(cid=> db.classrooms.find(r=>r.id===cid)?.name).filter(Boolean).join('، ');
-      return `<option value="${c.id}">${c.name} — ${sharedRooms}</option>`;
+      return `<option value="${esc(c.id)}">${esc(c.name)} — ${esc(sharedRooms)}</option>`;
     }).join('');
     teacherActiveChildId = myChildren[0].id;
   }
@@ -3108,6 +3393,16 @@ function initTeacherScreen(){
   renderTeacherPendingExceptions();
   renderTeacherLog();
   showTeacherMenu();
+  // تحديث تلقائي كل 30 ثانية (رسائل أولياء الأمور + طلبات استثناء الأسيستنت + الإشعارات)
+  if(teacherPollTimer) clearInterval(teacherPollTimer);
+  teacherPollTimer = setInterval(async ()=>{
+    if(document.hidden || session.role!=='TEACHER') return;
+    try{ await fetchDBFromSupabase(); }catch(e){ return; }
+    renderTeacherPendingExceptions();
+    renderTeacherChat();
+    if(document.getElementById('teacher-tab-menu').style.display!=='none') renderTeacherSummary();
+    updateNotifBadge();
+  }, 30000);
 }
 
 // طلبات الاستثناء اللي الأسيستنت بعتها ولسه pending، لطلاب مجموعات المدرّس ده بس
@@ -3124,8 +3419,8 @@ function renderTeacherPendingExceptions(){
     const child = db.children.find(c=>c.id===x.childId);
     const room = db.classrooms.find(r=>r.id===x.classroomId);
     return `<div class="timeline-item">
-      <div><b>${child?child.name:''}</b> — ${room?room.name:''}</div>
-      <div style="font-size:12px; color:var(--muted);">السبب: ${x.reason||''}</div>
+      <div><b>${esc(child?child.name:'')}</b> — ${esc(room?room.name:'')}</div>
+      <div style="font-size:12px; color:var(--muted);">السبب: ${esc(x.reason||'')}</div>
       <div style="display:flex; gap:8px; margin-top:6px;">
         <button class="badge admin" onclick="resolveAssistantException('${x.id}','approved')">✅ موافقة</button>
         <button class="badge" style="color:var(--danger);" onclick="confirmAction('متأكد إنك عايز ترفض استثناء الحضور ده؟', ()=>resolveAssistantException('${x.id}','rejected'))">✕ رفض</button>
@@ -3199,7 +3494,7 @@ function renderTeacherStudentGrid(){
       const room = db.classrooms.find(r=>r.id===cid);
       const already = (db.attendance||[]).some(a=> a.childId===c.id && a.classroomId===cid && a.sessionDate===todayStr);
       return `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:4px;" onclick="event.stopPropagation();">
-        <span style="font-size:11px; color:var(--muted);">${room?room.name:''}</span>
+        <span style="font-size:11px; color:var(--muted);">${esc(room?room.name:'')}</span>
         ${already
           ? `<span class="sc-badge resolved" style="font-size:11px;">✅ اتسجل حضوره النهارده</span>`
           : `<button class="badge admin" style="font-size:11px; padding:3px 8px;" onclick="recordSessionAttendance('${c.id}','${cid}')">تسجيل حضور</button>`}
@@ -3207,11 +3502,11 @@ function renderTeacherStudentGrid(){
     }).join('');
     return `<div class="student-card ${isActive?'active':''}" onclick="selectTeacherChild('${c.id}')">
       <div class="sc-photo">
-        ${c.photoUrl ? `<img src="${c.photoUrl}" alt="">` : '🧑\u200d🎓'}
+        ${safeImgSrc(c.photoUrl) ? `<img src="${safeImgSrc(c.photoUrl)}" alt="">` : '🧑\u200d🎓'}
         <input type="file" accept="image/*" onclick="event.stopPropagation();" onchange="uploadChildPhoto('${c.id}', this.files[0])">
       </div>
-      <div class="sc-name">${c.name}</div>
-      <div class="sc-sub">${sharedRooms}</div>
+      <div class="sc-name">${esc(c.name)}</div>
+      <div class="sc-sub">${esc(sharedRooms)}</div>
       <div class="sc-badges">
         <span class="sc-badge ${effort===null?'pending':'effort'}">${effort===null?'مجهودي: —':'مجهودي '+effort+'%'}</span>
         <span class="sc-badge pending">مستوى: قريبًا</span>
@@ -3300,7 +3595,7 @@ function initAssistantScreen(){
     assistantActiveTeacherId = teachers[0].id;
   } else {
     sel.style.display = 'block';
-    sel.innerHTML = teachers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    sel.innerHTML = teachers.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
     assistantActiveTeacherId = teachers[0].id;
     sel.value = assistantActiveTeacherId;
   }
@@ -3329,7 +3624,7 @@ function renderAssistantStudentGrid(){
       const already = (db.attendance||[]).some(a=> a.childId===c.id && a.classroomId===cid && a.sessionDate===todayStr);
       const enrollment = (db.enrollments||[]).find(e=> e.childId===c.id && e.classroomId===cid);
       return `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap;">
-        <span style="font-size:11px; color:var(--muted);">${room?room.name:''}</span>
+        <span style="font-size:11px; color:var(--muted);">${esc(room?room.name:'')}</span>
         <span style="display:flex; gap:4px;">
           ${already
             ? `<span class="sc-badge resolved" style="font-size:11px;">✅ اتسجل حضوره</span>`
@@ -3339,9 +3634,9 @@ function renderAssistantStudentGrid(){
       </div>`;
     }).join('');
     return `<div class="student-card">
-      <div class="sc-photo">${c.photoUrl ? `<img src="${c.photoUrl}" alt="">` : '🧑\u200d🎓'}</div>
-      <div class="sc-name">${c.name}</div>
-      <div class="sc-sub">${sharedRooms}</div>
+      <div class="sc-photo">${safeImgSrc(c.photoUrl) ? `<img src="${safeImgSrc(c.photoUrl)}" alt="">` : '🧑\u200d🎓'}</div>
+      <div class="sc-name">${esc(c.name)}</div>
+      <div class="sc-sub">${esc(sharedRooms)}</div>
       <div style="border-top:1px solid var(--border); margin-top:8px; padding-top:6px;">${rows}</div>
     </div>`;
   }).join('');
@@ -3436,15 +3731,15 @@ function renderTeacherTasksToday(){
   const blocks = subjectIds.map(sid=>{
     const subj = db.subjects.find(s=>s.id===sid);
     const tasks = (db.subjectTasks||[]).filter(t=>t.subjectId===sid).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
-    if(tasks.length===0) return `<div style="padding:6px 4px; font-size:13px; color:var(--muted);">${subj?subj.name:''}: لسه مفيش مهام معرّفة لهذه المادة (المدير يقدر يضيفها من تاب "المواد")</div>`;
+    if(tasks.length===0) return `<div style="padding:6px 4px; font-size:13px; color:var(--muted);">${esc(subj?subj.name:'')}: لسه مفيش مهام معرّفة لهذه المادة (المدير يقدر يضيفها من تاب "المواد")</div>`;
     const rows = tasks.map(t=>{
       const done = (db.taskCompletions||[]).some(c=> c.childId===child.id && c.subjectId===sid && c.taskId===t.id && c.date===todayStr && c.done);
       return `<div class="task-check-row">
         <input type="checkbox" ${done?'checked':''} onchange="toggleTaskCompletion('${child.id}','${sid}','${t.id}', this.checked)">
-        <span>${t.name}</span>
+        <span>${esc(t.name)}</span>
       </div>`;
     }).join('');
-    return `<div style="margin-bottom:10px;"><div style="font-weight:700; font-size:13px; margin-bottom:4px;">${subj?subj.name:'مادة'}</div>${rows}</div>`;
+    return `<div style="margin-bottom:10px;"><div style="font-weight:700; font-size:13px; margin-bottom:4px;">${esc(subj?subj.name:'مادة')}</div>${rows}</div>`;
   }).join('');
   el.innerHTML = blocks || '<div class="empty">مفيش مواد مسجلة بجدولك لهذا الطالب</div>';
 }
@@ -3490,24 +3785,27 @@ function renderTeacherEvals(){
   el.innerHTML = list.map(e=>{
     const subj = db.subjects.find(s=>s.id===e.subjectId);
     const r = ratingMeta[e.rating];
+    const mine = e.teacherId===session.personId; // المعلم يعدّل/يحذف تقييماته هو بس
     return `<div class="tl-item">
       <div class="tl-em">${r?r.em:'📊'}</div>
       <div class="tl-body">
-        <div class="tl-title">${subj?subj.name:'مادة محذوفة'} — ${r?r.label:''}</div>
-        ${e.note?`<div class="tl-note">${e.note}</div>`:''}
+        <div class="tl-title">${esc(subj?subj.name:'مادة محذوفة')} — ${r?r.label:''}</div>
+        ${e.note?`<div class="tl-note">${esc(e.note)}</div>`:''}
       </div>
       <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
         <div class="tl-time">${new Date(e.date).toLocaleDateString('ar-EG')}</div>
-        <div style="display:flex; gap:6px;">
+        ${mine ? `<div style="display:flex; gap:6px;">
           <span style="cursor:pointer; color:var(--muted); font-size:12px;" onclick="openEvalBox('${e.id}')">تعديل</span>
           <span style="cursor:pointer; color:var(--danger); font-size:12px;" onclick="deleteEvaluation('${e.id}')">حذف</span>
-        </div>
+        </div>` : ''}
       </div>
     </div>`;
   }).join('');
 }
 
 function deleteEvaluation(evalId){
+  const ev = loadDB().evaluations.find(e=>e.id===evalId);
+  if(ev && ev.teacherId && ev.teacherId!==session.personId){ showToast('تقدر تحذف تقييماتك إنت بس'); return; }
   confirmAction('متأكد إنك عايز تمسح التقييم ده؟', async ()=>{
     const { error } = await supabaseClient.from('evaluations').delete().eq('id', evalId);
     if(error){ showToast('تعذّر حذف التقييم'); return; }
@@ -3521,6 +3819,8 @@ function deleteEvaluation(evalId){
 }
 
 function deleteEvent(eventId){
+  const evt = loadDB().events.find(e=>e.id===eventId);
+  if(evt && evt.teacherId && evt.teacherId!==session.personId){ showToast('تقدر تحذف الأحداث اللي سجلتها إنت بس'); return; }
   confirmAction('متأكد إنك عايز تمسح الحدث ده؟', async ()=>{
     const { error } = await supabaseClient.from('events').delete().eq('id', eventId);
     if(error){ showToast('تعذّر حذف الحدث'); return; }
@@ -3547,10 +3847,10 @@ function renderTimeline(elId, events, allowDelete){
     return `<div class="tl-item">
       <div class="tl-em">${meta.em}</div>
       <div class="tl-body">
-        ${allowDelete ? `<div style="float:left; cursor:pointer; color:var(--danger); font-size:12px;" onclick="deleteEvent('${e.id}')">حذف ✕</div>` : ''}
-        <div class="tl-title">${title}</div>
-        ${note ? `<div class="tl-note">${note}</div>` : ''}
-        ${e.metadata && e.metadata.photoData ? `<img src="${e.metadata.photoData}" style="max-width:100%; border-radius:8px; margin-top:6px; display:block;">` : ''}
+        ${allowDelete && (!e.teacherId || e.teacherId===session.personId) ? `<div style="float:left; cursor:pointer; color:var(--danger); font-size:12px;" onclick="deleteEvent('${esc(e.id)}')">حذف ✕</div>` : ''}
+        <div class="tl-title">${esc(title)}</div>
+        ${note ? `<div class="tl-note">${esc(note)}</div>` : ''}
+        ${e.metadata && e.metadata.photoData && safeImgSrc(e.metadata.photoData) ? `<img src="${safeImgSrc(e.metadata.photoData)}" style="max-width:100%; border-radius:8px; margin-top:6px; display:block;">` : ''}
       </div>
       <div class="tl-time">${timeStr(e.eventTime)}</div>
     </div>`;
@@ -3568,6 +3868,7 @@ async function logEvent(type, em, label, metadata, note){
     childId: teacherActiveChildId,
     eventType: type,
     eventTime,
+    teacherId: session.personId,
     metadata: metadata || {},
     note: note || ''
   };
@@ -3617,19 +3918,38 @@ function closeQrBox(){
   document.getElementById('qr-modal-bg').classList.remove('show');
 }
 
+// تسجيل "وصول" الطالب بالـQR لازم يعدّي على نفس فحص الدفع بتاع جدول attendance (وإلا كان بيتخطاه)
+// بنسجّل الحضور تلقائي بس لو للطالب مجموعة واحدة مشتركة مع المدرّس (لو أكتر من واحدة مش واضح أنهي حصة)
+function qrAlsoRecordAttendance(type, childId){
+  if(type!=='CHECK_IN' || !childId) return;
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const child = db.children.find(c=>c.id===childId);
+  if(!teacher || !child) return;
+  const rooms = (child.classroomIds||[]).filter(cid=> teacher.classroomIds.includes(cid));
+  if(rooms.length!==1) return;
+  const today = localDateStr();
+  const already = (db.attendance||[]).some(a=> a.childId===childId && a.classroomId===rooms[0] && a.sessionDate===today);
+  if(!already) recordSessionAttendance(childId, rooms[0]);
+}
+
 function confirmQrScan(){
   const type = qrCtx.type;
+  const childId = teacherActiveChildId;
   const meta = type==='CHECK_IN' ? {em:'✅', label:'وصول الطالب'} : {em:'🚪', label:'انصراف الطالب'};
   const db = loadDB();
-  const alreadyToday = db.events.some(e=> e.childId===teacherActiveChildId && e.eventType===type && isToday(e.eventTime));
+  const alreadyToday = db.events.some(e=> e.childId===childId && e.eventType===type && isToday(e.eventTime));
+  const token = qrCurrentToken;
   closeQrBox();
+  const doLog = async ()=>{
+    await logEvent(type, meta.em, meta.label, {qrToken: token, scannedByDevice: getDeviceId()});
+    qrAlsoRecordAttendance(type, childId);
+  };
   if(alreadyToday){
-    confirmAction(`${meta.label} اتسجل بالفعل النهارده لهذا الطالب. متأكد إنك عايز تسجله تاني؟`, ()=>{
-      logEvent(type, meta.em, meta.label, {qrToken: qrCurrentToken, scannedByDevice: getDeviceId()});
-    });
+    confirmAction(`${meta.label} اتسجل بالفعل النهارده لهذا الطالب. متأكد إنك عايز تسجله تاني؟`, doLog);
     return;
   }
-  logEvent(type, meta.em, meta.label, {qrToken: qrCurrentToken, scannedByDevice: getDeviceId()});
+  doLog();
 }
 
 /* ---------- Device lock (simulated — real enforcement needs a backend) ---------- */
@@ -3676,7 +3996,7 @@ function openEvalBox(editId){
   const grades = rooms.map(r=>r.grade);
   const subjectsForGrade = db.subjects.filter(s=> s.grade==='ALL' || grades.includes(s.grade));
   const sel = document.getElementById('eval-subject');
-  sel.innerHTML = subjectsForGrade.map(s=>`<option value="${s.id}" ${existing&&existing.subjectId===s.id?'selected':''}>${s.name}</option>`).join('') || '<option value="">لا يوجد مواد لمراحل مجموعات الطالب ده</option>';
+  sel.innerHTML = subjectsForGrade.map(s=>`<option value="${esc(s.id)}" ${existing&&existing.subjectId===s.id?'selected':''}>${esc(s.name)}</option>`).join('') || '<option value="">لا يوجد مواد لمراحل مجموعات الطالب ده</option>';
   if(existing) document.getElementById('eval-rating').value = existing.rating;
   document.getElementById('eval-note').value = existing ? (existing.note||'') : '';
   document.querySelector('#eval-modal-bg h3').textContent = existing ? '📊 تعديل تقييم مادة دراسية' : '📊 تقييم مادة دراسية';
@@ -3692,6 +4012,7 @@ async function saveEval(){
   if(evalEditId){
     const item = db.evaluations.find(e=>e.id===evalEditId);
     if(!item){ evalEditId = null; return; }
+    if(item.teacherId && item.teacherId!==session.personId){ showToast('تقدر تعدّل تقييماتك إنت بس'); evalEditId = null; return; }
     const updatedPayload = {childId:item.childId, subjectId, rating, note, teacherId:item.teacherId, date:item.date};
     const { error } = await supabaseClient.from('evaluations').update({subject_id: subjectId, payload: updatedPayload}).eq('id', evalEditId);
     if(error){ showToast('تعذّر تعديل التقييم'); return; }
@@ -3822,7 +4143,7 @@ function renderParentChat(){
   el.innerHTML = list.length ? list.map(m=>`
     <div class="tl-item">
       <div class="tl-em">${m.sender==='PARENT'?'👨‍👩‍👧':'👩‍🏫'}</div>
-      <div class="tl-body"><div class="tl-title">${m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس')}</div><div class="tl-note">${m.text}</div></div>
+      <div class="tl-body"><div class="tl-title">${esc(m.senderName||(m.sender==='PARENT'?'ولي الأمر':'المدرّس'))}</div><div class="tl-note">${esc(m.text)}</div></div>
       <div class="tl-time">${timeStr(m.time)}</div>
     </div>`).join('') : '<div class="empty">ابدأ المحادثة مع مدرّس ابنك</div>';
 }
@@ -3882,7 +4203,7 @@ function renderParentCalendar(){
   el.innerHTML = list.map(ev=>`
     <div class="tl-item">
       <div class="tl-em">📅</div>
-      <div class="tl-body"><div class="tl-title">${ev.title}</div>${ev.note?`<div class="tl-note">${ev.note}</div>`:''}</div>
+      <div class="tl-body"><div class="tl-title">${esc(ev.title)}</div>${ev.note?`<div class="tl-note">${esc(ev.note)}</div>`:''}</div>
       <div class="tl-time">${new Date(ev.date).toLocaleDateString('ar-EG')}</div>
     </div>`).join('');
 }
@@ -3940,7 +4261,7 @@ function renderParentComplaints(){
     <div class="tl-item">
       <div class="tl-em">💬</div>
       <div class="tl-body">
-        <div class="tl-title">${c.message}</div>
+        <div class="tl-title">${esc(c.message)}</div>
         <div class="tl-note">${new Date(c.submittedAt).toLocaleDateString('ar-EG')} — ${timeStr(c.submittedAt)}</div>
       </div>
       <div><span class="badge ${c.status==='PENDING'?'pending':'resolved'}">${c.status==='PENDING'?'قيد المراجعة':'تم الحل'}</span></div>
@@ -4541,10 +4862,10 @@ function renderGlobalSearchResults(query){
     return;
   }
   resultsEl.innerHTML = matches.map(m=>`
-    <div class="list-row" style="cursor:pointer;" onclick="selectGlobalSearchResult('${m.tab}', '${m.text.replace(/'/g,"\\'")}')">
+    <div class="list-row" style="cursor:pointer;" onclick="selectGlobalSearchResult('${esc(m.tab)}', ${esc(JSON.stringify(m.text))})">
       <div class="list-row-main">
         <div class="list-avatar" style="background:${m.color};">${m.icon}</div>
-        <div class="list-info"><div class="list-name">${m.text}</div><div class="list-sub">${m.sub} · ${ADMIN_TAB_META[m.tab].label}</div></div>
+        <div class="list-info"><div class="list-name">${esc(m.text)}</div><div class="list-sub">${esc(m.sub)} · ${ADMIN_TAB_META[m.tab].label}</div></div>
       </div>
     </div>`).join('');
 }
@@ -5453,14 +5774,20 @@ function renderAdminListInner(){
   else if(adminActiveTab==='teacherEvaluations'){
     const dbFresh = ensureAutoEvalsUpToDate(6);
     const cycle = dbFresh.settings.raiseCycleMonths || 4;
+    const evalCfg = getEvalConfig(dbFresh);
     const items = dbFresh.teachers.filter(t=> matchesSearch(t.name));
     el.innerHTML = `
       <div class="card" style="display:flex; justify-content:space-between; align-items:center;">
         <div>
           <div style="font-size:13px; color:var(--muted);">دورة مراجعة العلاوة الحالية</div>
-          <div style="font-weight:700;">كل ${cycle} شهور</div>
+          <div style="font-weight:700;">كل ${cycle} شهور · الأهلية من ${evalCfg.raiseThreshold}/5</div>
         </div>
         <button class="badge" onclick="openAdminSettingsScreen()">تغيير المدة</button>
+      </div>
+      <div class="card">
+        <div style="font-size:13px; color:var(--muted); margin-bottom:6px;">معايير التقييم الحالية</div>
+        <div style="font-size:13px; line-height:1.9;">${evalWeightsSummaryHtml(evalCfg)}</div>
+        <button class="badge admin" style="margin-top:8px;" onclick="openEvalSettings()">⚙️ تخصيص معايير التقييم</button>
       </div>
       ${searchBoxHtml('دور باسم مدرّس...')}
       ${items.map(t=>{
@@ -5468,7 +5795,7 @@ function renderAdminListInner(){
         const latest = evals[0];
         const recent = evals.slice(0, cycle);
         const cycleAvg = recent.length ? recent.reduce((s,e)=>s+e.overallScore,0)/recent.length : null;
-        const eligible = cycleAvg !== null && cycleAvg >= 3.5 && recent.length >= cycle;
+        const eligible = cycleAvg !== null && cycleAvg >= evalCfg.raiseThreshold && recent.length >= cycle;
         return `<div class="list-row" style="cursor:pointer;" onclick="openTeacherEvalModal('${t.id}')">
           <div class="list-row-main">
             <div class="list-avatar" style="background:linear-gradient(135deg,#f59e0b,#b45309);">${avatarInitial(t.name)}</div>
@@ -5590,7 +5917,7 @@ function renderAdminListInner(){
       return `<div class="list-row">
         <div class="list-row-main" style="cursor:pointer;" onclick="toggleComplaintStatus('${c.id}')">
           <div class="list-avatar" style="background:linear-gradient(135deg,#f43f5e,#e11d48);">💬</div>
-          <div class="list-info"><div class="list-name">${c.message}</div><div class="list-sub">${parent?parent.name:'—'} — ${new Date(c.submittedAt).toLocaleDateString('ar-EG')}</div></div>
+          <div class="list-info"><div class="list-name">${esc(c.message)}</div><div class="list-sub">${esc(parent?parent.name:'—')} — ${new Date(c.submittedAt).toLocaleDateString('ar-EG')}</div></div>
         </div>
         <div class="list-actions" style="flex-wrap:wrap;">
           <span class="badge ${c.status==='PENDING'?'pending':'resolved'}" style="cursor:pointer;" onclick="toggleComplaintStatus('${c.id}')">${c.status==='PENDING'?'قيد المراجعة':'تم الحل'}</span>
@@ -7172,22 +7499,84 @@ async function toggleComplaintStatus(id){
 //  - الانضباط في التسجيل: مدى انتظامه في تسجيل أحداث يومية لطلاب مجموعته
 //  - سرعة الرد على أولياء الأمور: متوسط وقت رده على رسائل الشات
 // كل معيار بيتحسب من 5، والمتوسط المرجّح هو overallScore بتاع الشهر.
-const AUTO_SCORE_WEIGHTS = { attendance: 0.30, punctuality: 0.25, logging: 0.25, response: 0.20 };
+// ===== إعدادات حساب التقييم (قابلة للتخصيص من ⚙️ إعدادات النظام > تقييم أداء المدرّسين) =====
+// بتتخزن في app_settings.teacher_eval_config (JSON). أي قيمة ناقصة أو غلط بترجع للافتراضي بدل ما تكسر الحساب.
+const DEFAULT_EVAL_CONFIG = {
+  criteria: {
+    attendance:  { enabled:true, weight:30 },
+    punctuality: { enabled:true, weight:25 },
+    logging:     { enabled:true, weight:25 },
+    response:    { enabled:true, weight:20 }
+  },
+  lateHour: 8, lateMinute: 30,          // بعد الميعاد ده الحضور يعتبر متأخر
+  offDays: [5],                         // أيام الإجازة الأسبوعية (0=الأحد ... 5=الجمعة ... 6=السبت)
+  loggingEventsPerStudentPerDay: 1,     // عدد الأحداث المتوقع تسجيلها لكل طالب في كل يوم حضور
+  responseMinutes: [15, 60, 180, 1440], // سرعة الرد: لحد كل حد = 5 / 4 / 3 / 2 درجات، وأكتر منه = 1
+  raiseThreshold: 3.5                   // الحد الأدنى لمتوسط الدورة عشان المدرّس يتأهل لمراجعة العلاوة
+};
+const EVAL_CRITERIA_META = [
+  { key:'attendance',  label:'الانتظام',                       hint:'أيام الحضور الفعلية ÷ أيام الشغل في الشهر' },
+  { key:'punctuality', label:'الالتزام بالمواعيد',             hint:'نسبة مرات الحضور قبل ميعاد التأخير' },
+  { key:'logging',     label:'الانضباط في التسجيل',            hint:'الأحداث اللي سجلها لطلاب مجموعاته ÷ المتوقع' },
+  { key:'response',    label:'سرعة الرد على أولياء الأمور',    hint:'متوسط وقت رده على رسائل الشات' }
+];
+const EVAL_DAY_NAMES = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+
+function normalizeEvalConfig(raw){
+  const d = DEFAULT_EVAL_CONFIG;
+  const c = JSON.parse(JSON.stringify(d));
+  if(!raw || typeof raw!=='object') return c;
+  const num = (v, lo, hi, dflt)=>{ const n = Number(v); return (v!==null && v!=='' && isFinite(n) && n>=lo && n<=hi) ? n : dflt; };
+  Object.keys(c.criteria).forEach(k=>{
+    const r = raw.criteria && raw.criteria[k];
+    if(r && typeof r==='object'){
+      c.criteria[k].enabled = r.enabled!==false;
+      c.criteria[k].weight = num(r.weight, 0, 100, d.criteria[k].weight);
+    }
+  });
+  c.lateHour = Math.round(num(raw.lateHour, 0, 23, d.lateHour));
+  c.lateMinute = Math.round(num(raw.lateMinute, 0, 59, d.lateMinute));
+  if(Array.isArray(raw.offDays)){
+    const od = [...new Set(raw.offDays.map(Number).filter(n=> Number.isInteger(n) && n>=0 && n<=6))];
+    if(od.length < 7) c.offDays = od; // لو كل الأيام إجازة نرجع للافتراضي
+  }
+  c.loggingEventsPerStudentPerDay = num(raw.loggingEventsPerStudentPerDay, 0.1, 50, d.loggingEventsPerStudentPerDay);
+  if(Array.isArray(raw.responseMinutes) && raw.responseMinutes.length===4){
+    const rm = raw.responseMinutes.map(Number);
+    const ok = rm.every((n,i)=> isFinite(n) && n>0 && n<=10080 && (i===0 || n>rm[i-1]));
+    if(ok) c.responseMinutes = rm;
+  }
+  c.raiseThreshold = num(raw.raiseThreshold, 1, 5, d.raiseThreshold);
+  return c;
+}
+function getEvalConfig(db){
+  db = db || loadDB();
+  return normalizeEvalConfig(db && db.settings ? db.settings.evalConfig : null);
+}
+// الأوزان الفعلية (نسب مئوية من 100) للمعايير المفعّلة بس
+function evalEffectiveWeights(cfg){
+  const active = Object.keys(cfg.criteria).filter(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0);
+  const total = active.reduce((t,k)=> t + cfg.criteria[k].weight, 0);
+  const out = {};
+  active.forEach(k=>{ out[k] = total ? (cfg.criteria[k].weight/total)*100 : 0; });
+  return out;
+}
 
 function monthKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
 
-function workingDaysInMonth(year, monthIndex0, uptoDate){
-  // بافتراض إجازة يوم الجمعة بس — غيّرها هنا لو عندكم إجازة تانية
+function workingDaysInMonth(year, monthIndex0, uptoDate, offDays){
+  offDays = offDays || DEFAULT_EVAL_CONFIG.offDays; // أيام الإجازة الأسبوعية من الإعدادات
   const end = uptoDate ? uptoDate.getDate() : new Date(year, monthIndex0+1, 0).getDate();
   let count = 0;
   for(let d=1; d<=end; d++){
-    const day = new Date(year, monthIndex0, d).getDay(); // 5 = الجمعة
-    if(day !== 5) count++;
+    const day = new Date(year, monthIndex0, d).getDay();
+    if(!offDays.includes(day)) count++;
   }
   return count;
 }
 
 function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
+  const cfg = getEvalConfig(db);
   const monthStart = new Date(year, monthIndex0, 1);
   const monthEnd = new Date(year, monthIndex0+1, 0, 23,59,59);
   const now = getSystemNow();
@@ -7195,21 +7584,22 @@ function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
   const effectiveEnd = isCurrentMonth ? now : monthEnd;
 
   const teacher = db.teachers.find(t=>t.id===teacherId);
-  const myChildren = teacher ? db.children.filter(c=> teacher.classroomIds.includes(c.classroomId)) : [];
+  // الطالب ممكن يكون في أكتر من مجموعة (classroomIds)، فبنقارن بالمصفوفة مش بحقل مفرد
+  const myChildren = teacher ? db.children.filter(c=> (c.classroomIds||[]).some(cid=> teacher.classroomIds.includes(cid))) : [];
 
   // 1) الانتظام والالتزام بالمواعيد
   const attRecords = db.teacherAttendance.filter(r=> r.teacherId===teacherId && new Date(r.time)>=monthStart && new Date(r.time)<=effectiveEnd);
   const checkIns = attRecords.filter(r=>r.type==='CHECK_IN');
   const daysAttended = new Set(checkIns.map(r=> new Date(r.time).toDateString())).size;
-  const expectedDays = workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd) || 1;
+  const expectedDays = workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd, cfg.offDays) || 1;
   const attendanceScore = Math.min(5, (daysAttended/expectedDays) * 5);
-  const onTimeCount = checkIns.filter(r=> !isLateCheckIn(r.time)).length;
+  const onTimeCount = checkIns.filter(r=> !isLateCheckIn(r.time, cfg)).length;
   const punctualityScore = checkIns.length ? (onTimeCount/checkIns.length)*5 : null;
 
-  // 2) الانضباط في تسجيل الأحداث اليومية (بافتراض حدث واحد على الأقل لكل طالب في كل يوم حضور كحد أدنى مقبول)
+  // 2) الانضباط في تسجيل الأحداث اليومية (المتوقع = أيام الحضور × عدد الطلاب × المتوقع لكل طالب في اليوم)
   const childIds = myChildren.map(c=>c.id);
   const loggedEvents = db.events.filter(e=> childIds.includes(e.childId) && new Date(e.eventTime)>=monthStart && new Date(e.eventTime)<=effectiveEnd);
-  const expectedEvents = Math.max(1, daysAttended * myChildren.length);
+  const expectedEvents = Math.max(1, daysAttended * myChildren.length * cfg.loggingEventsPerStudentPerDay);
   const loggingScore = myChildren.length ? Math.min(5, (loggedEvents.length/expectedEvents)*5) : null;
 
   // 3) سرعة الرد على رسائل أولياء الأمور
@@ -7230,23 +7620,25 @@ function computeAutoTeacherScore(db, teacherId, year, monthIndex0){
   let responseScore = null;
   if(responseTimesMin.length){
     const avgMin = responseTimesMin.reduce((a,b)=>a+b,0)/responseTimesMin.length;
-    responseScore = avgMin<=15 ? 5 : avgMin<=60 ? 4 : avgMin<=180 ? 3 : avgMin<=1440 ? 2 : 1;
+    const [t5,t4,t3,t2] = cfg.responseMinutes;
+    responseScore = avgMin<=t5 ? 5 : avgMin<=t4 ? 4 : avgMin<=t3 ? 3 : avgMin<=t2 ? 2 : 1;
   }
 
-  // تجميع المعايير المتاحة بس (لو معيار مفيش بيانات كافية له، بيتشال من المتوسط بدل ما يفتري النتيجة بالسلب)
-  const parts = [
-    {key:'attendance', score:attendanceScore, weight:AUTO_SCORE_WEIGHTS.attendance},
-    {key:'punctuality', score:punctualityScore, weight:AUTO_SCORE_WEIGHTS.punctuality},
-    {key:'logging', score:loggingScore, weight:AUTO_SCORE_WEIGHTS.logging},
-    {key:'response', score:responseScore, weight:AUTO_SCORE_WEIGHTS.response}
-  ].filter(p=> p.score !== null);
-  const totalWeight = parts.reduce((s,p)=>s+p.weight,0) || 1;
-  const overallScore = parts.reduce((s,p)=> s + p.score*p.weight, 0) / totalWeight;
+  // تجميع المعايير المفعّلة اللي ليها بيانات بس (المعيار المعطّل أو اللي مفيش له بيانات بيتشال من المتوسط بدل ما يتحسب صفر)
+  const raw = { attendance:attendanceScore, punctuality:punctualityScore, logging:loggingScore, response:responseScore };
+  const parts = Object.keys(raw)
+    .filter(k=> cfg.criteria[k].enabled && cfg.criteria[k].weight>0 && raw[k] !== null)
+    .map(k=> ({key:k, score:raw[k], weight:cfg.criteria[k].weight}));
+  const totalWeight = parts.reduce((s,p)=>s+p.weight,0);
+  const overallScore = totalWeight ? parts.reduce((s,p)=> s + p.score*p.weight, 0) / totalWeight : 0;
 
+  // المعيار المعطّل بيتخزن null عشان يظهر "معطّل" في الواجهة ومايتحسبش
+  const scores = {};
+  Object.keys(raw).forEach(k=>{ scores[k] = cfg.criteria[k].enabled ? raw[k] : null; });
   return {
-    scores: { attendance: attendanceScore, punctuality: punctualityScore, logging: loggingScore, response: responseScore },
+    scores,
     overallScore,
-    hasData: checkIns.length>0 || loggedEvents.length>0
+    hasData: (checkIns.length>0 || loggedEvents.length>0) && parts.length>0
   };
 }
 
@@ -7389,7 +7781,8 @@ function openTeacherEvalModal(teacherId){
   const cycle = db.settings.raiseCycleMonths || 4;
   const recent = evals.slice(0, cycle);
   const cycleAvg = recent.length ? recent.reduce((s,e)=>s+e.overallScore,0)/recent.length : null;
-  const eligible = cycleAvg !== null && cycleAvg >= 3.5 && recent.length >= cycle;
+  const evalCfg = getEvalConfig(db);
+  const eligible = cycleAvg !== null && cycleAvg >= evalCfg.raiseThreshold && recent.length >= cycle;
   const form = document.getElementById('teacher-eval-form');
   const labelize = {attendance:'الانتظام', punctuality:'الالتزام بالمواعيد', logging:'الانضباط في التسجيل', response:'سرعة الرد على الأهالي'};
   const latest = evals[0];
@@ -7397,7 +7790,7 @@ function openTeacherEvalModal(teacherId){
     <div style="font-size:13px; color:var(--muted);">آخر شهر محسوب: ${latest?latest.month:'مفيش بيانات كفاية لسه'}</div>
     ${latest ? `
       <div style="font-weight:700; font-size:20px;">${latest.overallScore.toFixed(1)} / 5 ⭐</div>
-      ${Object.entries(latest.scores).map(([k,v])=> v!==null ? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${labelize[k]}</span><span>${v.toFixed(1)}/5</span></div>` : `<div style="display:flex; justify-content:space-between; font-size:13px; color:var(--muted);"><span>${labelize[k]}</span><span>مفيش بيانات كفاية</span></div>`).join('')}
+      ${Object.entries(latest.scores).map(([k,v])=> v!==null ? `<div style="display:flex; justify-content:space-between; font-size:13px;"><span>${labelize[k]}</span><span>${v.toFixed(1)}/5</span></div>` : `<div style="display:flex; justify-content:space-between; font-size:13px; color:var(--muted);"><span>${labelize[k]}</span><span>${evalCfg.criteria[k] && !evalCfg.criteria[k].enabled ? 'معطّل' : 'مفيش بيانات كفاية'}</span></div>`).join('')}
     ` : '<div class="empty">لسه محصلش نشاط كفاية (حضور/تسجيل أحداث) عشان نحسب تقييم أوتوماتيكي</div>'}
     <div style="border-top:1px solid var(--line); padding-top:8px; margin-top:4px;">
       <div style="font-size:13px; color:var(--muted);">متوسط آخر ${cycle} شهور (دورة العلاوة الحالية)</div>
