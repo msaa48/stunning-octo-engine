@@ -2825,61 +2825,83 @@ function fillEvalSettingsForm(cfg){
   renderEvalEditor();
   renderEvalPreviewControls();
 }
+let evalOpen = new Set(); // المعايير المفتوحة للتعديل (الباقي مطوي في سطر واحد)
+function evalScoringSummary(c){
+  const m = EVAL_METRICS[c.metric], k = evK(m.kind), u = evUnit(m.kind);
+  if(m.kind==='score') return 'الدرجة بتتكتب بإيدك من 0 لـ5';
+  if(c.scoring.mode==='linear') return `${c.scoring.from*k}${u} = صفر · ${c.scoring.to*k}${u} = 5 درجات`;
+  return `${c.scoring.steps.length} شرائح (${c.scoring.op==='lte'?'الأقل أحسن':'الأكتر أحسن'})`;
+}
 function renderEvalEditor(){
   const box = document.getElementById('eval-criteria-rows');
   if(!box || !evalDraft) return;
-  box.innerHTML = evalDraft.criteria.map((c,i)=>{
+  const eff = evalEffectiveWeights(evalDraft);
+  const presets = Object.keys(EVAL_PRESETS).map(k=>`<button type="button" class="badge" onclick="evApplyPreset('${k}')">${EVAL_PRESETS[k].title}</button>`).join(' ');
+  box.innerHTML = `<div class="ev-sub" style="margin-bottom:6px;">ابدأ من قالب جاهز وعدّل عليه (القالب بيستبدل المعايير الحالية في المسودة):</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">${presets}</div>` + evalDraft.criteria.map((c,i)=>{
     const m = EVAL_METRICS[c.metric], k = evK(m.kind), u = evUnit(m.kind);
-    const inp = 'style="width:100%;"';
-    let scoring;
-    if(c.scoring.mode==='linear'){
-      scoring = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-        <div><div class="ev-sub">صفر درجة عند ${u?'('+u+')':''}</div><input type="number" step="any" value="${c.scoring.from*k}" onchange="evSetScore(${i},'from',this.value)" ${inp}></div>
-        <div><div class="ev-sub">5 درجات عند ${u?'('+u+')':''}</div><input type="number" step="any" value="${c.scoring.to*k}" onchange="evSetScore(${i},'to',this.value)" ${inp}></div>
-      </div><div class="ev-sub" style="margin-top:4px;">وبينهم بتتحسب الدرجة تدريجيًا (ينفع الرقم الأول أكبر من التاني لو الأقل أحسن).</div>`;
-    } else {
-      scoring = `<div class="ev-sub" style="margin-bottom:4px;">لو القيمة <select onchange="evSetScore(${i},'op',this.value)"><option value="lte" ${c.scoring.op==='lte'?'selected':''}>أقل من أو تساوي (الأقل أحسن)</option><option value="gte" ${c.scoring.op==='gte'?'selected':''}>أكبر من أو تساوي (الأكتر أحسن)</option></select></div>
-        ${c.scoring.steps.map((st,j)=>`<div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
-          <input type="number" step="any" value="${st.limit*k}" onchange="evSetStep(${i},${j},'limit',this.value)" style="flex:1;"><span class="ev-sub">${u}</span>
-          <span class="ev-sub">←</span>
-          <input type="number" step="0.1" min="0" max="5" value="${st.score}" onchange="evSetStep(${i},${j},'score',this.value)" style="width:70px;"><span class="ev-sub">درجة</span>
-          <button type="button" class="badge" onclick="evDelStep(${i},${j})" ${c.scoring.steps.length<=1?'disabled':''}>✕</button></div>`).join('')}
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <button type="button" class="badge" onclick="evAddStep(${i})" ${c.scoring.steps.length>=EVAL_MAX_STEPS?'disabled':''}>+ شريحة</button>
-          <span class="ev-sub">وغير كده يطلع:</span>
-          <input type="number" step="0.1" min="0" max="5" value="${c.scoring.fallback}" onchange="evSetScore(${i},'fallback',this.value)" style="width:70px;"><span class="ev-sub">درجة</span></div>`;
+    const open = evalOpen.has(c.id);
+    const pct = eff[c.id]!=null ? Math.round(eff[c.id])+'%' : 'معطّل';
+    const head = `<div style="display:flex; gap:10px; align-items:center; cursor:pointer;" onclick="evToggle('${c.id}')">
+        <input type="checkbox" ${c.enabled?'checked':''} onclick="event.stopPropagation()" onchange="evSet(${i},'enabled',this.checked)" style="width:18px; height:18px; flex:none;">
+        <div style="flex:1; min-width:0;"><div style="font-weight:700;">${esc(c.label)}</div>
+          <div class="ev-sub">${esc(m.label)} · ${esc(evalScoringSummary(c))}</div></div>
+        <div style="font-weight:800; color:var(--primary,inherit);">${pct}</div>
+        <div class="ev-sub">${open?'▲':'▼'}</div></div>`;
+    let body = '';
+    if(open){
+      const inp = 'style="width:100%;"';
+      let scoring = '';
+      if(m.kind==='score'){
+        scoring = '<div class="ev-sub">في تاب التقييم، افتح أي مدرّس وهتلاقي خانة تكتب فيها درجته (0 لـ5) لكل شهر.</div>';
+      } else if(c.scoring.mode==='linear'){
+        scoring = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div><div class="ev-sub">ضعيف جدًا (صفر) عند ${u?'('+u+')':''}</div><input type="number" step="any" value="${c.scoring.from*k}" onchange="evSetScore(${i},'from',this.value)" ${inp}></div>
+          <div><div class="ev-sub">ممتاز (5) عند ${u?'('+u+')':''}</div><input type="number" step="any" value="${c.scoring.to*k}" onchange="evSetScore(${i},'to',this.value)" ${inp}></div></div>`;
+      } else {
+        scoring = `<div class="ev-sub" style="margin-bottom:4px;">لو القيمة <select onchange="evSetScore(${i},'op',this.value)"><option value="lte" ${c.scoring.op==='lte'?'selected':''}>أقل من أو تساوي (الأقل أحسن)</option><option value="gte" ${c.scoring.op==='gte'?'selected':''}>أكبر من أو تساوي (الأكتر أحسن)</option></select></div>
+          ${c.scoring.steps.map((st,j)=>`<div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
+            <input type="number" step="any" value="${st.limit*k}" onchange="evSetStep(${i},${j},'limit',this.value)" style="flex:1;"><span class="ev-sub">${u}</span><span class="ev-sub">←</span>
+            <input type="number" step="0.1" min="0" max="5" value="${st.score}" onchange="evSetStep(${i},${j},'score',this.value)" style="width:70px;"><span class="ev-sub">درجة</span>
+            <button type="button" class="badge" onclick="evDelStep(${i},${j})" ${c.scoring.steps.length<=1?'disabled':''}>✕</button></div>`).join('')}
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><button type="button" class="badge" onclick="evAddStep(${i})" ${c.scoring.steps.length>=EVAL_MAX_STEPS?'disabled':''}>+ شريحة</button>
+            <span class="ev-sub">وغير كده:</span><input type="number" step="0.1" min="0" max="5" value="${c.scoring.fallback}" onchange="evSetScore(${i},'fallback',this.value)" style="width:70px;"><span class="ev-sub">درجة</span></div>`;
+      }
+      const params = (m.params||[]).map(p=>`<div style="margin-top:8px;"><div class="ev-sub">${esc(p.label)}</div>
+        <input type="number" min="${p.min}" max="${p.max}" step="${p.step}" value="${c.params[p.key]}" onchange="evSetParam(${i},'${p.key}',this.value)" ${inp}></div>`).join('');
+      body = `<div style="margin-top:12px; display:grid; gap:10px;">
+        <div><div class="ev-sub">اسم المعيار</div><input type="text" maxlength="40" value="${esc(c.label)}" onchange="evSet(${i},'label',this.value)" ${inp}></div>
+        <div><div class="ev-sub">بيقيس إيه؟</div><select onchange="evSetMetric(${i},this.value)" ${inp}>${Object.keys(EVAL_METRICS).map(key=>`<option value="${key}" ${key===c.metric?'selected':''}>${esc(EVAL_METRICS[key].label)}</option>`).join('')}</select>
+          <div class="ev-sub" style="margin-top:3px;">${esc(m.desc)}</div></div>
+        ${scoring}${params}
+        <div><div class="ev-sub">الوزن (الأهمية): <b id="ev-wv-${i}">${c.weight}</b></div>
+          <input type="range" min="0" max="100" step="5" value="${c.weight}" oninput="document.getElementById('ev-wv-${i}').textContent=this.value; evSet(${i},'weight',this.value,true)" style="width:100%;"></div>
+        <details><summary class="ev-sub" style="cursor:pointer;">خيارات متقدمة</summary>
+          <div style="display:grid; gap:10px; margin-top:8px;">
+            ${m.kind==='score' ? '' : `<div><div class="ev-sub">طريقة التحويل لدرجة</div><select onchange="evSetMode(${i},this.value)" ${inp}><option value="linear" ${c.scoring.mode==='linear'?'selected':''}>تدريجي (من - إلى)</option><option value="tiers" ${c.scoring.mode==='tiers'?'selected':''}>شرائح</option></select></div>`}
+            <div><div class="ev-sub">لو مفيش بيانات للمدرّس في الشهر</div><select onchange="evSet(${i},'whenNoData',this.value)" ${inp}><option value="skip" ${c.whenNoData==='skip'?'selected':''}>اتجاهل المعيار</option><option value="zero" ${c.whenNoData==='zero'?'selected':''}>احسبه صفر</option></select></div>
+          </div></details>
+        <div><button type="button" class="badge" onclick="evDelCriterion(${i})">🗑 حذف المعيار</button></div></div>`;
     }
-    const params = (m.params||[]).map(p=>`<div style="margin-top:8px;"><div class="ev-sub">${esc(p.label)}</div>
-      <input type="number" min="${p.min}" max="${p.max}" step="${p.step}" value="${c.params[p.key]}" onchange="evSetParam(${i},'${p.key}',this.value)" ${inp}></div>`).join('');
-    return `<div class="ev-card" style="border:1px solid var(--border,#ddd); border-radius:12px; padding:12px; margin-bottom:12px; ${c.enabled?'':'opacity:.6;'}">
-      <div style="display:flex; gap:8px; align-items:center;">
-        <input type="checkbox" ${c.enabled?'checked':''} onchange="evSet(${i},'enabled',this.checked)" style="width:18px; height:18px;">
-        <input type="text" maxlength="40" value="${esc(c.label)}" onchange="evSet(${i},'label',this.value)" style="flex:1; font-weight:700;">
-        <button type="button" class="badge" onclick="evDelCriterion(${i})" title="حذف المعيار">🗑</button>
-      </div>
-      <div class="ev-sub" style="margin:8px 0 4px;">بيقيس: <select onchange="evSetMetric(${i},this.value)">${Object.keys(EVAL_METRICS).map(key=>`<option value="${key}" ${key===c.metric?'selected':''}>${esc(EVAL_METRICS[key].label)}</option>`).join('')}</select></div>
-      <div class="ev-sub">${esc(m.desc)}</div>
-      ${params}
-      <div style="margin-top:10px;"><div class="ev-sub" style="margin-bottom:4px;">طريقة تحويله لدرجة من 5:
-        <select onchange="evSetMode(${i},this.value)"><option value="linear" ${c.scoring.mode==='linear'?'selected':''}>تدريجي (من - إلى)</option><option value="tiers" ${c.scoring.mode==='tiers'?'selected':''}>شرائح</option></select></div>
-        ${scoring}</div>
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px;">
-        <span class="ev-sub">الوزن:</span><input type="number" min="0" max="100" step="1" value="${c.weight}" oninput="evSet(${i},'weight',this.value,true)" style="width:80px;">
-        <span class="ev-sub">لو مفيش بيانات:</span>
-        <select onchange="evSet(${i},'whenNoData',this.value)"><option value="skip" ${c.whenNoData==='skip'?'selected':''}>اتجاهله</option><option value="zero" ${c.whenNoData==='zero'?'selected':''}>احسبه صفر</option></select>
-      </div>
-    </div>`;
+    return `<div class="ev-card" style="border:1px solid var(--border,#ddd); border-radius:12px; padding:12px; margin-bottom:10px; ${c.enabled?'':'opacity:.6;'}">${head}${body}</div>`;
   }).join('') + `<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
-      <select id="ev-add-metric">${Object.keys(EVAL_METRICS).map(key=>`<option value="${key}">${esc(EVAL_METRICS[key].label)}</option>`).join('')}</select>
+      <select id="ev-add-metric" style="flex:1; min-width:0;">${Object.keys(EVAL_METRICS).map(key=>`<option value="${key}">${esc(EVAL_METRICS[key].label)}</option>`).join('')}</select>
       <button type="button" class="badge" onclick="evAddCriterion()" ${evalDraft.criteria.length>=EVAL_MAX_CRITERIA?'disabled':''}>+ إضافة معيار</button></div>`;
   updateEvalWeightsSummary();
+}
+function evToggle(id){ if(evalOpen.has(id)) evalOpen.delete(id); else evalOpen.add(id); renderEvalEditor(); }
+function evApplyPreset(key){
+  const p = EVAL_PRESETS[key]; if(!p) return;
+  const cfg = normalizeEvalConfig(Object.assign({}, evalDraft, { criteria: JSON.parse(JSON.stringify(p.criteria)) }));
+  evalDraft.criteria = cfg.criteria; evalOpen = new Set(); renderEvalEditor();
+  showToast('اتطبّق قالب "' + p.title + '" — اضغط "حفظ" لتأكيده');
 }
 function evSet(i, f, v, noRender){
   const c = evalDraft.criteria[i]; if(!c) return;
   if(f==='weight') c.weight = Math.max(0, Math.min(100, Number(v)||0));
   else if(f==='label') c.label = String(v).trim().slice(0,40) || EVAL_METRICS[c.metric].label;
   else c[f] = v;
-  if(f==='enabled' || f==='label') renderEvalEditor(); else updateEvalWeightsSummary();
+  if(f==='enabled' || f==='label' || f==='whenNoData') renderEvalEditor(); else if(noRender) updateEvalWeightsSummary(); else renderEvalEditor();
 }
 function evSetParam(i,key,v){ const c=evalDraft.criteria[i]; const p=EVAL_METRICS[c.metric].params.find(x=>x.key===key); c.params[key]=evalNum(v,p.min,p.max,p.def); renderEvalEditor(); }
 function evSetMetric(i, metric){
@@ -7656,6 +7678,24 @@ const EVAL_METRICS = {
     linear:{mode:'linear', from:1440, to:15}, params:[],
     compute:(x)=>({ value: x.replyMinutes.length ? x.replyMinutes.reduce((a,b)=>a+b,0)/x.replyMinutes.length : null, hasData: x.replyMinutes.length>0 })
   },
+  reply_ratio: {
+    label:'نسبة الرد على رسائل الأهالي', kind:'ratio', better:'high',
+    desc:'رسائل أولياء الأمور اللي اتردّ عليها ÷ كل رسائلهم',
+    scoring:{mode:'linear', from:0, to:1}, linear:{mode:'linear', from:0, to:1}, params:[],
+    compute:(x)=>({ value: x.parentMsgs ? x.answeredMsgs/x.parentMsgs : null, hasData: x.parentMsgs>0 })
+  },
+  messages_sent_count: {
+    label:'عدد رسائله للأهالي', kind:'count', better:'high',
+    desc:'عدد الرسائل اللي بعتها المدرّس لأولياء الأمور في الشهر',
+    scoring:{mode:'linear', from:0, to:30}, linear:{mode:'linear', from:0, to:30}, params:[],
+    compute:(x)=>({ value: x.teacherMsgs, hasData: x.myChildren.length>0 })
+  },
+  manual_score: {
+    label:'تقييم المدير (بتكتبه بإيدك)', kind:'score', better:'high',
+    desc:'درجة من 0 لـ5 بتكتبها أنت لكل مدرّس في كل شهر، من تاب التقييم',
+    scoring:{mode:'linear', from:0, to:5}, linear:{mode:'linear', from:0, to:5}, params:[],
+    compute:(x,p,c)=>{ const v = x.manual[c.id]; return { value: v==null?null:v, hasData: v!=null }; }
+  },
   student_attendance_count: {
     label:'عدد تسجيلات حضور الطلاب', kind:'count', better:'high',
     desc:'عدد مرات تسجيل حضور طلاب بواسطته في الشهر',
@@ -7676,7 +7716,24 @@ const EVAL_METRICS = {
   }
 };
 
+const EVAL_PRESETS = {
+  balanced:{ title:'متوازن (الافتراضي)', get criteria(){ return defaultEvalConfig().criteria; } },
+  discipline:{ title:'تركيز على الانضباط', criteria:[
+    {label:'الانتظام', metric:'attendance_ratio', weight:40},
+    {label:'الحضور في الميعاد', metric:'on_time_ratio', weight:40},
+    {label:'تسجيل الانصراف', metric:'checkout_ratio', weight:20}] },
+  parents:{ title:'تركيز على التواصل مع الأهالي', criteria:[
+    {label:'سرعة الرد', metric:'avg_reply_minutes', weight:40},
+    {label:'نسبة الرد على الأهالي', metric:'reply_ratio', weight:30},
+    {label:'تسجيل أحداث الطلاب', metric:'logging_ratio', weight:30}] },
+  manager:{ title:'متوازن + تقييم المدير', criteria:[
+    {label:'الانتظام', metric:'attendance_ratio', weight:25},
+    {label:'الحضور في الميعاد', metric:'on_time_ratio', weight:20},
+    {label:'سرعة الرد', metric:'avg_reply_minutes', weight:20},
+    {label:'تقييم المدير', metric:'manual_score', weight:35}] }
+};
 function evalFmtValue(v, kind){
+  if(kind==='score' && v!==null && v!==undefined && isFinite(v)) return v + '/5';
   if(v===null || v===undefined || !isFinite(v)) return '—';
   if(kind==='ratio') return Math.round(v*100) + '%';
   if(kind==='minutes') return v>=120 ? (v/60).toFixed(1) + ' ساعة' : Math.round(v) + ' دقيقة';
@@ -7741,7 +7798,7 @@ function normalizeEvalCriterion(r, usedIds){
     label: (typeof r.label==='string' && r.label.trim()) ? r.label.trim().slice(0,40) : m.label,
     metric: r.metric,
     params,
-    scoring: normalizeEvalScoring(r.scoring, m.scoring),
+    scoring: r.metric==='manual_score' ? {mode:'linear', from:0, to:5} : normalizeEvalScoring(r.scoring, m.scoring),
     weight: evalNum(r.weight, 0, 100, 10),
     enabled: r.enabled!==false,
     whenNoData: r.whenNoData==='zero' ? 'zero' : 'skip'
@@ -7857,14 +7914,23 @@ function buildEvalContext(db, teacherId, year, monthIndex0, cfg){
     }
   });
 
+  let parentMsgs = 0, answeredMsgs = 0, teacherMsgs = 0;
+  Object.values(byChild).forEach(thread=>{
+    thread.forEach((m,i)=>{
+      if(m.sender==='TEACHER') teacherMsgs++;
+      if(m.sender==='PARENT'){ parentMsgs++; if(thread.slice(i+1).some(n=> n.sender==='TEACHER')) answeredMsgs++; }
+    });
+  });
+  const mk = year + '-' + String(monthIndex0+1).padStart(2,'0');
+  const manual = Object.assign({}, ...(db.teacherEvaluations||[]).filter(e=> e.source==='MANUAL' && e.teacherId===teacherId && e.month===mk).map(e=> e.manual||{}));
   const attendanceCount = (db.attendance||[]).filter(a=> a.teacherId===teacherId && inDay(a.sessionDate)).length;
   const evaluationsGiven = (db.evaluations||[]).filter(e=> e.teacherId===teacherId && e.date && inRange(e.date)).length;
   const tasksDone = (db.taskCompletions||[]).filter(c=> c.teacherId===teacherId && c.done && inDay(c.date)).length;
 
   return {
     teacher, roomIds, myChildren, checkIns, daysAttended, daysWithCheckout, expectedDays, lateCount,
-    loggedEvents, replyMinutes, attendanceCount, evaluationsGiven, tasksDone,
-    hasActivity: checkIns.length>0 || loggedEvents>0 || attendanceCount>0 || evaluationsGiven>0 || tasksDone>0
+    loggedEvents, replyMinutes, attendanceCount, evaluationsGiven, tasksDone, parentMsgs, answeredMsgs, teacherMsgs, manual,
+    hasActivity: Object.keys(manual).length>0 || checkIns.length>0 || loggedEvents>0 || attendanceCount>0 || evaluationsGiven>0 || tasksDone>0
   };
 }
 
@@ -7888,7 +7954,7 @@ function computeTeacherScoreDetail(db, teacherId, year, monthIndex0, cfg){
   const x = buildEvalContext(db, teacherId, year, monthIndex0, cfg);
   const rows = cfg.criteria.map(c=>{
     const m = EVAL_METRICS[c.metric];
-    const r = m.compute(x, c.params || {});
+    const r = m.compute(x, c.params || {}, c);
     let score = r.hasData ? evalScoreFromValue(r.value, c.scoring) : null;
     if(score===null && c.enabled && c.whenNoData==='zero') score = 0;
     return { id:c.id, label:c.label, metric:c.metric, kind:m.kind, enabled:c.enabled, weight:c.weight, value:r.value, hasData:r.hasData, score };
@@ -8060,6 +8126,13 @@ function openTeacherEvalModal(teacherId){
       <div style="font-size:13px; color:var(--muted);">متوسط آخر ${cycle} شهور (دورة العلاوة الحالية)</div>
       <div style="font-weight:700;">${cycleAvg!==null ? cycleAvg.toFixed(1)+' / 5' : 'محتاج بيانات أكتر'} ${eligible?' — مؤهلة للمراجعة للعلاوة ✅':''}</div>
     </div>
+    ${evalCfg.criteria.filter(c=>c.metric==='manual_score' && c.enabled).map(c=>{
+      const mk = monthKey(getSystemNow());
+      const rec = db.teacherEvaluations.find(e=> e.source==='MANUAL' && e.teacherId===teacherId && e.month===mk);
+      const v = rec && rec.manual && rec.manual[c.id]!=null ? rec.manual[c.id] : '';
+      return `<div style="border-top:1px solid var(--line); padding-top:8px;"><div style="font-size:13px;">✍️ ${esc(c.label)} — شهر ${mk} (من 0 لـ5)</div>
+        <input type="number" class="teval-manual" data-cid="${esc(c.id)}" min="0" max="5" step="0.5" value="${v}" placeholder="اكتب الدرجة" style="width:100%; margin-top:4px;"></div>`;
+    }).join('')}
     <textarea id="teval-note" placeholder="ملاحظة إدارية (اختياري) — مبتأثرش في الدرجة، دي بس للتوثيق">${latest&&latest.note?latest.note:''}</textarea>
   `;
   renderTeacherEvalHistory();
@@ -8084,13 +8157,29 @@ function renderTeacherEvalHistory(){
 
 async function saveTeacherEval(){
   const db = loadDB();
-  const latest = db.teacherEvaluations.filter(e=>e.teacherId===teacherEvalTargetId && e.source==='AUTO').sort((a,b)=> b.month.localeCompare(a.month))[0];
-  if(!latest){ showToast('مفيش تقييم محسوب لسه تقدر تضيفله ملاحظة'); return; }
-  latest.note = document.getElementById('teval-note').value.trim();
-  const result = await saveDB(db);
-  if(!result.ok){ showToast('⚠️ فشل حفظ الملاحظة على السيرفر'); return; }
-  showToast('تم حفظ الملاحظة ✓');
-  renderTeacherEvalHistory();
+  const mk = monthKey(getSystemNow());
+  const inputs = [...document.querySelectorAll('#teacher-eval-form .teval-manual')];
+  if(inputs.length){
+    const manual = {};
+    for(const el of inputs){
+      if(el.value==='') continue;
+      const n = Number(el.value);
+      if(!isFinite(n) || n<0 || n>5){ showToast('الدرجة لازم رقم من 0 لـ5'); return; }
+      manual[el.dataset.cid] = n;
+    }
+    let rec = db.teacherEvaluations.find(e=> e.source==='MANUAL' && e.teacherId===teacherEvalTargetId && e.month===mk);
+    if(!rec){ rec = { id: uid('tmanual'), teacherId: teacherEvalTargetId, month: mk, source:'MANUAL', manual:{}, overallScore:0 }; db.teacherEvaluations.push(rec); }
+    rec.manual = manual;
+    await saveDB(db);
+  }
+  const db2 = ensureAutoEvalsUpToDate(6);
+  const latest = db2.teacherEvaluations.filter(e=>e.teacherId===teacherEvalTargetId && e.source==='AUTO').sort((a,b)=> b.month.localeCompare(a.month))[0];
+  if(latest){ latest.note = (document.getElementById('teval-note').value||'').trim(); }
+  else if(!inputs.length){ showToast('مفيش تقييم محسوب لسه تقدر تضيفله ملاحظة'); return; }
+  const result = await saveDB(db2);
+  if(!result.ok){ showToast('⚠️ فشل الحفظ على السيرفر'); return; }
+  showToast('تم الحفظ ✓');
+  openTeacherEvalModal(teacherEvalTargetId);
 }
 
 /* ========================= INIT ========================= */
