@@ -999,6 +999,21 @@
   </div>
 </div>
 
+<!-- مودال: كلمة سر مؤقتة (بعد التوليد) -->
+<div class="modal-bg" id="pw-reset-modal-bg">
+  <div class="modal">
+    <h3>🔑 كلمة سر مؤقتة</h3>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:4px;">اسم الدخول</div>
+    <div id="pw-reset-email" dir="ltr" style="font-weight:700; word-break:break-all; margin-bottom:12px; text-align:right;"></div>
+    <div style="font-size:12.5px; color:var(--muted); margin-bottom:4px;">كلمة السر المؤقتة</div>
+    <div id="pw-reset-pass" dir="ltr" style="font-size:30px; font-weight:800; letter-spacing:5px; margin-bottom:10px; text-align:right;"></div>
+    <div style="font-size:12.5px; color:var(--muted); line-height:1.7; margin-bottom:12px;">الشخص هيغيّرها أول ما يدخل. الكلمة دي مش هتظهر تاني بعد ما تقفل النافذة، فانسخها أو ابعتها دلوقتي.</div>
+    <button class="btn block" onclick="copyTempPassword()">📋 نسخ</button>
+    <a id="pw-reset-wa" class="btn block" target="_blank" rel="noopener" style="display:none; text-align:center; margin-top:8px; text-decoration:none;">📲 ابعتها واتساب</a>
+    <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('pw-reset-modal-bg')">إغلاق</button>
+  </div>
+</div>
+
 <!-- ============ ADMIN SECTION DETAIL SCREEN (صفحة منفصلة لكل قسم) ============ -->
 <div id="admin-section-screen" class="screen">
   <div class="topbar admin">
@@ -4911,7 +4926,7 @@ const ADMIN_TAB_GROUPS = {
   classes: ['classrooms','subjects','schedule'],
   staff: ['teacherAttendance','teacherEvaluations','teacherPayouts'],
   money: ['payments','attendanceExceptions','financialArchive'],
-  other: ['calendar','complaints']
+  other: ['calendar','complaints','passwordRequests']
 };
 const ADMIN_TAB_META = {
   children:{icon:'🧑‍🎓', label:'الطلاب', color:'linear-gradient(135deg,#4a3d7a,#6553a0)'},
@@ -4929,7 +4944,8 @@ const ADMIN_TAB_META = {
   attendanceExceptions:{icon:'🎫', label:'استثناءات الحضور', color:'linear-gradient(135deg,#c0433a,#93610f)'},
   calendar:{icon:'📅', label:'تقويم السنتر', color:'linear-gradient(135deg,#a0527a,#8a3d66)'},
   complaints:{icon:'💬', label:'الشكاوى', color:'linear-gradient(135deg,#c0433a,#a3352c)'},
-  financialArchive:{icon:'🗄️', label:'الأرشيف المالي', color:'linear-gradient(135deg,#5b6472,#3d4452)'}
+  financialArchive:{icon:'🗄️', label:'الأرشيف المالي', color:'linear-gradient(135deg,#5b6472,#3d4452)'},
+  passwordRequests:{icon:'🔑', label:'كلمات السر', color:'linear-gradient(135deg,#6b5b95,#4a3d7a)'}
 };
 
 function renderAdminMenus(){
@@ -5012,8 +5028,9 @@ function openAdminSection(tab){
   if(tab==='classrooms'){ expandedGradeSections = new Set(); expandedSubjectSections = new Set(); classroomsGradeView = null; }
   if(tab==='subjects'){ subjectsGradeView = null; }
   if(tab==='financialArchive'){ financialArchiveCache = null; }
+  if(tab==='passwordRequests'){ passwordRequestsCache = null; }
   document.getElementById('admin-section-title').textContent = (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].icon+' ':'') + (ADMIN_TAB_META[tab]?ADMIN_TAB_META[tab].label:'القسم');
-  document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions'||tab==='financialArchive') ? 'none' : 'block';
+  document.getElementById('admin-add-btn').style.display = (tab==='complaints'||tab==='schedule'||tab==='teacherAttendance'||tab==='teacherEvaluations'||tab==='payments'||tab==='attendanceExceptions'||tab==='financialArchive'||tab==='passwordRequests') ? 'none' : 'block';
   const addLabels = {children:'+ إضافة طالب', teachers:'+ إضافة مدرّس', assistants:'+ إضافة أسيستنت', parents:'+ إضافة ولي أمر', links:'+ ربط ولي أمر بطالب', classrooms:'+ إضافة مجموعة', subjects:'+ إضافة مادة', payments:'+ تسجيل دفعة', calendar:'+ إضافة حدث', teacherPayouts:'📅 إنشاء كشوف الشهر'};
   document.getElementById('admin-add-btn').textContent = addLabels[tab] || '+ إضافة';
   document.getElementById('admin-add-btn').onclick = (tab==='teacherPayouts') ? openGeneratePayoutsModal : openAdminAddModal;
@@ -5175,6 +5192,109 @@ function renderFinancialArchive(el){
     html += '<div class="empty">الأرشيف فاضي — أي سجل مالي لمدرّس أو طالب أو مجموعة بيتحذف هيظهر هنا</div>';
   }
   el.innerHTML = html;
+}
+
+/* ========================= كلمات السر: طلبات "نسيت" + توليد كلمة مؤقتة ========================= */
+let passwordRequestsCache = null;
+let passwordRequestsLoading = false;
+let lastTempPassword = null;
+
+function renderPasswordRequests(el){
+  if(!passwordRequestsCache){
+    el.innerHTML = '<div class="empty">⏳ جاري التحميل...</div>';
+    if(!passwordRequestsLoading){
+      passwordRequestsLoading = true;
+      supabaseClient.from('password_reset_requests').select('*').order('created_at', {ascending:false})
+        .then(({data, error})=>{ passwordRequestsCache = error ? {error:true} : {rows:data||[]}; })
+        .catch(()=>{ passwordRequestsCache = {error:true}; })
+        .finally(()=>{ passwordRequestsLoading = false; if(adminActiveTab==='passwordRequests') renderAdminList(); });
+    }
+    return;
+  }
+  if(passwordRequestsCache.error){ el.innerHTML = '<div class="empty">⚠️ حصل خطأ في تحميل الطلبات — ارجع وافتح القسم تاني</div>'; return; }
+
+  const rows = passwordRequestsCache.rows;
+  const indexed = rows.map((r,i)=>({r,i}));
+  const pending = indexed.filter(x=> x.r.status==='pending');
+  const done = indexed.filter(x=> x.r.status!=='pending').slice(0,10);
+
+  const rowHtml = ({r,i})=> `<div class="list-row">
+    <div class="list-row-main">
+      <div class="list-avatar" style="background:linear-gradient(135deg,#6b5b95,#4a3d7a);">🔑</div>
+      <div class="list-info">
+        <div class="list-name" dir="auto">${faEsc(r.username)}</div>
+        <div class="list-sub">📱 ${faEsc(r.whatsapp_number)}</div>
+        <div class="list-sub">${faEsc(new Date(r.created_at).toLocaleString('ar-EG'))}</div>
+      </div>
+    </div>
+    ${r.status==='pending' ? `<div class="list-actions"><button class="badge" onclick="generateTempPasswordFromRequest(${i})">🔑 ولّد كلمة سر</button></div>` : '<span class="badge">تم</span>'}
+  </div>`;
+
+  let html = `<div class="card" style="padding:12px 14px; margin-bottom:10px;">
+    <div style="font-weight:700; margin-bottom:8px;">🔑 كلمة سر مؤقتة لأي حساب</div>
+    <input type="text" id="pw-manual-username" placeholder="اسم الدخول (الإيميل الكامل)" dir="ltr" style="margin-bottom:8px;">
+    <button class="btn block" onclick="generateTempPassword(document.getElementById('pw-manual-username').value.trim(), null, '')">ولّد كلمة سر مؤقتة</button>
+  </div>`;
+
+  html += `<div class="section-title" style="margin:14px 0 6px;">⏳ طلبات "نسيت كلمة السر" المعلّقة (${pending.length})</div>`;
+  html += pending.length ? pending.map(rowHtml).join('') : '<div class="empty">مفيش طلبات معلّقة</div>';
+  if(done.length){
+    html += `<div class="section-title" style="margin:14px 0 6px;">✅ آخر الطلبات اللي اتنفّذت</div>`;
+    html += done.map(rowHtml).join('');
+  }
+  el.innerHTML = html;
+}
+
+function generateTempPasswordFromRequest(i){
+  const r = passwordRequestsCache && passwordRequestsCache.rows ? passwordRequestsCache.rows[i] : null;
+  if(!r) return;
+  generateTempPassword(r.username, r.id, r.whatsapp_number);
+}
+
+async function generateTempPassword(username, requestId, whatsapp){
+  if(!username){ showToast('اكتب اسم الدخول الأول'); return; }
+  if(!confirm('كلمة سر الحساب ده هتتغيّر فورًا، واللي بيدخل بالكلمة القديمة مش هيعرف يدخل. تكمل؟')) return;
+  try{
+    const { data, error } = await supabaseClient.functions.invoke('reset-password', { body: { username, request_id: requestId } });
+    if(error){
+      let msg = error.message || 'حصل خطأ';
+      try{ const b = await error.context.json(); if(b && b.error) msg = b.error; }catch(e){}
+      showToast('⚠️ ' + msg);
+      return;
+    }
+    if(!data || data.error || !data.password){ showToast('⚠️ ' + ((data && data.error) || 'الرد من السيرفر مش مفهوم')); return; }
+    showTempPasswordModal(data.email, data.password, whatsapp);
+    passwordRequestsCache = null;
+    if(adminActiveTab==='passwordRequests') renderAdminList();
+  }catch(e){
+    showToast('⚠️ تعذّر الاتصال بالسيرفر');
+  }
+}
+
+function showTempPasswordModal(email, password, whatsapp){
+  lastTempPassword = { email, password };
+  document.getElementById('pw-reset-email').textContent = email;
+  document.getElementById('pw-reset-pass').textContent = password;
+  const wa = document.getElementById('pw-reset-wa');
+  let digits = String(whatsapp||'').replace(/\D/g,'');
+  if(digits.startsWith('0')) digits = '20' + digits.slice(1);
+  if(digits){
+    wa.style.display = 'block';
+    wa.href = 'https://wa.me/' + digits + '?text=' + encodeURIComponent('أهلاً 👋\nكلمة السر المؤقتة لحسابك على مسار:\nاسم الدخول: ' + email + '\nكلمة السر: ' + password + '\nهتتغيّر أول ما تدخل.');
+  } else {
+    wa.style.display = 'none';
+  }
+  document.getElementById('pw-reset-modal-bg').classList.add('show');
+}
+
+function copyTempPassword(){
+  if(!lastTempPassword) return;
+  const t = lastTempPassword.email + '\n' + lastTempPassword.password;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(()=> showToast('✅ اتنسخت')).catch(()=> showToast('مقدرتش أنسخ — انسخها يدوي'));
+  } else {
+    showToast('انسخها يدوي');
+  }
 }
 
 function renderAdminList(){
@@ -6006,6 +6126,10 @@ function renderAdminListInner(){
       </div>`;
     }).join('') || '<div class="empty">لا يوجد طلاب مسجلين في أي مجموعة لسه</div>';
     el.innerHTML = html;
+    return;
+  }
+  else if(adminActiveTab==='passwordRequests'){
+    renderPasswordRequests(el);
     return;
   }
   else if(adminActiveTab==='financialArchive'){
