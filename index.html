@@ -1067,6 +1067,46 @@
   </div>
 </div>
 
+<!-- مودال: دليل تفعيل الـAI (طريقة جلب المفتاح) -->
+<div class="modal-bg" id="ai-guide-modal-bg">
+  <div class="modal" style="max-height:88vh; overflow-y:auto;">
+    <h3>🚀 فعّل الـAI في 4 خطوات</h3>
+    <div class="list-sub" style="line-height:1.9; margin-bottom:12px;">
+      1) اختار مزوّد من الاتنين أو التلاتة تحت.<br>
+      2) افتح الرابط وسجّل دخول.<br>
+      3) اعمل مفتاح جديد (Create API key) وانسخه.<br>
+      4) ارجع هنا، دوس "استخدمه هنا"، الصق المفتاح، وجرّب الاتصال.
+    </div>
+
+    <div class="card" style="padding:12px; margin-bottom:10px;">
+      <div style="font-weight:800;">⭐ Google Gemini <span class="badge">الأنسب للصور</span></div>
+      <div class="list-sub" style="line-height:1.7; margin:6px 0;">بيقرا صفحات الكتب كويس. بتسجّل بحساب جوجل، ومجاني ليه حد يومي.</div>
+      <a class="btn block" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="text-align:center; text-decoration:none;">🔗 افتح صفحة المفتاح</a>
+      <button class="btn block" style="margin-top:6px;" onclick="aiGuideUse('gemini')">✅ عندي المفتاح — استخدمه هنا</button>
+    </div>
+
+    <div class="card" style="padding:12px; margin-bottom:10px;">
+      <div style="font-weight:800;">🌐 OpenRouter</div>
+      <div class="list-sub" style="line-height:1.7; margin:6px 0;">بوابة لموديلات كتير، وفيها موديلات مجانية (اسمها بينتهي بـ :free). اختار واحد بيقبل صور وانسخ اسمه في خانة الموديل.</div>
+      <a class="btn block" href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style="text-align:center; text-decoration:none;">🔗 افتح صفحة المفتاح</a>
+      <button class="btn block" style="margin-top:6px;" onclick="aiGuideUse('openrouter')">✅ عندي المفتاح — استخدمه هنا</button>
+    </div>
+
+    <div class="card" style="padding:12px; margin-bottom:10px;">
+      <div style="font-weight:800;">⚡ Groq</div>
+      <div class="list-sub" style="line-height:1.7; margin:6px 0;">سريع جدًا ومجاني. ممكن يطلب تأكيد رقم موبايلك وقت التسجيل.</div>
+      <a class="btn block" href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" style="text-align:center; text-decoration:none;">🔗 افتح صفحة المفتاح</a>
+      <button class="btn block" style="margin-top:6px;" onclick="aiGuideUse('groq')">✅ عندي المفتاح — استخدمه هنا</button>
+    </div>
+
+    <div class="list-sub" style="line-height:1.8; margin-bottom:10px;">
+      ⚠️ الباقات المجانية ليها حد يومي وبتتغيّر من وقت للتاني.<br>
+      🔒 المفتاح سرّي — ماتبعتوش لحد. لو حبيت تلغيه امسحه من صفحة المزوّد.
+    </div>
+    <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('ai-guide-modal-bg')">إغلاق</button>
+  </div>
+</div>
+
 <!-- ============ ADMIN SECTION DETAIL SCREEN (صفحة منفصلة لكل قسم) ============ -->
 <div id="admin-section-screen" class="screen">
   <div class="topbar admin">
@@ -5445,9 +5485,9 @@ function examNormalize(data){
 }
 
 /* ---------- شاشة ربط الـAPI ---------- */
-function openAiSettings(){
-  const cfg = loadAiCfg() || {};
-  const prov = cfg.provider || 'gemini';
+function openAiSettings(presetProvider){
+  const cfg = presetProvider ? {} : (loadAiCfg() || {});
+  const prov = presetProvider || cfg.provider || 'gemini';
   document.getElementById('ai-provider').value = prov;
   aiFillProviderDefaults(prov, cfg);
   document.getElementById('ai-key').value = cfg.key || '';
@@ -5502,6 +5542,13 @@ function aiClearSettings(){
   renderTeacherExams();
 }
 
+/* ---------- دليل تفعيل الـAI: إزاي المدرّس يجيب المفتاح ---------- */
+function openAiGuide(){ document.getElementById('ai-guide-modal-bg').classList.add('show'); }
+function aiGuideUse(prov){
+  closeModal('ai-guide-modal-bg');
+  openAiSettings(prov);
+}
+
 /* ---------- شاشة الامتحانات ---------- */
 function renderTeacherExams(){
   const el = document.getElementById('teacher-exams-view');
@@ -5513,6 +5560,11 @@ function renderTeacherExams(){
   if(!examState.draft){ try{ examState.draft = JSON.parse(localStorage.getItem(examDraftKey())||'null'); }catch(e){ examState.draft = null; } }
   const connected = !!(cfg && cfg.key);
   el.innerHTML = `
+    <div class="card" style="padding:12px 14px; margin-bottom:10px; border:1.5px dashed var(--accent, #6b5b95);">
+      <div style="font-weight:800; margin-bottom:4px;">🚀 فعّل الـAI</div>
+      <div class="list-sub" style="line-height:1.7; margin-bottom:8px;">مش عارف تجيب مفتاح الذكاء الاصطناعي منين؟ هنوريك الخطوات وروابط المزودين المجانيين.</div>
+      <button class="btn block" onclick="openAiGuide()">📖 طريقة الحصول على المفتاح</button>
+    </div>
     <div class="card" style="padding:12px 14px; margin-bottom:10px;">
       <div style="font-weight:700; margin-bottom:6px;">${connected ? '✅ الذكاء الاصطناعي متصل' : '⚠️ لسه ما ربطتش ذكاء اصطناعي'}</div>
       ${connected ? `<div class="list-sub" dir="ltr" style="text-align:right;">${faEsc((AI_PROVIDERS[cfg.provider]||{}).label||cfg.provider)} · ${faEsc(cfg.model)}</div>` : '<div class="list-sub">اربط مفتاح API (فيه مزودين مجانيين) عشان تقدر تولّد امتحانات.</div>'}
