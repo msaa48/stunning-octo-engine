@@ -459,6 +459,27 @@
   #impersonation-banner.super-admin-mode{ background:linear-gradient(90deg,#4a3d7a,#6553a0); color:#f3e8d8; }
   #impersonation-banner.super-admin-mode button{ background:#f3e8d8; color:#4a3d7a; }
   body.has-imp-banner .topbar{ margin-top:36px; }
+
+/* ===== ورقة الامتحان (طباعة / PDF) ===== */
+#exam-print-root{display:none;}
+@page{size:A4; margin:14mm;}
+@media print{
+  body.printing-exam > *{display:none !important;}
+  body.printing-exam > #exam-print-root{display:block !important;}
+  body.printing-exam{background:#fff !important; color:#000 !important;}
+}
+#exam-print-root .exam-sheet{direction:rtl; color:#000; background:#fff; line-height:1.8; font-size:14px;}
+#exam-print-root .exam-head{text-align:center; border-bottom:2px solid #000; padding-bottom:8px; margin-bottom:10px;}
+#exam-print-root .exam-title{font-size:22px; font-weight:800;}
+#exam-print-root .exam-meta{font-size:14px;}
+#exam-print-root .exam-info{display:flex; justify-content:space-between; gap:10px; margin-bottom:14px; font-size:13px;}
+#exam-print-root .exam-q{margin-bottom:14px; break-inside:avoid; page-break-inside:avoid;}
+#exam-print-root .exam-marks{font-size:12px; color:#444;}
+#exam-print-root .exam-opts{display:grid; grid-template-columns:1fr 1fr; gap:2px 16px; margin-top:4px; padding-right:14px;}
+#exam-print-root .exam-tf{margin-top:4px; padding-right:14px;}
+#exam-print-root .exam-lines div{border-bottom:1px solid #777; height:26px;}
+#exam-print-root .exam-answers{page-break-before:always; break-before:page;}
+#exam-print-root .exam-ans{margin:6px 0;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
@@ -631,6 +652,7 @@
       <button class="tab-card teacher" id="teacher-tab-evals" onclick="switchTeacherTab('evals')"><span class="tc-icon">⭐</span><span class="tc-label">تقييم أدائي</span></button>
       <button class="tab-card teacher" id="teacher-tab-calendar" onclick="switchTeacherTab('calendar')"><span class="tc-icon">🗓️</span><span class="tc-label">تقويم السنتر</span></button>
       <button class="tab-card teacher" id="teacher-tab-history" onclick="switchTeacherTab('history')"><span class="tc-icon">🗂️</span><span class="tc-label">سجل الحصص</span></button>
+      <button class="tab-card teacher" id="teacher-tab-exams" onclick="switchTeacherTab('exams')"><span class="tc-icon">🧠</span><span class="tc-label">امتحانات AI</span></button>
     </div>
     <button class="tab-back" id="teacher-tab-back" onclick="history.back()" style="display:none;">→ رجوع للقائمة</button>
 
@@ -712,6 +734,10 @@
     <div id="teacher-panel-calendar" style="display:none;">
       <div class="section-title" style="margin-top:0;">🗓️ تقويم السنتر</div>
       <div class="timeline" id="teacher-calendar-view"></div>
+    </div>
+
+    <div id="teacher-panel-exams" style="display:none;">
+      <div id="teacher-exams-view"></div>
     </div>
 
     <div id="teacher-panel-history" style="display:none;">
@@ -1011,6 +1037,33 @@
     <button class="btn block" onclick="copyTempPassword()">📋 نسخ</button>
     <a id="pw-reset-wa" class="btn block" target="_blank" rel="noopener" style="display:none; text-align:center; margin-top:8px; text-decoration:none;">📲 ابعتها واتساب</a>
     <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('pw-reset-modal-bg')">إغلاق</button>
+  </div>
+</div>
+
+<!-- مودال: ربط الذكاء الاصطناعي (المدرّس) -->
+<div class="modal-bg" id="ai-settings-modal-bg">
+  <div class="modal">
+    <h3>🔌 ربط الذكاء الاصطناعي</h3>
+    <div class="list-sub" style="margin-bottom:4px;">المزوّد</div>
+    <select id="ai-provider" onchange="aiOnProviderChange()" style="margin-bottom:6px;">
+      <option value="gemini">Google Gemini (مجاني — الأنسب للصور)</option>
+      <option value="openrouter">OpenRouter</option>
+      <option value="groq">Groq</option>
+      <option value="anthropic">Anthropic Claude</option>
+      <option value="custom">مزوّد تاني (متوافق مع OpenAI)</option>
+    </select>
+    <div id="ai-hint" class="list-sub" style="margin-bottom:8px; line-height:1.6;"></div>
+    <div class="list-sub" style="margin-bottom:4px;">رابط الـAPI</div>
+    <input type="text" id="ai-base" dir="ltr" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">اسم الموديل</div>
+    <input type="text" id="ai-model" dir="ltr" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">المفتاح (API Key)</div>
+    <input type="password" id="ai-key" dir="ltr" autocomplete="off" style="margin-bottom:8px;">
+    <button class="btn block" onclick="aiTestConnection()">🔍 جرّب الاتصال</button>
+    <div id="ai-test-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
+    <button class="btn block" onclick="aiSaveSettings()">حفظ</button>
+    <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('ai-settings-modal-bg')">إلغاء</button>
+    <button class="btn block" style="margin-top:8px; background:transparent; color:var(--danger);" onclick="aiClearSettings()">مسح المفتاح من الجهاز</button>
   </div>
 </div>
 
@@ -3230,7 +3283,7 @@ function isToday(iso){
 
 /* ========================= TEACHER ========================= */
 let teacherActiveChildId = null;
-const TEACHER_TABS = ['log','attendance','schedule','chat','payouts','evals','calendar','history'];
+const TEACHER_TABS = ['log','attendance','schedule','chat','payouts','evals','calendar','history','exams'];
 
 function switchTeacherTab(tab){
   pushOrReplaceTabState('teacher-screen', tab);
@@ -3245,6 +3298,7 @@ function switchTeacherTab(tab){
   if(tab==='chat') renderTeacherChat();
   if(tab==='calendar') renderTeacherCalendar();
   if(tab==='history') renderTeacherHistory();
+  if(tab==='exams') renderTeacherExams();
   if(tab==='evals'){
     renderTeacherEvalsOwn();
     fetchDBFromSupabase().then(()=> renderTeacherEvalsOwn());
@@ -5295,6 +5349,362 @@ function copyTempPassword(){
   } else {
     showToast('انسخها يدوي');
   }
+}
+
+/* ========================= امتحانات الذكاء الاصطناعي (المدرّس) =========================
+   المدرّس بيربط مفتاح API بتاعه (محفوظ على جهازه بس)، والتطبيق بيطلب من الموديل أسئلة (من نص أو صور كتاب)،
+   والمدرّس بيراجع ويعدّل، وبعدين بيطبع ورقة الامتحان PDF (مع نموذج إجابة اختياري). */
+const AI_PROVIDERS = {
+  gemini:     { label:'Google Gemini', format:'gemini',    base:'https://generativelanguage.googleapis.com/v1beta', model:'gemini-flash-latest', hint:'مفتاح مجاني من aistudio.google.com (الأنسب للصور)' },
+  openrouter: { label:'OpenRouter',    format:'openai',    base:'https://openrouter.ai/api/v1', model:'', hint:'اكتب اسم موديل مجاني بيقبل صور (غالبًا اسمه بينتهي بـ :free)' },
+  groq:       { label:'Groq',          format:'openai',    base:'https://api.groq.com/openai/v1', model:'meta-llama/llama-4-scout-17b-16e-instruct', hint:'مفتاح مجاني من console.groq.com — لازم موديل بيقبل صور' },
+  anthropic:  { label:'Anthropic Claude', format:'anthropic', base:'https://api.anthropic.com/v1', model:'claude-haiku-5-5', hint:'' },
+  custom:     { label:'مزوّد تاني (متوافق مع OpenAI)', format:'openai', base:'', model:'', hint:'أي مزوّد بيدعم /chat/completions' }
+};
+let examState = { images: [], draft: null, busy: false };
+const EXAM_LETTERS = ['أ','ب','ج','د'];
+
+function aiPersonKey(){ return (typeof session!=='undefined' && session && session.personId) ? session.personId : 'x'; }
+function aiCfgKey(){ return 'masar_ai_cfg_' + aiPersonKey(); }
+function examDraftKey(){ return 'masar_exam_draft_' + aiPersonKey(); }
+function loadAiCfg(){ try{ return JSON.parse(localStorage.getItem(aiCfgKey())||'null'); }catch(e){ return null; } }
+function saveAiCfg(c){ try{ localStorage.setItem(aiCfgKey(), JSON.stringify(c)); return true; }catch(e){ return false; } }
+function examSaveDraft(){ try{ if(examState.draft) localStorage.setItem(examDraftKey(), JSON.stringify(examState.draft)); else localStorage.removeItem(examDraftKey()); }catch(e){} }
+
+function aiErrorMsg(e){
+  const m = String((e && e.message) || e || '');
+  if(m==='NETWORK') return 'تعذّر الاتصال بالمزوّد. النت ضعيف، أو المزوّد بيمنع الاتصال من المتصفح (جرّب Gemini)';
+  if(/HTTP 401|HTTP 403/.test(m)) return 'المفتاح مش مقبول — راجعه';
+  if(/HTTP 429/.test(m)) return 'وصلت للحد المجاني — استنى شوية وجرّب تاني';
+  if(/HTTP 404/.test(m)) return 'اسم الموديل غلط أو مش متاح';
+  if(/HTTP 400/.test(m)) return 'الطلب اترفض — غالبًا الموديل ده مش بيقبل صور، أو اسمه غلط';
+  return 'حصل خطأ: ' + m.slice(0, 120);
+}
+
+// نداء موحّد لأي مزوّد (3 صيغ بتغطي أغلب الـAPIs): gemini / anthropic / openai-compatible
+async function aiCall(cfg, prompt, images){
+  images = images || [];
+  const b64 = d => String(d).split(',')[1];
+  const base = String(cfg.base||'').replace(/\/+$/,'');
+  let url, headers, body;
+  if(cfg.format==='gemini'){
+    url = base + '/models/' + encodeURIComponent(cfg.model) + ':generateContent?key=' + encodeURIComponent(cfg.key);
+    headers = {'Content-Type':'application/json'};
+    body = { contents:[{ role:'user', parts:[{text:prompt}].concat(images.map(d=>({inline_data:{mime_type:'image/jpeg', data:b64(d)}}))) }], generationConfig:{temperature:0.4} };
+  } else if(cfg.format==='anthropic'){
+    url = base + '/messages';
+    headers = {'Content-Type':'application/json','x-api-key':cfg.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+    body = { model:cfg.model, max_tokens:4096, messages:[{ role:'user', content: images.map(d=>({type:'image', source:{type:'base64', media_type:'image/jpeg', data:b64(d)}})).concat([{type:'text', text:prompt}]) }] };
+  } else {
+    url = base + '/chat/completions';
+    headers = {'Content-Type':'application/json','Authorization':'Bearer '+cfg.key};
+    const content = images.length ? [{type:'text', text:prompt}].concat(images.map(d=>({type:'image_url', image_url:{url:d}}))) : prompt;
+    body = { model:cfg.model, messages:[{role:'user', content}], temperature:0.4 };
+  }
+  let res;
+  try{ res = await fetch(url, {method:'POST', headers, body:JSON.stringify(body)}); }
+  catch(e){ throw new Error('NETWORK'); }
+  if(!res.ok){ let t=''; try{ t=(await res.text()).slice(0,300); }catch(e){} throw new Error('HTTP '+res.status+': '+t); }
+  const j = await res.json();
+  if(cfg.format==='gemini'){
+    const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+    return parts.map(p=>p.text||'').join('');
+  }
+  if(cfg.format==='anthropic'){
+    return (j.content||[]).map(c=>c.text||'').join('');
+  }
+  return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
+}
+
+function aiExtractJson(text){
+  const t = String(text||'').replace(/```json|```/gi,'').trim();
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if(a<0 || b<=a) throw new Error('الرد مش بصيغة مفهومة');
+  return JSON.parse(t.slice(a, b+1));
+}
+
+function examNormalize(data){
+  const qs = (data && Array.isArray(data.questions)) ? data.questions : [];
+  const letterIdx = {'أ':0,'ا':0,'ب':1,'ج':2,'د':3,'a':0,'b':1,'c':2,'d':3,'A':0,'B':1,'C':2,'D':3};
+  const out = [];
+  qs.forEach(q=>{
+    const text = String(q && q.text || '').trim();
+    if(!text) return;
+    if(q.type==='mcq' && Array.isArray(q.options) && q.options.length>=2){
+      const opts = q.options.slice(0,4).map(o=>String(o));
+      let ans = (typeof q.answer==='string' && letterIdx[q.answer.trim()]!==undefined) ? letterIdx[q.answer.trim()] : Number(q.answer);
+      if(!(ans>=0 && ans<opts.length)) ans = 0;
+      out.push({type:'mcq', text, options:opts, answer:ans, marks:Number(q.marks)||1});
+    } else if(q.type==='tf'){
+      out.push({type:'tf', text, answer:(q.answer===true || String(q.answer).toLowerCase()==='true' || q.answer==='صح'), marks:Number(q.marks)||1});
+    } else if(q.type==='essay'){
+      out.push({type:'essay', text, answer:String(q.answer||''), marks:Number(q.marks)||2});
+    }
+  });
+  return out;
+}
+
+/* ---------- شاشة ربط الـAPI ---------- */
+function openAiSettings(){
+  const cfg = loadAiCfg() || {};
+  const prov = cfg.provider || 'gemini';
+  document.getElementById('ai-provider').value = prov;
+  aiFillProviderDefaults(prov, cfg);
+  document.getElementById('ai-key').value = cfg.key || '';
+  document.getElementById('ai-test-result').textContent = '';
+  document.getElementById('ai-settings-modal-bg').classList.add('show');
+}
+function aiFillProviderDefaults(prov, cfg){
+  const p = AI_PROVIDERS[prov] || AI_PROVIDERS.custom;
+  document.getElementById('ai-base').value = (cfg && cfg.base) || p.base;
+  document.getElementById('ai-model').value = (cfg && cfg.model) || p.model;
+  document.getElementById('ai-hint').textContent = p.hint || '';
+}
+function aiOnProviderChange(){ aiFillProviderDefaults(document.getElementById('ai-provider').value, null); }
+function aiReadForm(){
+  const prov = document.getElementById('ai-provider').value;
+  const p = AI_PROVIDERS[prov] || AI_PROVIDERS.custom;
+  return { provider:prov, format:p.format, base:document.getElementById('ai-base').value.trim(), model:document.getElementById('ai-model').value.trim(), key:document.getElementById('ai-key').value.trim() };
+}
+function aiValidate(cfg){
+  if(!cfg.base) return 'اكتب رابط الـAPI';
+  if(!cfg.model) return 'اكتب اسم الموديل';
+  if(!cfg.key) return 'اكتب المفتاح';
+  return '';
+}
+async function aiTestConnection(){
+  const cfg = aiReadForm();
+  const res = document.getElementById('ai-test-result');
+  const bad = aiValidate(cfg);
+  if(bad){ res.textContent = '⚠️ ' + bad; return; }
+  res.textContent = '⏳ بجرّب الاتصال وقراءة الصور...';
+  try{
+    const c = document.createElement('canvas'); c.width = 160; c.height = 160;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,160,160); g.fillStyle = '#000'; g.font = 'bold 120px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('7', 80, 86);
+    const out = await aiCall(cfg, 'What digit is shown in the image? Reply with the digit only.', [c.toDataURL('image/jpeg', 0.9)]);
+    if(/7|سبع/.test(out)) res.textContent = '✅ الاتصال شغال والموديل بيقرا الصور';
+    else res.textContent = '⚠️ الاتصال شغال لكن الموديل ماقراش الصورة صح — ممكن مش بيدعم الصور';
+  }catch(e){ res.textContent = '⚠️ ' + aiErrorMsg(e); }
+}
+function aiSaveSettings(){
+  const cfg = aiReadForm();
+  const bad = aiValidate(cfg);
+  if(bad){ showToast('⚠️ ' + bad); return; }
+  if(!saveAiCfg(cfg)){ showToast('⚠️ المتصفح منع الحفظ على الجهاز'); return; }
+  closeModal('ai-settings-modal-bg');
+  showToast('✅ اتحفظ الربط على جهازك');
+  renderTeacherExams();
+}
+function aiClearSettings(){
+  if(!confirm('تمسح مفتاح الذكاء الاصطناعي من الجهاز ده؟')) return;
+  try{ localStorage.removeItem(aiCfgKey()); }catch(e){}
+  closeModal('ai-settings-modal-bg');
+  renderTeacherExams();
+}
+
+/* ---------- شاشة الامتحانات ---------- */
+function renderTeacherExams(){
+  const el = document.getElementById('teacher-exams-view');
+  if(!el) return;
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const rooms = teacher ? (teacher.classroomIds||[]).map(id=>db.classrooms.find(r=>r.id===id)).filter(Boolean) : [];
+  const cfg = loadAiCfg();
+  if(!examState.draft){ try{ examState.draft = JSON.parse(localStorage.getItem(examDraftKey())||'null'); }catch(e){ examState.draft = null; } }
+  const connected = !!(cfg && cfg.key);
+  el.innerHTML = `
+    <div class="card" style="padding:12px 14px; margin-bottom:10px;">
+      <div style="font-weight:700; margin-bottom:6px;">${connected ? '✅ الذكاء الاصطناعي متصل' : '⚠️ لسه ما ربطتش ذكاء اصطناعي'}</div>
+      ${connected ? `<div class="list-sub" dir="ltr" style="text-align:right;">${faEsc((AI_PROVIDERS[cfg.provider]||{}).label||cfg.provider)} · ${faEsc(cfg.model)}</div>` : '<div class="list-sub">اربط مفتاح API (فيه مزودين مجانيين) عشان تقدر تولّد امتحانات.</div>'}
+      <button class="btn block" style="margin-top:8px;" onclick="openAiSettings()">⚙️ ${connected ? 'تغيير الربط' : 'ربط الذكاء الاصطناعي'}</button>
+      <div class="list-sub" style="margin-top:8px; line-height:1.7;">🔒 المفتاح بيتحفظ على جهازك بس. النصوص والصور اللي بتبعتها بتروح لمزوّد الذكاء الاصطناعي اللي اخترته — ماتصوّرش ورق فيه أسماء طلاب.</div>
+    </div>
+
+    <div class="section-title" style="margin-top:0;">🧠 امتحان جديد</div>
+    <div class="card" style="padding:12px 14px;">
+      <select id="exam-room" style="margin-bottom:8px;">
+        <option value="">من غير مجموعة (حر)</option>
+        ${rooms.map(r=>`<option value="${faEsc(r.id)}">${faEsc(r.name)}</option>`).join('')}
+      </select>
+      <input type="text" id="exam-title" placeholder="عنوان الامتحان (اختياري)" style="margin-bottom:8px;">
+      <textarea id="exam-topic" rows="3" placeholder="المنهج المطلوب — مثال: الباب الثاني: المعادلات الخطية" style="margin-bottom:8px;"></textarea>
+
+      <div class="list-sub" style="margin-bottom:4px;">📷 صفحات من الكتاب (اختياري — لحد 4 صور)</div>
+      <input type="file" id="exam-files" accept="image/*" multiple onchange="examAddImages(this.files)" style="margin-bottom:6px;">
+      <div id="exam-images" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
+
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:8px;">
+        <div><div class="list-sub">اختيار من متعدد</div><input type="number" id="exam-n-mcq" value="5" min="0" max="20"></div>
+        <div><div class="list-sub">صح / خطأ</div><input type="number" id="exam-n-tf" value="3" min="0" max="20"></div>
+        <div><div class="list-sub">مقالي</div><input type="number" id="exam-n-essay" value="2" min="0" max="10"></div>
+      </div>
+      <select id="exam-diff" style="margin-bottom:8px;">
+        <option value="سهل">صعوبة: سهل</option>
+        <option value="متوسط" selected>صعوبة: متوسط</option>
+        <option value="صعب">صعوبة: صعب</option>
+      </select>
+      <button class="btn block" id="exam-gen-btn" onclick="examGenerate()">✨ ولّد الامتحان</button>
+    </div>
+    <div id="exam-draft"></div>`;
+  renderExamImages();
+  renderExamDraft();
+}
+
+function examFileToDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onerror = reject;
+    r.onload = ()=>{
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = ()=>{
+        const max = 1280; const k = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.round(img.width*k), h = Math.round(img.height*k);
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = r.result;
+    };
+    r.readAsDataURL(file);
+  });
+}
+async function examAddImages(files){
+  const list = Array.from(files||[]);
+  for(const f of list){
+    if(examState.images.length >= 4){ showToast('أقصى حد 4 صور'); break; }
+    try{ examState.images.push(await examFileToDataUrl(f)); }catch(e){ showToast('⚠️ مقدرتش أقرا صورة'); }
+  }
+  const inp = document.getElementById('exam-files'); if(inp) inp.value = '';
+  renderExamImages();
+}
+function examRemoveImage(i){ examState.images.splice(i,1); renderExamImages(); }
+function renderExamImages(){
+  const box = document.getElementById('exam-images'); if(!box) return;
+  box.innerHTML = examState.images.map((d,i)=>`<div style="position:relative;"><img src="${d}" style="width:64px; height:64px; object-fit:cover; border-radius:8px;"><button class="badge" style="position:absolute; top:-6px; left:-6px;" onclick="examRemoveImage(${i})">✕</button></div>`).join('');
+}
+
+async function examGenerate(){
+  const cfg = loadAiCfg();
+  if(!cfg || !cfg.key){ showToast('اربط الذكاء الاصطناعي الأول'); openAiSettings(); return; }
+  if(examState.busy) return;
+  const nM = Math.max(0, Math.min(20, Number(document.getElementById('exam-n-mcq').value)||0));
+  const nT = Math.max(0, Math.min(20, Number(document.getElementById('exam-n-tf').value)||0));
+  const nE = Math.max(0, Math.min(10, Number(document.getElementById('exam-n-essay').value)||0));
+  const topic = document.getElementById('exam-topic').value.trim();
+  if(nM+nT+nE === 0){ showToast('حدد عدد الأسئلة'); return; }
+  if(!topic && !examState.images.length){ showToast('اكتب المنهج أو صوّر صفحات من الكتاب'); return; }
+  const db = loadDB();
+  const roomId = document.getElementById('exam-room').value;
+  const room = roomId ? db.classrooms.find(r=>r.id===roomId) : null;
+  const subjectName = room ? (((db.subjects||[]).find(s=>s.id===room.subjectId)||{}).name || room.name) : '';
+  const gradeLabel = room && room.grade ? (GRADE_LABELS[room.grade] || '') : '';
+  const diff = document.getElementById('exam-diff').value;
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+
+  const prompt = 'أنت مساعد مدرّس خبير في المنهج المصري. اعمل امتحان باللغة العربية بالمواصفات دي:\n'
+    + (subjectName ? '- المادة: ' + subjectName + '\n' : '')
+    + (gradeLabel ? '- الصف: ' + gradeLabel + '\n' : '')
+    + (topic ? '- المطلوب: ' + topic + '\n' : '')
+    + '- الصعوبة: ' + diff + '\n'
+    + '- عدد الأسئلة: اختيار من متعدد ' + nM + ' (4 اختيارات)، صح/خطأ ' + nT + '، مقالي ' + nE + '.\n'
+    + (examState.images.length ? '- الصور المرفقة صفحات من الكتاب، اعتمد عليها في الأسئلة.\n' : '')
+    + 'قواعد: الأسئلة واضحة ومناسبة للمستوى ومش متكررة، والإجابات النموذجية صحيحة. اكتب المعادلات بصيغة نصية بسيطة.\n'
+    + 'ارجع JSON فقط بدون أي كلام تاني وبدون markdown، بالشكل ده بالظبط:\n'
+    + '{"title":"عنوان","questions":[{"type":"mcq","text":"السؤال","options":["اختيار1","اختيار2","اختيار3","اختيار4"],"answer":0,"marks":1},{"type":"tf","text":"العبارة","answer":true,"marks":1},{"type":"essay","text":"السؤال","answer":"نموذج الإجابة","marks":3}]}\n'
+    + '(answer في mcq هو رقم الاختيار الصحيح من 0 لـ3)';
+
+  examState.busy = true;
+  const btn = document.getElementById('exam-gen-btn');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ بيولّد الأسئلة... (ممكن ياخد نص دقيقة)'; }
+  try{
+    const out = await aiCall(cfg, prompt, examState.images);
+    const data = aiExtractJson(out);
+    const questions = examNormalize(data);
+    if(!questions.length) throw new Error('مفيش أسئلة صالحة في الرد — جرّب تاني');
+    const customTitle = document.getElementById('exam-title').value.trim();
+    examState.draft = { title: customTitle || String(data.title||'امتحان'), subject: subjectName, grade: gradeLabel, teacherName: teacher ? teacher.name : '', questions };
+    examSaveDraft();
+    renderExamDraft();
+    const d = document.getElementById('exam-draft'); if(d && d.scrollIntoView) d.scrollIntoView({behavior:'smooth'});
+  }catch(e){
+    showToast('⚠️ ' + aiErrorMsg(e));
+  }finally{
+    examState.busy = false;
+    const b2 = document.getElementById('exam-gen-btn'); if(b2){ b2.disabled = false; b2.textContent = '✨ ولّد الامتحان'; }
+  }
+}
+
+const EXAM_TYPE_LABELS = {mcq:'اختيار من متعدد', tf:'صح / خطأ', essay:'مقالي'};
+function renderExamDraft(){
+  const box = document.getElementById('exam-draft'); if(!box) return;
+  const d = examState.draft;
+  if(!d || !d.questions || !d.questions.length){ box.innerHTML = ''; return; }
+  const total = d.questions.reduce((t,q)=> t + (Number(q.marks)||0), 0);
+  box.innerHTML = `<div class="section-title">📋 ${faEsc(d.title)} — ${d.questions.length} سؤال · ${total} درجة</div>`
+    + d.questions.map((q,i)=>`<div class="card" style="padding:12px; margin-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+          <b>${i+1}. ${EXAM_TYPE_LABELS[q.type]||''} <span class="list-sub">(${Number(q.marks)||0} درجة)</span></b>
+          <button class="badge" onclick="examDeleteQ(${i})">🗑</button>
+        </div>
+        <textarea rows="3" oninput="examEditQ(${i}, this.value)">${faEsc(q.text)}</textarea>
+        ${q.type==='mcq' ? q.options.map((o,k)=>`<div class="list-sub" style="margin-top:4px;">${k===q.answer?'✅':'▫️'} ${EXAM_LETTERS[k]}) ${faEsc(o)}</div>`).join('') : ''}
+        ${q.type==='tf' ? `<div class="list-sub" style="margin-top:4px;">الإجابة: ${q.answer?'✅ صح':'❌ خطأ'}</div>` : ''}
+        ${q.type==='essay' ? `<div class="list-sub" style="margin-top:4px; line-height:1.7;">نموذج الإجابة: ${faEsc(q.answer)}</div>` : ''}
+      </div>`).join('')
+    + `<button class="btn block" onclick="examPrint(false)">🖨️ طباعة / حفظ PDF — ورقة الامتحان</button>
+       <button class="btn block" style="margin-top:8px;" onclick="examPrint(true)">📝 PDF مع نموذج الإجابة</button>
+       <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="examClearDraft()">🗑 مسح الامتحان</button>`;
+}
+function examEditQ(i, v){ if(examState.draft && examState.draft.questions[i]){ examState.draft.questions[i].text = v; examSaveDraft(); } }
+function examDeleteQ(i){ if(!examState.draft) return; examState.draft.questions.splice(i,1); examSaveDraft(); renderExamDraft(); }
+function examClearDraft(){ if(!confirm('تمسح الامتحان ده؟')) return; examState.draft = null; examSaveDraft(); renderExamDraft(); }
+
+/* ---------- ورقة الامتحان للطباعة / PDF ---------- */
+function buildExamHtml(d, withAnswers){
+  const total = d.questions.reduce((t,q)=> t + (Number(q.marks)||0), 0);
+  const meta = [d.subject, d.grade].filter(Boolean).map(faEsc).join(' — ');
+  let h = `<div class="exam-sheet">
+    <div class="exam-head">
+      <div class="exam-title">${faEsc(d.title)}</div>
+      ${meta ? `<div class="exam-meta">${meta}</div>` : ''}
+      ${d.teacherName ? `<div class="exam-meta">أ. ${faEsc(d.teacherName)}</div>` : ''}
+    </div>
+    <div class="exam-info"><span>الاسم: ................................</span><span>التاريخ: ............</span><span>الدرجة: ...... / ${total}</span></div>`;
+  d.questions.forEach((q,i)=>{
+    h += `<div class="exam-q"><div class="exam-qtext"><b>${i+1})</b> ${faEsc(q.text)} <span class="exam-marks">(${Number(q.marks)||0})</span></div>`;
+    if(q.type==='mcq'){
+      h += '<div class="exam-opts">' + q.options.map((o,k)=>`<div>(${EXAM_LETTERS[k]}) ${faEsc(o)}</div>`).join('') + '</div>';
+    } else if(q.type==='tf'){
+      h += '<div class="exam-tf">( ) صح &nbsp;&nbsp;&nbsp; ( ) خطأ</div>';
+    } else {
+      const lines = Math.min(8, Math.max(3, (Number(q.marks)||2) * 2));
+      h += '<div class="exam-lines">' + '<div></div>'.repeat(lines) + '</div>';
+    }
+    h += '</div>';
+  });
+  if(withAnswers){
+    h += '<div class="exam-answers"><div class="exam-title" style="font-size:18px;">نموذج الإجابة</div>';
+    d.questions.forEach((q,i)=>{
+      let a = '';
+      if(q.type==='mcq') a = EXAM_LETTERS[q.answer] + ') ' + faEsc(q.options[q.answer]);
+      else if(q.type==='tf') a = q.answer ? 'صح' : 'خطأ';
+      else a = faEsc(q.answer);
+      h += `<div class="exam-ans"><b>${i+1})</b> ${a}</div>`;
+    });
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+function examPrint(withAnswers){
+  const d = examState.draft;
+  if(!d || !d.questions || !d.questions.length){ showToast('مفيش امتحان للطباعة'); return; }
+  const root = document.getElementById('exam-print-root');
+  root.innerHTML = buildExamHtml(d, !!withAnswers);
+  document.body.classList.add('printing-exam');
+  const cleanup = ()=>{ document.body.classList.remove('printing-exam'); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(()=>{ window.print(); }, 200);
 }
 
 function renderAdminList(){
@@ -8309,5 +8719,6 @@ async function saveTeacherEval(){
 /* ========================= INIT ========================= */
 initAuth(); // يفحص هل فيه جلسة Supabase شغالة؛ لو موجودة بيجيب بيانات المؤسسة من Supabase تلقائيًا، وإلا يوديك لشاشة الدخول
 </script>
+<div id="exam-print-root"></div>
 </body>
 </html>
