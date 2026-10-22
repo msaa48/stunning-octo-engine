@@ -1138,12 +1138,38 @@
       <option value="2">نموذجين (أ، ب)</option>
       <option value="3">3 نماذج (أ، ب، ج)</option>
       <option value="4">4 نماذج (أ، ب، ج، د)</option>
+      <option value="5">5 نماذج (أ، ب، ج، د، هـ)</option>
     </select>
     <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px;"><input type="checkbox" id="exam-ac-q"> خلط ترتيب الأسئلة</label>
     <label style="display:flex; align-items:center; gap:8px; margin-bottom:10px;"><input type="checkbox" id="exam-ac-o"> خلط ترتيب الاختيارات</label>
     <div class="list-sub" style="line-height:1.7; margin-bottom:10px;">نموذج (أ) هو الأصل. الخلط ثابت: لو طبعت تاني بتاخد نفس الترتيب ونفس المفتاح.</div>
+    <button class="btn block" style="margin-bottom:8px;" onclick="examReshuffle()">🔀 خلط جديد (ترتيب مختلف)</button>
     <button class="btn block" onclick="examSaveCheat()">حفظ</button>
     <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('exam-cheat-modal-bg')">إغلاق</button>
+  </div>
+</div>
+
+<!-- مودال: ترويسة الامتحان -->
+<div class="modal-bg" id="exam-header-modal-bg">
+  <div class="modal" style="max-height:88vh; overflow-y:auto;">
+    <h3>🏛️ ترويسة الامتحان</h3>
+    <div class="list-sub" style="line-height:1.7; margin-bottom:10px;">دي السطور اللي بتظهر في أعلى ورقة الامتحان. عدّلها زي ما تحب، ولو سيبت سطر فاضي مش هيظهر.</div>
+    <div class="list-sub" style="margin-bottom:4px;">السطر الأول (يمين)</div>
+    <input type="text" id="hd-org1" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">السطر التاني — المديرية / الإدارة</div>
+    <input type="text" id="hd-org2" placeholder="مثال: مديرية التربية والتعليم بسوهاج" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">السطر التالت — المدرسة / المركز</div>
+    <input type="text" id="hd-org3" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">العام الدراسي</div>
+    <input type="text" id="hd-year" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">الفصل الدراسي</div>
+    <input type="text" id="hd-term" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">الزمن</div>
+    <input type="text" id="hd-time" placeholder="مثال: ساعة ونصف" style="margin-bottom:8px;">
+    <div class="list-sub" style="margin-bottom:4px;">ملحوظة تظهر تحت بيانات الطالب (اختياري)</div>
+    <input type="text" id="hd-note" placeholder="مثال: الأسئلة في صفحتين — اقرأ التعليمات جيدًا" style="margin-bottom:10px;">
+    <button class="btn block" onclick="examSaveHeader()">حفظ</button>
+    <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('exam-header-modal-bg')">إغلاق</button>
   </div>
 </div>
 
@@ -5599,7 +5625,7 @@ const EXAM_STATUS = {
   archived: { label:'مؤرشف',      color:'#a0a6b4' }
 };
 const EXAM_TYPE_LABELS = {mcq:'اختيار من متعدد', tf:'صح / خطأ', essay:'مقالي'};
-const EXAM_DEFAULT_AC = {versions:1, shuffleQuestions:false, shuffleOptions:false};
+const EXAM_DEFAULT_AC = {versions:5, shuffleQuestions:true, shuffleOptions:true};
 
 /* ----- وقت وحالة ----- */
 function examStatus(ex, now){
@@ -5649,32 +5675,6 @@ function examRng(seed){
 }
 function examShuffle(arr, rnd){ const a = arr.slice(); for(let i=a.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
 function examCloneQ(q){ return Object.assign({}, q, q.options ? {options:q.options.slice()} : {}); }
-function examBuildVersions(d){
-  const ac = d.antiCheat || EXAM_DEFAULT_AC;
-  const n = Math.max(1, Math.min(4, Number(ac.versions)||1));
-  const seedBase = String(d.id || d.title || 'x');
-  const order = ['mcq','tf','essay'];
-  const out = [];
-  for(let v=0; v<n; v++){
-    let qs;
-    if(v === 0){
-      qs = d.questions.map(examCloneQ);
-    } else {
-      const rnd = examRng(examHash(seedBase + ':' + v));
-      let groups = order.map(t=> d.questions.filter(q=>q.type===t).map(examCloneQ));
-      if(ac.shuffleQuestions) groups = groups.map(g=> examShuffle(g, rnd));
-      if(ac.shuffleOptions) groups = groups.map(g=> g.map(q=>{
-        if(q.type !== 'mcq') return q;
-        const sh = examShuffle(q.options.map((o,i)=>i), rnd);
-        return Object.assign({}, q, { options: sh.map(i=>q.options[i]), answer: sh.indexOf(q.answer) });
-      }));
-      qs = [].concat.apply([], groups);
-    }
-    out.push({ letter: EXAM_LETTERS[v], code: 'V' + (v+1) + '-' + examHash(seedBase + ':' + v).toString(36).toUpperCase().slice(0,4), questions: qs });
-  }
-  return out;
-}
-
 /* ----- حفظ محلي للتعافي + حماية الريلود ----- */
 function examPersistLocal(){
   try{
@@ -5715,7 +5715,7 @@ window.addEventListener('beforeunload', function(e){
 function examFromRow(r){
   return { id:r.id, title:r.title, subject:r.subject_name||'', grade:r.grade_label||'', classroomId:r.classroom_id||null, classroomName:r.classroom_name||'',
     teacherName:r.teacher_name||'', questions:Array.isArray(r.questions)?r.questions:[], scheduled_at:r.scheduled_at||null, duration_min:r.duration_min||null,
-    antiCheat:Object.assign({}, EXAM_DEFAULT_AC, r.anti_cheat||{}), archived:!!r.archived };
+    antiCheat:Object.assign({}, EXAM_DEFAULT_AC, r.anti_cheat||{}), layout:(r.layout && typeof r.layout==='object') ? r.layout : {}, archived:!!r.archived };
 }
 async function examSaveToDb(silent){
   const d = examState.draft;
@@ -5727,7 +5727,7 @@ async function examSaveToDb(silent){
     title: String(d.title||'').trim() || 'امتحان', subject_name: d.subject || null, grade_label: d.grade || null,
     questions: d.questions, scheduled_at: d.scheduled_at || null,
     duration_min: d.scheduled_at ? (Number(d.duration_min)||60) : null,
-    anti_cheat: d.antiCheat || EXAM_DEFAULT_AC, archived: !!d.archived
+    anti_cheat: d.antiCheat || EXAM_DEFAULT_AC, layout: d.layout || {}, archived: !!d.archived
   };
   try{
     const q = d.id ? supabaseClient.from('exams').update(row).eq('id', d.id) : supabaseClient.from('exams').insert(row);
@@ -5941,7 +5941,8 @@ async function examGenerate(){
       teacherName: teacher ? teacher.name : '',
       questions,
       scheduled_at: prev ? prev.scheduled_at : null, duration_min: prev ? prev.duration_min : null,
-      antiCheat: prev ? prev.antiCheat : Object.assign({}, EXAM_DEFAULT_AC),
+      antiCheat: prev ? prev.antiCheat : examNewAntiCheat(),
+      layout: prev ? (prev.layout || {}) : examLoadHeaderDefaults(),
       archived: prev ? !!prev.archived : false
     };
     examMarkDirty();
@@ -5985,8 +5986,11 @@ function renderExamDraft(){
         ${q.type==='tf' ? `<div class="list-sub" style="margin-top:4px;">الإجابة: ${q.answer?'✅ صح':'❌ خطأ'}</div>` : ''}
         ${q.type==='essay' ? `<div class="list-sub" style="margin-top:4px; line-height:1.7;">نموذج الإجابة: ${faEsc(q.answer)}</div>` : ''}
       </div>`).join('')
-    + `<button class="btn block" onclick="examPrintDraft(false)">🖨️ طباعة / حفظ PDF — ورقة الامتحان</button>
-       <button class="btn block" style="margin-top:8px;" onclick="examPrintDraft(true)">📝 PDF مع نموذج الإجابة</button>
+    + `<button class="btn block" onclick="examOpenHeader()">🏛️ ترويسة الامتحان (الوزارة / المديرية / المركز)</button>
+       <div class="list-sub" style="margin:10px 0 4px; line-height:1.7;">📄 ورقة رسمية جاهزة للطباعة — ${ac.versions>1 ? ac.versions + ' نماذج مختلفة' : 'نموذج واحد'}</div>
+       <button class="btn block" onclick="examExportDraft('pdf',{papers:true,keys:false})">📄 PDF للطباعة</button>
+       <button class="btn block" style="margin-top:8px;" onclick="examExportDraft('docx',{papers:true,keys:false})">📝 Word (.docx) قابل للتعديل</button>
+       <button class="btn block" style="margin-top:8px;" onclick="examExportDraft('pdf',{papers:false,keys:true})">🔑 نماذج الإجابة (PDF)</button>
        <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="examCloseDraft()">✖ إغلاق الامتحان</button>`;
   examUpdateSaveState();
 }
@@ -6044,12 +6048,38 @@ function examOpenCheat(){
 }
 function examSaveCheat(){
   const d = examState.draft; if(!d) return;
-  const versions = Math.max(1, Math.min(4, Number(document.getElementById('exam-ac-versions').value)||1));
+  const versions = Math.max(1, Math.min(5, Number(document.getElementById('exam-ac-versions').value)||1));
   let q = document.getElementById('exam-ac-q').checked, o = document.getElementById('exam-ac-o').checked;
   if(versions > 1 && !q && !o){ q = true; showToast('فعّلت خلط الأسئلة، عشان النماذج ماتطلعش زي بعض'); }
-  d.antiCheat = { versions, shuffleQuestions:q, shuffleOptions:o };
+  d.antiCheat = { versions, shuffleQuestions:q, shuffleOptions:o, seed: (d.antiCheat && d.antiCheat.seed) || examNewSeed() };
   examMarkDirty(); renderExamDraft();
   closeModal('exam-cheat-modal-bg');
+}
+
+function examReshuffle(){
+  const d = examState.draft; if(!d) return;
+  if(!confirm('هتغيّر ترتيب كل النماذج. لو كنت طبعت نماذج قبل كده، مفاتيحها القديمة مش هتنطبق على الجديدة. تكمّل؟')) return;
+  d.antiCheat = Object.assign({}, EXAM_DEFAULT_AC, d.antiCheat || {}, { seed: examNewSeed() });
+  examMarkDirty(); renderExamDraft();
+  showToast('🔀 اتغيّر ترتيب النماذج');
+}
+
+/* ----- ترويسة الامتحان ----- */
+function examOpenHeader(){
+  const d = examState.draft; if(!d) return;
+  const L = examResolveLayout(d);
+  ['org1','org2','org3','year','term','time','note'].forEach(k=>{ document.getElementById('hd-' + k).value = L[k] || ''; });
+  document.getElementById('exam-header-modal-bg').classList.add('show');
+}
+function examSaveHeader(){
+  const d = examState.draft; if(!d) return;
+  const l = {};
+  ['org1','org2','org3','year','term','time','note'].forEach(k=>{ l[k] = document.getElementById('hd-' + k).value.trim(); });
+  d.layout = l;
+  examSaveHeaderDefaults({ org1: l.org1, org2: l.org2, org3: l.org3 });
+  examMarkDirty();
+  closeModal('exam-header-modal-bg');
+  showToast('✅ اتحفظت الترويسة');
 }
 
 /* ----- امتحاناتي (المكتبة) ----- */
@@ -6098,8 +6128,9 @@ function renderExamLibraryList(){
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
         <button class="badge" onclick="examOpen('${faEsc(r.id)}')">✏️ فتح</button>
         <button class="badge" onclick="examOpenSchedule('${faEsc(r.id)}')">📅 موعد</button>
-        <button class="badge" onclick="examLibPrint('${faEsc(r.id)}', false)">🖨️ طباعة</button>
-        <button class="badge" onclick="examLibPrint('${faEsc(r.id)}', true)">📝 مع الإجابة</button>
+        <button class="badge" onclick="examExportById('${faEsc(r.id)}','pdf',{papers:true,keys:false})">📄 PDF</button>
+        <button class="badge" onclick="examExportById('${faEsc(r.id)}','docx',{papers:true,keys:false})">📝 Word</button>
+        <button class="badge" onclick="examExportById('${faEsc(r.id)}','pdf',{papers:false,keys:true})">🔑 الإجابات</button>
         <button class="badge" onclick="examLibDuplicate('${faEsc(r.id)}')">📄 نسخة</button>
         <button class="badge" onclick="examLibArchive('${faEsc(r.id)}', ${r.archived ? 'false' : 'true'})">${r.archived ? '♻️ استعادة' : '📦 أرشفة'}</button>
         <button class="badge" onclick="examLibDelete('${faEsc(r.id)}')">🗑 حذف</button>
@@ -6114,15 +6145,11 @@ function examOpen(id){
   examPersistLocal();
   renderTeacherExams();
 }
-function examLibPrint(id, withAnswers){
-  const r = (examState.library||[]).find(x=>x.id===id); if(!r) return;
-  examPrintExam(examFromRow(r), withAnswers);
-}
 function examLibDuplicate(id){
   const r = (examState.library||[]).find(x=>x.id===id); if(!r) return;
   if(examState.draft) examLeaveGuard();
   const d = examFromRow(r);
-  d.id = null; d.title = d.title + ' (نسخة)'; d.scheduled_at = null; d.duration_min = null; d.archived = false;
+  d.id = null; d.title = d.title + ' (نسخة)'; d.scheduled_at = null; d.duration_min = null; d.archived = false; d.antiCheat = Object.assign({}, d.antiCheat, { seed: examNewSeed() });
   examState.draft = d; examState.view = 'new'; examMarkDirty();
   renderTeacherExams();
   showToast('اتعملت نسخة — احفظها لما تخلص');
@@ -6140,54 +6167,343 @@ async function examLibDelete(id){
   await examLoadLibrary();
 }
 
-/* ----- ورقة الامتحان للطباعة / PDF (نماذج متعددة + مفاتيح) ----- */
-function buildExamSheetHtml(d, ver, totalVersions){
-  const total = ver.questions.reduce((t,q)=> t + (Number(q.marks)||0), 0);
-  const meta = [d.subject, d.grade].filter(Boolean).map(faEsc).join(' — ');
-  let h = `<div class="exam-sheet">
-    <div class="exam-head">
-      <div class="exam-title">${faEsc(d.title)}</div>
-      ${meta ? `<div class="exam-meta">${meta}</div>` : ''}
-      ${d.teacherName ? `<div class="exam-meta">أ. ${faEsc(d.teacherName)}</div>` : ''}
-      ${totalVersions>1 ? `<div class="exam-version">نموذج (${ver.letter})</div>` : ''}
-    </div>
-    <div class="exam-info"><span>الاسم: ................................</span><span>التاريخ: ............</span><span>الدرجة: ...... / ${total}</span></div>`;
-  ver.questions.forEach((q,i)=>{
-    h += `<div class="exam-q"><div class="exam-qtext"><b>${i+1})</b> ${faEsc(q.text)} <span class="exam-marks">(${Number(q.marks)||0})</span></div>`;
-    if(q.type==='mcq') h += '<div class="exam-opts">' + q.options.map((o,k)=>`<div>(${EXAM_LETTERS[k]}) ${faEsc(o)}</div>`).join('') + '</div>';
-    else if(q.type==='tf') h += '<div class="exam-tf">( ) صح &nbsp;&nbsp;&nbsp; ( ) خطأ</div>';
-    else h += '<div class="exam-lines">' + '<div></div>'.repeat(Math.min(8, Math.max(3, (Number(q.marks)||2) * 2))) + '</div>';
-    h += '</div>';
+/* ----- ورقة الامتحان الرسمية: نموذج بيانات واحد → (صفحة PDF) + (ملف Word) ----- */
+const EXAM_VERSION_LETTERS = ['أ','ب','ج','د','هـ'];
+const EXAM_SECTION_TITLES = {
+  mcq: 'اختر الإجابة الصحيحة من بين الإجابات المعطاة',
+  tf: 'ضع علامة (✓) أمام العبارة الصحيحة وعلامة (✗) أمام العبارة الخاطئة',
+  essay: 'أجب عن الأسئلة التالية'
+};
+const EXAM_ORDINALS = ['الأول','الثاني','الثالث'];
+
+function examMarksText(n){
+  n = Number(n)||0;
+  if(n === 1) return 'درجة';
+  if(n === 2) return 'درجتان';
+  if(n >= 3 && n <= 10) return n + ' درجات';
+  return n + ' درجة';
+}
+function examDurationText(min){
+  min = Number(min)||0;
+  if(!min) return '';
+  if(min === 60) return 'ساعة';
+  if(min === 90) return 'ساعة ونصف';
+  if(min === 120) return 'ساعتان';
+  if(min < 60) return min + ' دقيقة';
+  const h = Math.floor(min/60), m = min % 60;
+  return (h === 1 ? 'ساعة' : h === 2 ? 'ساعتان' : h + ' ساعات') + (m ? ' و' + m + ' دقيقة' : '');
+}
+function examHeaderDefaultsKey(){ return 'masar_exam_header_' + aiPersonKey(); }
+function examLoadHeaderDefaults(){ try{ return JSON.parse(localStorage.getItem(examHeaderDefaultsKey())||'null') || {}; }catch(e){ return {}; } }
+function examSaveHeaderDefaults(l){ try{ localStorage.setItem(examHeaderDefaultsKey(), JSON.stringify(l)); }catch(e){} }
+function examDefaultLayout(d, now){
+  const dt = new Date(now || Date.now());
+  const y = dt.getFullYear(), mo = dt.getMonth() + 1;
+  const startYear = mo >= 8 ? y : y - 1;
+  const centerName = (typeof session !== 'undefined' && session && session.centerName) ? session.centerName : '';
+  return {
+    org1: 'وزارة التربية والتعليم',
+    org2: 'مديرية التربية والتعليم',
+    org3: centerName,
+    year: startYear + ' / ' + (startYear + 1),
+    term: (mo >= 8 || mo === 1) ? 'الفصل الدراسي الأول' : 'الفصل الدراسي الثاني',
+    time: examDurationText(d && d.duration_min),
+    note: ''
+  };
+}
+function examResolveLayout(d, now){
+  const base = examDefaultLayout(d, now);
+  const saved = Object.assign({}, examLoadHeaderDefaults(), (d && d.layout) || {});
+  Object.keys(saved).forEach(k=>{ if((k in base) && saved[k] !== undefined && saved[k] !== null) base[k] = String(saved[k]).trim(); });
+  return base;
+}
+
+function examNewSeed(){ return Math.random().toString(36).slice(2, 10); }
+function examNewAntiCheat(){ return Object.assign({}, EXAM_DEFAULT_AC, { seed: examNewSeed() }); }
+function examVersionSig(qs){ return qs.map(q=> q.text + '|' + (q.options ? q.options.join('~') + ':' : '') + q.answer).join('##'); }
+function examShuffleVersion(d, ac, seedBase, v, attempt){
+  const rnd = examRng(examHash(seedBase + ':' + v + ':' + attempt));
+  let groups = ['mcq','tf','essay'].map(t=> d.questions.filter(q=>q.type===t).map(examCloneQ));
+  if(ac.shuffleQuestions) groups = groups.map(g=> examShuffle(g, rnd));
+  if(ac.shuffleOptions) groups = groups.map(g=> g.map(q=>{
+    if(q.type !== 'mcq') return q;
+    const sh = examShuffle(q.options.map((o,i)=>i), rnd);
+    return Object.assign({}, q, { options: sh.map(i=>q.options[i]), answer: sh.indexOf(q.answer) });
+  }));
+  return [].concat.apply([], groups);
+}
+// لحد 5 نماذج، كل نموذج مختلف فعليًا عن اللي قبله، وثابتة عند إعادة الطباعة (seed محفوظ مع الامتحان)
+function examBuildVersions(d){
+  const ac = Object.assign({}, EXAM_DEFAULT_AC, d.antiCheat || {});
+  const n = Math.max(1, Math.min(5, Number(ac.versions)||1));
+  const seedBase = String(ac.seed || d.id || d.title || 'x');
+  const out = [], used = new Set(), heads = new Set();
+  const first = d.questions.map(examCloneQ);
+  used.add(examVersionSig(first));
+  if(first.length) heads.add(first[0].text);
+  out.push({ letter: EXAM_VERSION_LETTERS[0], code: 'V1-' + examHash(seedBase + ':0').toString(36).toUpperCase().slice(0,4), questions: first });
+  for(let v=1; v<n; v++){
+    let qs = null;
+    for(let attempt=0; attempt<80; attempt++){
+      qs = examShuffleVersion(d, ac, seedBase, v, attempt);
+      const sigOk = !used.has(examVersionSig(qs));
+      const headOk = !qs.length || !heads.has(qs[0].text);
+      if(sigOk && (headOk || attempt >= 50)) break;   // أول 50 محاولة: نطلب إن أول سؤال يختلف كمان
+    }
+    used.add(examVersionSig(qs));
+    if(qs.length) heads.add(qs[0].text);
+    out.push({ letter: EXAM_VERSION_LETTERS[v], code: 'V' + (v+1) + '-' + examHash(seedBase + ':' + v).toString(36).toUpperCase().slice(0,4), questions: qs });
+  }
+  return out;
+}
+
+function examBuildModel(d, now){
+  const layout = examResolveLayout(d, now);
+  const model = { title: String(d.title||'امتحان'), subject: d.subject||'', grade: d.grade||'', teacherName: d.teacherName||'', layout, versions: [] };
+  examBuildVersions(d).forEach(v=>{
+    const sections = [];
+    ['mcq','tf','essay'].forEach(t=>{
+      const items = v.questions.filter(q=>q.type===t);
+      if(!items.length) return;
+      sections.push({ type:t, title: EXAM_SECTION_TITLES[t], marks: items.reduce((s,q)=> s + (Number(q.marks)||0), 0), items: items.map((q,i)=> Object.assign({ n:i+1 }, q)) });
+    });
+    sections.forEach((s,i)=>{ s.ordinal = EXAM_ORDINALS[i]; });
+    model.versions.push({ letter:v.letter, code:v.code, total: sections.reduce((s,x)=> s + x.marks, 0), sections });
   });
-  if(totalVersions>1) h += `<div class="exam-code">رمز النموذج: ${faEsc(ver.code)}</div>`;
-  return h + '</div>';
+  return model;
 }
-function buildExamKeyHtml(d, ver, totalVersions){
-  let h = `<div class="exam-sheet"><div class="exam-head"><div class="exam-title">نموذج الإجابة — ${faEsc(d.title)}</div>${totalVersions>1 ? `<div class="exam-version">نموذج (${ver.letter}) · ${faEsc(ver.code)}</div>` : ''}</div>`;
-  ver.questions.forEach((q,i)=>{
-    let a = '';
-    if(q.type==='mcq') a = EXAM_LETTERS[q.answer] + ') ' + faEsc(q.options[q.answer]);
-    else if(q.type==='tf') a = q.answer ? 'صح' : 'خطأ';
-    else a = faEsc(q.answer);
-    h += `<div class="exam-ans"><b>${i+1})</b> ${a}</div>`;
+
+/* ----- صفحة PDF مستقلة (فيها الامتحان بس — مفيهاش شاشة التطبيق) ----- */
+function examPrintHtml(model, opts){
+  const esc = faEsc, multi = model.versions.length > 1, L = model.layout;
+  const meta = [model.subject, model.grade].filter(Boolean).map(esc).join(' — ');
+  let body = '';
+  if(opts.papers){
+    model.versions.forEach(v=>{
+      let h = '<section class="sheet"><table class="hd"><tr>'
+        + '<td class="r">' + [L.org1, L.org2, L.org3].filter(Boolean).map(esc).join('<br>') + '</td>'
+        + '<td class="c"><div class="ttl">' + esc(model.title) + '</div>' + (meta ? '<div class="sub">' + meta + '</div>' : '') + (multi ? '<div class="ver">نموذج (' + v.letter + ')</div>' : '') + '</td>'
+        + '<td class="l">' + [L.year ? 'العام الدراسي: ' + L.year : '', L.term, L.time ? 'الزمن: ' + L.time : '', 'الدرجة: ' + v.total].filter(Boolean).map(esc).join('<br>') + '</td>'
+        + '</tr></table>'
+        + '<table class="stu"><tr><td>الاسم: ............................</td><td>الفصل: ..............</td><td>رقم الجلوس: ............</td></tr></table>'
+        + (L.note ? '<div class="note">' + esc(L.note) + '</div>' : '');
+      v.sections.forEach(s=>{
+        h += '<div class="sec"><span>السؤال ' + s.ordinal + ': ' + esc(s.title) + '</span><span class="mk">(' + examMarksText(s.marks) + ')</span></div>';
+        s.items.forEach(q=>{
+          if(q.type === 'mcq'){
+            const long = q.options.some(o=> String(o).length > 16);
+            h += '<div class="q"><div><b>' + q.n + ')</b> ' + esc(q.text) + '</div><div class="opts ' + (long ? 'c2' : 'c4') + '">'
+              + q.options.map((o,k)=> '<div>(' + EXAM_LETTERS[k] + ') ' + esc(o) + '</div>').join('') + '</div></div>';
+          } else if(q.type === 'tf'){
+            h += '<div class="q tfrow"><div class="txt"><b>' + q.n + ')</b> ' + esc(q.text) + '</div><div class="br">(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div></div>';
+          } else {
+            h += '<div class="q"><div><b>' + q.n + ')</b> ' + esc(q.text) + ' <span class="mk">(' + examMarksText(q.marks) + ')</span></div>'
+              + '<div class="lines">' + '<div class="ln"></div>'.repeat(Math.min(6, Math.max(3, (Number(q.marks)||2) + 1))) + '</div></div>';
+          }
+        });
+      });
+      h += '<div class="end">انتهت الأسئلة — مع أطيب التمنيات بالتوفيق</div>' + (multi ? '<div class="code">' + esc(v.code) + '</div>' : '') + '</section>';
+      body += h;
+    });
+  }
+  if(opts.keys){
+    let k = '<section class="sheet keys"><div class="ttl" style="margin-bottom:10px;">نماذج الإجابة — ' + esc(model.title) + '</div>';
+    model.versions.forEach(v=>{
+      k += '<div class="kb"><div class="kh">' + (multi ? 'نموذج (' + v.letter + ') · ' + esc(v.code) : 'نموذج الإجابة') + '</div>';
+      v.sections.forEach(s=>{
+        k += '<div class="ks"><b>السؤال ' + s.ordinal + ':</b> ';
+        if(s.type === 'essay') k += '<ol>' + s.items.map(q=> '<li>' + esc(q.answer) + '</li>').join('') + '</ol>';
+        else k += s.items.map(q=> '<span class="ka">' + q.n + ') ' + (s.type === 'mcq' ? EXAM_LETTERS[q.answer] : (q.answer ? '✓' : '✗')) + '</span>').join(' ');
+        k += '</div>';
+      });
+      k += '</div>';
+    });
+    body += k + '</section>';
+  }
+  const css = '@page{size:A4;margin:10mm 12mm 11mm;}*{box-sizing:border-box;}'
+    + 'body{margin:0;background:#e9e9e9;font-family:"Amiri","Traditional Arabic","Simplified Arabic","Noto Naskh Arabic","Tajawal",serif;color:#000;direction:rtl;font-size:14.5px;line-height:1.7;}'
+    + '.bar{position:sticky;top:0;z-index:9;background:#1d2740;color:#fff;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;font-family:Tahoma,Arial,sans-serif;font-size:13px;line-height:1.5;}'
+    + '.bar button{background:#c9a24a;color:#1d2740;border:0;border-radius:8px;padding:9px 16px;font-weight:700;font-size:14px;}'
+    + '.sheet{background:#fff;max-width:794px;margin:12px auto;padding:20px 26px;page-break-after:always;break-after:page;}.sheet:last-child{page-break-after:auto;break-after:auto;}'
+    + '.hd{width:100%;border-collapse:collapse;margin-bottom:8px;}.hd td{vertical-align:top;padding:2px 6px;width:33%;}'
+    + '.hd .r{text-align:right;font-weight:700;font-size:14px;line-height:1.7;}.hd .l{text-align:right;font-size:14px;line-height:1.7;}.hd .c{text-align:center;}'
+    + '.ttl{display:inline-block;border:2px solid #000;border-radius:8px;padding:3px 14px;font-weight:800;font-size:18px;line-height:1.6;}.sub{font-size:14px;margin-top:3px;}'
+    + '.ver{display:inline-block;margin-top:4px;border:2px solid #000;padding:0 16px;font-weight:800;font-size:16px;}'
+    + '.stu{width:100%;border-collapse:collapse;margin:6px 0 4px;}.stu td{border:1px solid #000;padding:4px 10px;font-size:14px;}'
+    + '.note{font-size:13px;margin:4px 0;}'
+    + '.sec{display:flex;justify-content:space-between;gap:10px;margin-top:9px;padding:3px 8px;background:#e9e9e9;border-bottom:1.5px solid #000;font-weight:800;font-size:16px;line-height:1.7;break-after:avoid;page-break-after:avoid;}.mk{font-weight:600;font-size:13px;white-space:nowrap;}'
+    + '.q{margin:5px 0;break-inside:avoid;page-break-inside:avoid;}'
+    + '.opts{padding-right:18px;font-size:0;}.opts div{display:inline-block;vertical-align:top;font-size:15px;padding-left:6px;}.opts.c4 div{width:24.5%;}.opts.c2 div{width:49%;}'
+    + '.tfrow{display:flex;gap:12px;align-items:flex-start;}.tfrow .txt{flex:1;}.tfrow .br{white-space:nowrap;font-weight:700;}'
+    + '.ln{border-bottom:1px dotted #000;height:25px;}'
+    + '.end{text-align:center;font-weight:800;margin-top:10px;}.code{margin-top:6px;font-size:11px;color:#444;direction:ltr;text-align:left;}'
+    + '.kb{border:1px solid #000;border-radius:6px;padding:6px 10px;margin:8px 0;break-inside:avoid;page-break-inside:avoid;}.kh{font-weight:800;border-bottom:1px solid #000;margin-bottom:4px;}'
+    + '.ka{display:inline-block;margin-left:12px;}.ks ol{margin:2px 0;padding-right:22px;}'
+    + '@media print{body{background:#fff;}.bar{display:none;}.sheet{margin:0;max-width:none;padding:0;}}';
+  return '<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>' + esc(model.title) + '</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap" rel="stylesheet">'
+    + '<style>' + css + '</style></head><body>'
+    + '<div class="bar"><span>للحفظ PDF: اضغط «طباعة» ثم اختر «حفظ كـ PDF» من قائمة الطابعة.</span><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button></div>'
+    + body
+    + '<script>window.addEventListener("load",function(){var r=(document.fonts&&document.fonts.ready)?document.fonts.ready:Promise.resolve();r.then(function(){setTimeout(function(){window.print();},600);});});<\/script>'
+    + '</body></html>';
+}
+
+/* ----- ملف Word (.docx) منسّق وقابل للتعديل ----- */
+function examDocxBuild(model, opts, D){
+  const { Document, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType, Footer, PageNumber, SectionType, ShadingType, VerticalAlign } = D;
+  const FONT = { ascii:'Traditional Arabic', hAnsi:'Traditional Arabic', cs:'Traditional Arabic', eastAsia:'Traditional Arabic' };
+  const multi = model.versions.length > 1, L = model.layout;
+  const NONE = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const LINE = { style: BorderStyle.SINGLE, size: 8, color: '000000' };
+  const DOT = { style: BorderStyle.DOTTED, size: 6, color: '000000', space: 1 };
+  const noBorders = { top:NONE, bottom:NONE, left:NONE, right:NONE };
+  const tblNone = { top:NONE, bottom:NONE, left:NONE, right:NONE, insideHorizontal:NONE, insideVertical:NONE };
+  const boxBorders = { top:LINE, bottom:LINE, left:LINE, right:LINE };
+  const run = (text, o)=> new TextRun(Object.assign({ text, font: FONT, rightToLeft: true, size: 28 }, o || {}, (o && o.bold) ? { boldComplexScript: true } : {}));
+  const para = (runs, o)=> new Paragraph(Object.assign({ bidirectional: true, alignment: AlignmentType.START, children: Array.isArray(runs) ? runs : [runs], spacing: { after: 60, line: 340 } }, o || {}));
+  const cell = (children, o)=> new TableCell(Object.assign({ children, borders: noBorders, margins: { top: 40, bottom: 40, left: 80, right: 80 } }, o || {}));
+  const PAGE_W = 10400; // عرض النص بالـtwips
+
+  function headerTable(v){
+    const meta = [model.subject, model.grade].filter(Boolean).join(' — ');
+    const rightCell = cell([L.org1, L.org2, L.org3].filter(Boolean).map(t=> para([run(t, { bold:true, size:26 })], { spacing:{ after:20, line:300 } })), { width:{ size:34, type:WidthType.PERCENTAGE } });
+    const centerItems = [ para([run(model.title, { bold:true, size:34 })], { alignment: AlignmentType.CENTER, border: boxBorders, spacing:{ after:40, line:380 } }) ];
+    if(meta) centerItems.push(para([run(meta, { size:26 })], { alignment: AlignmentType.CENTER, spacing:{ after:40 } }));
+    if(multi) centerItems.push(para([run('نموذج (' + v.letter + ')', { bold:true, size:32 })], { alignment: AlignmentType.CENTER, border: boxBorders, spacing:{ after:20 } }));
+    const centerCell = cell(centerItems, { width:{ size:32, type:WidthType.PERCENTAGE }, verticalAlign: VerticalAlign.CENTER });
+    const leftCell = cell([L.year ? 'العام الدراسي: ' + L.year : '', L.term, L.time ? 'الزمن: ' + L.time : '', 'الدرجة: ' + v.total].filter(Boolean).map(t=> para([run(t, { bold:true, size:26 })], { spacing:{ after:20, line:300 } })), { width:{ size:34, type:WidthType.PERCENTAGE } });
+    return new Table({ width:{ size:100, type:WidthType.PERCENTAGE }, visuallyRightToLeft:true, borders: tblNone, rows:[ new TableRow({ children:[ rightCell, centerCell, leftCell ] }) ] });
+  }
+  function studentTable(){
+    const mk = (t)=> new TableCell({ children:[ para([run(t, { size:26 })], { spacing:{ after:20 } }) ], borders: boxBorders, margins:{ top:60, bottom:60, left:100, right:100 }, width:{ size:33, type:WidthType.PERCENTAGE } });
+    return new Table({ width:{ size:100, type:WidthType.PERCENTAGE }, visuallyRightToLeft:true, rows:[ new TableRow({ children:[ mk('الاسم: ............................'), mk('الفصل: ..............'), mk('رقم الجلوس: ............') ] }) ] });
+  }
+  function optionsTable(q){
+    const long = q.options.some(o=> String(o).length > 16);
+    const perRow = long ? 2 : 4;
+    const rows = [];
+    for(let i=0; i<q.options.length; i+=perRow){
+      const slice = q.options.slice(i, i+perRow);
+      const cells = slice.map((o,k)=> cell([ para([run('(' + EXAM_LETTERS[i+k] + ') ' + String(o), { size:26 })], { spacing:{ after:0 } }) ], { width:{ size: Math.floor(100/perRow), type:WidthType.PERCENTAGE } }));
+      while(cells.length < perRow) cells.push(cell([ para([run('')], { spacing:{ after:0 } }) ], { width:{ size: Math.floor(100/perRow), type:WidthType.PERCENTAGE } }));
+      rows.push(new TableRow({ children: cells }));
+    }
+    return new Table({ width:{ size:100, type:WidthType.PERCENTAGE }, visuallyRightToLeft:true, borders: tblNone, rows });
+  }
+  function footerFor(v, noCode){
+    const small = { size: 20 };
+    const kids = [ run('صفحة ', small), new TextRun({ children:[ PageNumber.CURRENT ], font: FONT, size: 20, rightToLeft: true }) ];
+    if(multi && !noCode) kids.push(run('     رمز النموذج: ' + v.code, small));
+    return new Footer({ children:[ para(kids, { alignment: AlignmentType.CENTER, spacing:{ after:0 } }) ] });
+  }
+  const pageProps = {
+    size:{ width:11906, height:16838 },
+    margin:{ top:900, bottom:900, left:800, right:800, footer:380 },
+    pageNumbers:{ start:1 },
+    borders:{
+      pageBorders:{ display: D.PageBorderDisplay.ALL_PAGES, offsetFrom: D.PageBorderOffsetFrom.PAGE },
+      pageBorderTop:{ style: BorderStyle.DOUBLE, size: 6, color:'000000', space: 22 },
+      pageBorderBottom:{ style: BorderStyle.DOUBLE, size: 6, color:'000000', space: 22 },
+      pageBorderLeft:{ style: BorderStyle.DOUBLE, size: 6, color:'000000', space: 22 },
+      pageBorderRight:{ style: BorderStyle.DOUBLE, size: 6, color:'000000', space: 22 }
+    }
+  };
+  const sections = [];
+  if(opts.papers){
+    model.versions.forEach(v=>{
+      const kids = [ headerTable(v), para([run('')], { spacing:{ after:40 } }), studentTable() ];
+      if(L.note) kids.push(para([run(L.note, { size:24 })], { spacing:{ before:60, after:60 } }));
+      v.sections.forEach(s=>{
+        kids.push(para([ run('السؤال ' + s.ordinal + ': ' + s.title, { bold:true, size:28 }), run('   (' + examMarksText(s.marks) + ')', { size:24 }) ],
+          { shading:{ type: ShadingType.CLEAR, fill:'E7E7E7', color:'auto' }, border:{ bottom: LINE }, spacing:{ before:200, after:100 }, keepNext:true }));
+        s.items.forEach(q=>{
+          if(q.type === 'mcq'){
+            kids.push(para([ run(q.n + ') ', { bold:true }), run(q.text) ], { keepNext:true, spacing:{ before:80, after:20 } }));
+            kids.push(optionsTable(q));
+          } else if(q.type === 'tf'){
+            kids.push(para([ run(q.n + ') ', { bold:true }), run(q.text), run('     (            )', { bold:true }) ], { keepLines:true, spacing:{ before:80, after:40 } }));
+          } else {
+            kids.push(para([ run(q.n + ') ', { bold:true }), run(q.text), run('  (' + examMarksText(q.marks) + ')', { size:24 }) ], { keepNext:true, spacing:{ before:80, after:20 } }));
+            const lines = Math.min(6, Math.max(3, (Number(q.marks)||2) + 1));
+            const lineRows = [];
+            for(let i=0; i<lines; i++) lineRows.push(new TableRow({ height:{ value: 480, rule: D.HeightRule.ATLEAST }, children:[ new TableCell({ children:[ para([run('')], { spacing:{ after:0 } }) ], borders:{ top:NONE, left:NONE, right:NONE, bottom: DOT } }) ] }));
+            kids.push(new Table({ width:{ size:100, type:WidthType.PERCENTAGE }, borders: tblNone, rows: lineRows }));
+          }
+        });
+      });
+      kids.push(para([ run('انتهت الأسئلة — مع أطيب التمنيات بالتوفيق', { bold:true }) ], { alignment: AlignmentType.CENTER, spacing:{ before:300, after:0 } }));
+      sections.push({ properties:{ type: SectionType.NEXT_PAGE, page: pageProps }, footers:{ default: footerFor(v) }, children: kids });
+    });
+  }
+  if(opts.keys){
+    const kids = [ para([ run('نماذج الإجابة — ' + model.title, { bold:true, size:32 }) ], { alignment: AlignmentType.CENTER, spacing:{ after:160 } }) ];
+    model.versions.forEach(v=>{
+      kids.push(para([ run(multi ? 'نموذج (' + v.letter + ') · ' + v.code : 'نموذج الإجابة', { bold:true }) ], { border:{ bottom: LINE }, shading:{ type: ShadingType.CLEAR, fill:'E7E7E7', color:'auto' }, spacing:{ before:160, after:60 }, keepNext:true }));
+      v.sections.forEach(s=>{
+        if(s.type === 'essay'){
+          kids.push(para([ run('السؤال ' + s.ordinal + ':', { bold:true }) ], { keepNext:true, spacing:{ after:20 } }));
+          s.items.forEach(q=> kids.push(para([ run(q.n + ') ' + q.answer, { size:26 }) ], { spacing:{ after:20 } })));
+        } else {
+          const txt = s.items.map(q=> q.n + ') ' + (s.type === 'mcq' ? EXAM_LETTERS[q.answer] : (q.answer ? '✓' : '✗'))).join('      ');
+          kids.push(para([ run('السؤال ' + s.ordinal + ':  ', { bold:true }), run(txt, { size:26 }) ], { spacing:{ after:30 } }));
+        }
+      });
+    });
+    sections.push({ properties:{ type: SectionType.NEXT_PAGE, page: Object.assign({}, pageProps, { pageNumbers:{ start:1 } }) }, footers:{ default: footerFor({ code:'' }, true) }, children: kids });
+  }
+  return new Document({
+    creator: 'Masar', title: model.title,
+    styles:{ default:{ document:{ run:{ font: FONT, size: 28, rightToLeft: true } } } },
+    sections
   });
-  return h + '</div>';
 }
-function buildExamHtml(d, withAnswers){
-  const versions = examBuildVersions(d);
-  return versions.map(v=> buildExamSheetHtml(d, v, versions.length)).join('')
-    + (withAnswers ? versions.map(v=> buildExamKeyHtml(d, v, versions.length)).join('') : '');
+
+/* ----- تنفيذ التصدير من الواجهة ----- */
+function examSafeFileName(s){ return String(s||'exam').replace(/[\\/:*?"<>|]+/g,' ').trim().slice(0,60) || 'exam'; }
+function examLoadScript(url){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = url; s.onload = resolve; s.onerror = ()=> reject(new Error('LOAD_FAIL'));
+    document.head.appendChild(s);
+  });
 }
-function examPrintExam(d, withAnswers){
-  if(!d || !d.questions || !d.questions.length){ showToast('مفيش امتحان للطباعة'); return; }
-  const root = document.getElementById('exam-print-root');
-  root.innerHTML = buildExamHtml(d, !!withAnswers);
-  document.body.classList.add('printing-exam');
-  const cleanup = ()=>{ document.body.classList.remove('printing-exam'); window.removeEventListener('afterprint', cleanup); };
-  window.addEventListener('afterprint', cleanup);
-  setTimeout(()=>{ window.print(); }, 200);
+function examExport(d, kind, opts){
+  if(!d || !d.questions || !d.questions.length){ showToast('مفيش امتحان للتصدير'); return; }
+  const model = examBuildModel(d);
+  if(kind === 'pdf'){
+    const html = examPrintHtml(model, opts);
+    const url = URL.createObjectURL(new Blob([html], { type:'text/html;charset=utf-8' }));
+    const w = window.open(url, '_blank');
+    if(!w){ showToast('المتصفح منع فتح الصفحة — اسمح بالنوافذ المنبثقة وجرّب تاني'); }
+    else showToast('اتفتحت ورقة الامتحان — اضغط «طباعة» واختار «حفظ كـ PDF»');
+    setTimeout(()=> URL.revokeObjectURL(url), 120000);
+    return;
+  }
+  // Word
+  showToast('⏳ جاري تجهيز ملف Word...');
+  (async ()=>{
+    try{
+      if(!window.docx) await examLoadScript('https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js');
+      const doc = examDocxBuild(model, opts, window.docx);
+      const blob = await window.docx.Packer.toBlob(doc);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = examSafeFileName(model.title) + (opts.papers ? '' : ' - نماذج الإجابة') + '.docx';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=> URL.revokeObjectURL(a.href), 60000);
+      showToast('✅ اتحمّل ملف Word — افتحه من التنزيلات');
+    }catch(e){
+      console.error(e);
+      showToast(e && e.message === 'LOAD_FAIL' ? '⚠️ مقدرتش أحمّل أداة Word — تأكد من النت وجرّب تاني' : '⚠️ حصل خطأ في تجهيز ملف Word');
+    }
+  })();
 }
-function examPrintDraft(withAnswers){ examPrintExam(examState.draft, withAnswers); }
+function examExportDraft(kind, opts){ examExport(examState.draft, kind, opts); }
+function examExportById(id, kind, opts){
+  const r = (examState.library||[]).find(x=>x.id===id); if(!r) return;
+  examExport(examFromRow(r), kind, opts);
+}
 
 function renderAdminList(){
   // نحافظ على فوكس مربع البحث ومكان الكيرسور، لأن إعادة بناء الـHTML بتفقدهم كل حرف
