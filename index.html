@@ -784,6 +784,7 @@
       <button class="tab-card parent" id="parent-tab-payments" onclick="switchParentTab('payments')"><span class="tc-icon">💳</span><span class="tc-label">الاشتراك</span></button>
       <button class="tab-card parent" id="parent-tab-calendar" onclick="switchParentTab('calendar')"><span class="tc-icon">🗓️</span><span class="tc-label">تقويم السنتر</span></button>
       <button class="tab-card parent" id="parent-tab-complaint" onclick="switchParentTab('complaint')"><span class="tc-icon">📩</span><span class="tc-label">شكوى</span></button>
+      <button class="tab-card parent" id="parent-tab-exams" onclick="switchParentTab('exams')"><span class="tc-icon">📝</span><span class="tc-label">نتائج الامتحانات</span></button>
     </div>
     <button class="tab-back" id="parent-tab-back" onclick="history.back()" style="display:none;">→ رجوع للقائمة</button>
 
@@ -826,6 +827,10 @@
     <div id="parent-panel-calendar" style="display:none;">
       <div class="section-title" style="margin-top:0;">مواعيد الامتحانات وفعاليات السنتر</div>
       <div class="timeline" id="parent-calendar-view"></div>
+    </div>
+
+    <div id="parent-panel-exams" style="display:none;">
+      <div id="parent-exams-view"></div>
     </div>
 
     <div id="parent-panel-complaint" style="display:none;">
@@ -1170,6 +1175,15 @@
     <input type="text" id="hd-note" placeholder="مثال: الأسئلة في صفحتين — اقرأ التعليمات جيدًا" style="margin-bottom:10px;">
     <button class="btn block" onclick="examSaveHeader()">حفظ</button>
     <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('exam-header-modal-bg')">إغلاق</button>
+  </div>
+</div>
+
+<!-- مودال: تاريخ نتايج الطالب (المدرّس) -->
+<div class="modal-bg" id="exam-history-modal-bg">
+  <div class="modal" style="max-height:88vh; overflow-y:auto;">
+    <h3 id="exam-history-title">📈</h3>
+    <div id="exam-history-body"></div>
+    <button class="btn block" style="margin-top:10px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('exam-history-modal-bg')">إغلاق</button>
   </div>
 </div>
 
@@ -4389,6 +4403,7 @@ function initParentScreen(){
 }
 
 function onParentChildChange(){
+  { const _pe = document.getElementById('parent-panel-exams'); if(_pe && _pe.style.display === 'block') setTimeout(renderParentExams, 0); }
   // نعيد رسم كل التابات المرتبطة بالطالب (مش بس اللي ظاهر حاليًا) عشان لو اليوزر بدّل تاب بعد كده يلاقي بيانات الطالب الصح
   renderParentLog();
   renderParentSchedule();
@@ -4401,7 +4416,7 @@ function switchParentTab(tab){
   pushOrReplaceTabState('parent-screen', tab);
   document.getElementById('parent-tab-menu').style.display = 'none';
   document.getElementById('parent-tab-back').style.display = 'flex';
-  ['log','schedule','eval','chat','payments','calendar','complaint'].forEach(t=>{
+  ['log','schedule','eval','chat','payments','calendar','complaint','exams'].forEach(t=>{
     document.getElementById('parent-tab-'+t).classList.toggle('active', t===tab);
     document.getElementById('parent-panel-'+t).style.display = t===tab ? 'block':'none';
   });
@@ -4410,12 +4425,13 @@ function switchParentTab(tab){
   if(tab==='chat') renderParentChat();
   if(tab==='payments') renderParentPayments();
   if(tab==='calendar') renderParentCalendar();
+  if(tab==='exams') renderParentExams();
 }
 
 function showParentMenu(){
   document.getElementById('parent-tab-menu').style.display = 'grid';
   document.getElementById('parent-tab-back').style.display = 'none';
-  ['log','schedule','eval','chat','payments','calendar','complaint'].forEach(t=>{
+  ['log','schedule','eval','chat','payments','calendar','complaint','exams'].forEach(t=>{
     document.getElementById('parent-panel-'+t).style.display = 'none';
   });
 }
@@ -5545,7 +5561,8 @@ function examNormalize(data){
     } else if(q.type==='tf'){
       out.push({type:'tf', text, answer:(q.answer===true || String(q.answer).toLowerCase()==='true' || q.answer==='صح'), marks:Number(q.marks)||1});
     } else if(q.type==='essay'){
-      out.push({type:'essay', text, answer:String(q.answer||''), marks:Number(q.marks)||2});
+      const eMarks = Number(q.marks) || 2;
+      out.push({type:'essay', text, answer:String(q.answer||''), marks:eMarks, rubric: examNormalizeRubric(q.rubric, q.answer, eMarks)});
     }
   });
   return out;
@@ -5714,7 +5731,7 @@ window.addEventListener('beforeunload', function(e){
 /* ----- التخزين في القاعدة ----- */
 function examFromRow(r){
   return { id:r.id, title:r.title, subject:r.subject_name||'', grade:r.grade_label||'', classroomId:r.classroom_id||null, classroomName:r.classroom_name||'',
-    teacherName:r.teacher_name||'', questions:Array.isArray(r.questions)?r.questions:[], scheduled_at:r.scheduled_at||null, duration_min:r.duration_min||null,
+    teacherName:r.teacher_name||'', questions:(Array.isArray(r.questions)?r.questions:[]).map(q=> (q && q.type==='essay' && !Array.isArray(q.rubric)) ? Object.assign({}, q, { rubric: examNormalizeRubric(null, q.answer, q.marks) }) : q), scheduled_at:r.scheduled_at||null, duration_min:r.duration_min||null,
     antiCheat:Object.assign({}, EXAM_DEFAULT_AC, r.anti_cheat||{}), layout:(r.layout && typeof r.layout==='object') ? r.layout : {}, archived:!!r.archived };
 }
 async function examSaveToDb(silent){
@@ -5770,7 +5787,7 @@ function renderTeacherExams(){
   el.innerHTML = `
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <button class="btn block" style="${view==='new'?'':'opacity:.55;'}" onclick="examSetView('new')">➕ امتحان</button>
-      <button class="btn block" style="${view==='library'?'':'opacity:.55;'}" onclick="examSetView('library')">📚 امتحاناتي</button>
+      <button class="btn block" style="${(view==='library'||view==='grade'||view==='results')?'':'opacity:.55;'}" onclick="examSetView('library')">📚 امتحاناتي</button>
     </div>
     ${showRec ? `<div class="card" style="padding:12px 14px; margin-bottom:10px; border:1.5px solid #c98a1b;">
       <div style="font-weight:800; margin-bottom:4px;">📝 فيه امتحان ما اتحفظش</div>
@@ -5780,7 +5797,10 @@ function renderTeacherExams(){
       <button class="btn block" style="margin-top:6px; background:transparent; color:var(--danger);" onclick="examRecoveryDiscard()">🗑 امسحه</button>
     </div>` : ''}
     <div id="exam-view-body"></div>`;
-  if(view === 'library') renderExamLibrary(); else renderExamNew();
+  if(view === 'library') renderExamLibrary();
+  else if(view === 'grade') renderExamGrade();
+  else if(view === 'results') renderExamResults();
+  else renderExamNew();
 }
 function examSetView(v){
   if(v === 'library' && examState.view !== 'library') examLeaveGuard();
@@ -5921,8 +5941,9 @@ async function examGenerate(){
     + (examState.images.length ? '- الصور المرفقة صفحات من الكتاب، اعتمد عليها في الأسئلة.\n' : '')
     + 'قواعد: الأسئلة واضحة ومناسبة للمستوى ومش متكررة، والإجابات النموذجية صحيحة. اكتب المعادلات بصيغة نصية بسيطة.\n'
     + 'ارجع JSON فقط بدون أي كلام تاني وبدون markdown، بالشكل ده بالظبط:\n'
-    + '{"title":"عنوان","questions":[{"type":"mcq","text":"السؤال","options":["اختيار1","اختيار2","اختيار3","اختيار4"],"answer":0,"marks":1},{"type":"tf","text":"العبارة","answer":true,"marks":1},{"type":"essay","text":"السؤال","answer":"نموذج الإجابة","marks":3}]}\n'
-    + '(answer في mcq هو رقم الاختيار الصحيح من 0 لـ3)';
+    + '{"title":"عنوان","questions":[{"type":"mcq","text":"السؤال","options":["اختيار1","اختيار2","اختيار3","اختيار4"],"answer":0,"marks":1},{"type":"tf","text":"العبارة","answer":true,"marks":1},{"type":"essay","text":"السؤال","answer":"نموذج الإجابة المختصر","rubric":[{"point":"نقطة لازم الطالب يذكرها","marks":1},{"point":"نقطة تانية","marks":2}],"marks":3}]}\n'
+    + '(answer في mcq هو رقم الاختيار الصحيح من 0 لـ3)\n'
+    + 'في كل سؤال مقالي اكتب rubric = من 2 لـ5 نقاط تقييم محددة وقصيرة (كل نقطة هي معلومة أو خطوة لازم الطالب يذكرها)، ومجموع درجات النقاط يساوي marks السؤال بالظبط، وأقل درجة للنقطة 0.5.';
 
   examState.busy = true;
   const btn = document.getElementById('exam-gen-btn');
@@ -5961,6 +5982,7 @@ function renderExamDraft(){
   const box = document.getElementById('exam-draft'); if(!box) return;
   const d = examState.draft;
   if(!d || !d.questions || !d.questions.length){ box.innerHTML = ''; return; }
+  d.questions.forEach(q=>{ if(q.type==='essay' && !Array.isArray(q.rubric)) q.rubric = examNormalizeRubric(null, q.answer, q.marks); });
   const total = d.questions.reduce((t,q)=> t + (Number(q.marks)||0), 0);
   const ac = d.antiCheat || EXAM_DEFAULT_AC;
   const meta = [d.subject, d.grade, d.classroomName].filter(Boolean).map(faEsc).join(' · ');
@@ -5984,7 +6006,7 @@ function renderExamDraft(){
         <textarea rows="3" oninput="examEditQ(${i}, this.value)">${faEsc(q.text)}</textarea>
         ${q.type==='mcq' ? q.options.map((o,k)=>`<div class="list-sub" style="margin-top:4px;">${k===q.answer?'✅':'▫️'} ${EXAM_LETTERS[k]}) ${faEsc(o)}</div>`).join('') : ''}
         ${q.type==='tf' ? `<div class="list-sub" style="margin-top:4px;">الإجابة: ${q.answer?'✅ صح':'❌ خطأ'}</div>` : ''}
-        ${q.type==='essay' ? `<div class="list-sub" style="margin-top:4px; line-height:1.7;">نموذج الإجابة: ${faEsc(q.answer)}</div>` : ''}
+        ${q.type==='essay' ? examRubricEditorHtml(q, i) : ''}
       </div>`).join('')
     + `<button class="btn block" onclick="examOpenHeader()">🏛️ ترويسة الامتحان (الوزارة / المديرية / المركز)</button>
        <div class="list-sub" style="margin:10px 0 4px; line-height:1.7;">📄 ورقة رسمية جاهزة للطباعة — ${ac.versions>1 ? ac.versions + ' نماذج مختلفة' : 'نموذج واحد'}</div>
@@ -6126,6 +6148,8 @@ function renderExamLibraryList(){
       <div class="list-sub">${qs.length} سؤال · ${total} درجة${ac.versions>1 ? ' · 🛡️ ' + ac.versions + ' نماذج' : ''}</div>
       ${r.scheduled_at ? `<div class="list-sub">📅 ${faEsc(examFmtDate(r.scheduled_at))}${r.duration_min ? ' · ' + r.duration_min + ' دقيقة' : ''}</div>${rel ? `<div class="list-sub" style="font-weight:700;">${faEsc(rel)}</div>` : ''}` : '<div class="list-sub">لسه ماتحدّدش له موعد</div>'}
       <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+        <button class="badge" onclick="examOpenGrading('${faEsc(r.id)}')">✅ تصحيح</button>
+        <button class="badge" onclick="examOpenResults('${faEsc(r.id)}')">📊 النتائج</button>
         <button class="badge" onclick="examOpen('${faEsc(r.id)}')">✏️ فتح</button>
         <button class="badge" onclick="examOpenSchedule('${faEsc(r.id)}')">📅 موعد</button>
         <button class="badge" onclick="examExportById('${faEsc(r.id)}','pdf',{papers:true,keys:false})">📄 PDF</button>
@@ -6312,7 +6336,7 @@ function examPrintHtml(model, opts){
       k += '<div class="kb"><div class="kh">' + (multi ? 'نموذج (' + v.letter + ') · ' + esc(v.code) : 'نموذج الإجابة') + '</div>';
       v.sections.forEach(s=>{
         k += '<div class="ks"><b>السؤال ' + s.ordinal + ':</b> ';
-        if(s.type === 'essay') k += '<ol>' + s.items.map(q=> '<li>' + esc(q.answer) + '</li>').join('') + '</ol>';
+        if(s.type === 'essay') k += '<ol>' + s.items.map(q=> '<li>' + esc(q.answer) + (q.rubric && q.rubric.length ? '<div class="rb"><b>نقاط التقييم:</b><br>' + q.rubric.map(p=> '• ' + esc(p.point) + ' (' + p.marks + ')').join('<br>') + '</div>' : '') + '</li>').join('') + '</ol>';
         else k += s.items.map(q=> '<span class="ka">' + q.n + ') ' + (s.type === 'mcq' ? EXAM_LETTERS[q.answer] : (q.answer ? '✓' : '✗')) + '</span>').join(' ');
         k += '</div>';
       });
@@ -6338,7 +6362,7 @@ function examPrintHtml(model, opts){
     + '.ln{border-bottom:1px dotted #000;height:25px;}'
     + '.end{text-align:center;font-weight:800;margin-top:10px;}.code{margin-top:6px;font-size:11px;color:#444;direction:ltr;text-align:left;}'
     + '.kb{border:1px solid #000;border-radius:6px;padding:6px 10px;margin:8px 0;break-inside:avoid;page-break-inside:avoid;}.kh{font-weight:800;border-bottom:1px solid #000;margin-bottom:4px;}'
-    + '.ka{display:inline-block;margin-left:12px;}.ks ol{margin:2px 0;padding-right:22px;}'
+    + '.ka{display:inline-block;margin-left:12px;}.ks ol{margin:2px 0;padding-right:22px;}.rb{font-size:13px;line-height:1.6;margin:2px 0 6px;}'
     + '@media print{body{background:#fff;}.bar{display:none;}.sheet{margin:0;max-width:none;padding:0;}}';
   return '<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
     + '<title>' + esc(model.title) + '</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap" rel="stylesheet">'
@@ -6443,7 +6467,13 @@ function examDocxBuild(model, opts, D){
       v.sections.forEach(s=>{
         if(s.type === 'essay'){
           kids.push(para([ run('السؤال ' + s.ordinal + ':', { bold:true }) ], { keepNext:true, spacing:{ after:20 } }));
-          s.items.forEach(q=> kids.push(para([ run(q.n + ') ' + q.answer, { size:26 }) ], { spacing:{ after:20 } })));
+          s.items.forEach(q=>{
+            kids.push(para([ run(q.n + ') ' + q.answer, { size:26 }) ], { spacing:{ after:20 } }));
+            if(q.rubric && q.rubric.length){
+              kids.push(para([ run('نقاط التقييم:', { bold:true, size:24 }) ], { spacing:{ after:10 } }));
+              q.rubric.forEach(p=> kids.push(para([ run('• ' + p.point + ' (' + p.marks + ')', { size:24 }) ], { spacing:{ after:10 } })));
+            }
+          });
         } else {
           const txt = s.items.map(q=> q.n + ') ' + (s.type === 'mcq' ? EXAM_LETTERS[q.answer] : (q.answer ? '✓' : '✗'))).join('      ');
           kids.push(para([ run('السؤال ' + s.ordinal + ':  ', { bold:true }), run(txt, { size:26 }) ], { spacing:{ after:30 } }));
@@ -6503,6 +6533,461 @@ function examExportDraft(kind, opts){ examExport(examState.draft, kind, opts); }
 function examExportById(id, kind, opts){
   const r = (examState.library||[]).find(x=>x.id===id); if(!r) return;
   examExport(examFromRow(r), kind, opts);
+}
+
+/* ========================= نقاط التقييم (للمقالي) + التصحيح + نتائج الطلاب ========================= */
+const EXAM_RUB_LABELS = { full:'✅ ذكرها كاملة', partial:'◐ جزئيًا', none:'❌ ماذكرهاش' };
+
+// يظبط مجموع درجات النقاط = درجة السؤال (أقل وحدة نص درجة)
+function examFitRubric(pts, marks){
+  marks = Number(marks) || 0;
+  pts = pts.map(p=>({ point: p.point, marks: (Number(p.marks) > 0 ? Math.round(Number(p.marks)*2)/2 : 0) }));
+  if(!pts.length) return pts;
+  let sum = pts.reduce((s,p)=> s + p.marks, 0);
+  if(sum <= 0){ const each = Math.round(marks / pts.length * 2) / 2; pts.forEach(p=>{ p.marks = each; }); sum = each * pts.length; }
+  if(Math.abs(sum - marks) > 0.001 && sum > 0){
+    const scale = marks / sum;
+    pts.forEach(p=>{ p.marks = Math.round(p.marks * scale * 2) / 2; });
+    sum = pts.reduce((s,p)=> s + p.marks, 0);
+    const diff = Math.round((marks - sum) * 2) / 2;
+    pts[pts.length-1].marks = Math.max(0, pts[pts.length-1].marks + diff);
+  }
+  return pts;
+}
+function examNormalizeRubric(rb, answer, marks){
+  let pts = Array.isArray(rb) ? rb.map(p=>({ point: String((p && (p.point || p.text)) || '').trim(), marks: Number(p && p.marks) })).filter(p=>p.point) : [];
+  if(!pts.length){
+    const a = String(answer || '').trim();
+    pts = [{ point: a || 'إجابة صحيحة كاملة', marks: Number(marks) || 0 }];
+  }
+  return examFitRubric(pts, marks);
+}
+function examRubricEditorHtml(q, i){
+  const rb = q.rubric || [];
+  const sum = rb.reduce((s,p)=> s + (Number(p.marks)||0), 0);
+  return `<div class="list-sub" style="margin-top:8px; font-weight:700;">🎯 نقاط التقييم (المجموع ${sum} درجة)</div>`
+    + rb.map((p,k)=>`<div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
+        <input type="text" value="${faEsc(p.point)}" oninput="examEditRubric(${i},${k},'point',this.value)" style="flex:1;">
+        <input type="number" value="${Number(p.marks)||0}" min="0" step="0.5" style="width:64px;" onchange="examEditRubric(${i},${k},'marks',this.value)">
+        <button class="badge" onclick="examDelRubric(${i},${k})">✕</button>
+      </div>`).join('')
+    + `<button class="badge" style="margin-top:6px;" onclick="examAddRubric(${i})">➕ نقطة</button>`
+    + `<div class="list-sub" style="margin-top:6px; line-height:1.7;">نموذج الإجابة: ${faEsc(q.answer)}</div>`;
+}
+function examRecalcEssay(q){ q.marks = (q.rubric||[]).reduce((s,p)=> s + (Number(p.marks)||0), 0); }
+function examEditRubric(i, k, field, v){
+  const q = examState.draft && examState.draft.questions[i]; if(!q || !q.rubric || !q.rubric[k]) return;
+  if(field === 'point'){ q.rubric[k].point = v; examMarkDirty(); return; }
+  q.rubric[k].marks = Math.max(0, Math.round((Number(v)||0)*2)/2);
+  examRecalcEssay(q); examMarkDirty(); renderExamDraft();
+}
+function examAddRubric(i){
+  const q = examState.draft && examState.draft.questions[i]; if(!q) return;
+  q.rubric = q.rubric || []; q.rubric.push({ point:'نقطة جديدة', marks:1 });
+  examRecalcEssay(q); examMarkDirty(); renderExamDraft();
+}
+function examDelRubric(i, k){
+  const q = examState.draft && examState.draft.questions[i]; if(!q || !q.rubric) return;
+  if(q.rubric.length <= 1){ showToast('لازم يفضل نقطة واحدة على الأقل'); return; }
+  q.rubric.splice(k,1); examRecalcEssay(q); examMarkDirty(); renderExamDraft();
+}
+
+/* ----- مستويات وتحليل ----- */
+function examLevel(p){
+  p = Number(p) || 0;
+  if(p >= 90) return { key:'excellent', label:'ممتاز', color:'#1e8a52' };
+  if(p >= 80) return { key:'vgood', label:'جيد جدًا', color:'#3d8a5f' };
+  if(p >= 65) return { key:'good', label:'جيد', color:'#2f6fb3' };
+  if(p >= 50) return { key:'pass', label:'مقبول', color:'#c98a1b' };
+  return { key:'weak', label:'يحتاج دعم', color:'#b3261e' };
+}
+// rows مرتّبة من الأحدث للأقدم
+function examTrend(rows){
+  if(!rows || rows.length < 2) return { arrow:'', text:'' };
+  const latest = Number(rows[0].percentage) || 0;
+  const prev = rows.slice(1, 4);
+  const avg = prev.reduce((s,r)=> s + (Number(r.percentage)||0), 0) / prev.length;
+  const diff = Math.round((latest - avg) * 10) / 10;
+  if(diff >= 5) return { arrow:'↗', text:'في تحسّن (+' + diff + '%)', diff };
+  if(diff <= -5) return { arrow:'↘', text:'في تراجع (' + diff + '%)', diff };
+  return { arrow:'→', text:'مستوى ثابت', diff };
+}
+function examAnalyze(rows){
+  const n = rows.length;
+  const pcts = rows.map(r=> Number(r.percentage) || 0);
+  const avg = n ? pcts.reduce((a,b)=> a + b, 0) / n : 0;
+  const levels = { excellent:0, vgood:0, good:0, pass:0, weak:0 };
+  pcts.forEach(p=>{ levels[examLevel(p).key]++; });
+  const qmap = {};
+  rows.forEach(r=> (Array.isArray(r.details) ? r.details : []).forEach(d=>{
+    const k = d.type + '|' + d.text;
+    const o = qmap[k] || (qmap[k] = { text:d.text, type:d.type, got:0, max:0, count:0 });
+    o.got += Number(d.awarded) || 0; o.max += Number(d.marks) || 0; o.count++;
+  }));
+  const weak = Object.keys(qmap).map(k=> qmap[k]).filter(q=> q.max > 0)
+    .map(q=> Object.assign({}, q, { pct: Math.round(q.got * 1000 / q.max) / 10 }))
+    .sort((a,b)=> a.pct - b.pct).slice(0, 3);
+  return { n, avg: Math.round(avg*10)/10, max: n ? Math.max.apply(null, pcts) : 0, min: n ? Math.min.apply(null, pcts) : 0, levels, weak };
+}
+
+/* ----- حساب درجة طالب من إجاباته ----- */
+function examGradeBuildDetails(version, answers, rubricStatus){
+  const details = []; let score = 0, total = 0;
+  version.sections.forEach(s=> s.items.forEach(q=>{
+    const key = s.type + '-' + q.n;
+    const marks = Number(q.marks) || 0;
+    if(q.type === 'mcq'){
+      const a = (answers[key] === undefined || answers[key] === null) ? null : Number(answers[key]);
+      const aw = (a !== null && a === q.answer) ? marks : 0;
+      details.push({ n:q.n, type:'mcq', text:q.text, marks, answer:a, correct:q.answer, awarded:aw });
+      score += aw; total += marks;
+    } else if(q.type === 'tf'){
+      const a = (answers[key] === undefined || answers[key] === null) ? null : (answers[key] === true || answers[key] === 'true');
+      const aw = (a !== null && a === !!q.answer) ? marks : 0;
+      details.push({ n:q.n, type:'tf', text:q.text, marks, answer:a, correct:!!q.answer, awarded:aw });
+      score += aw; total += marks;
+    } else {
+      const sts = rubricStatus[key] || [];
+      const rb = (q.rubric || []).map((p,k)=>{
+        const st = sts[k] || 'none';
+        const aw = st === 'full' ? p.marks : st === 'partial' ? Math.round(p.marks * 50) / 100 : 0;
+        return { point:p.point, marks:p.marks, status:st, awarded:aw };
+      });
+      const aw = Math.round(rb.reduce((t,p)=> t + p.awarded, 0) * 100) / 100;
+      const qTotal = rb.reduce((t,p)=> t + p.marks, 0) || marks;
+      details.push({ n:q.n, type:'essay', text:q.text, marks:qTotal, rubric:rb, awarded:aw });
+      score += aw; total += qTotal;
+    }
+  }));
+  return { details, score: Math.round(score*100)/100, total: Math.round(total*100)/100 };
+}
+
+/* ----- شاشة التصحيح ----- */
+function examStudentsFor(d){
+  const db = loadDB();
+  const teacher = db.teachers.find(t=>t.id===session.personId);
+  const roomIds = d.classroomId ? [d.classroomId] : (teacher ? (teacher.classroomIds||[]) : []);
+  return db.children.filter(c=> (c.classroomIds || c.classroom_ids || []).some(id=> roomIds.indexOf(id) >= 0))
+    .sort((a,b)=> String(a.name).localeCompare(String(b.name), 'ar'));
+}
+async function examFetchResults(examId){
+  const { data, error } = await supabaseClient.from('exam_results').select('*').eq('exam_id', examId).eq('center_id', session.centerId).order('percentage', {ascending:false});
+  if(error) throw error;
+  return data || [];
+}
+async function examOpenGrading(id){
+  const r = (examState.library||[]).find(x=>x.id===id); if(!r) return;
+  const exam = examFromRow(r);
+  if(!exam.questions.length){ showToast('الامتحان فاضي'); return; }
+  examState.grade = { examId:id, exam, model: examBuildModel(exam), stage:'list', results:null, loading:true, childId:null, vIdx:0, answers:{}, rubric:{}, note:'', aiNote:false };
+  examState.view = 'grade';
+  renderTeacherExams();
+  try{ examState.grade.results = await examFetchResults(id); }catch(e){ console.error(e); examState.grade.error = true; }
+  examState.grade.loading = false;
+  renderExamGrade();
+}
+function renderExamGrade(){
+  const body = document.getElementById('exam-view-body'); const g = examState.grade;
+  if(!body || !g) return;
+  if(g.stage === 'form'){ renderExamGradeForm(); return; }
+  const students = examStudentsFor(g.exam);
+  const resBy = {}; (g.results||[]).forEach(r=>{ resBy[r.child_id] = r; });
+  let html = `<div class="card" style="padding:12px 14px; margin-bottom:10px;">
+      <div style="font-weight:800;">✅ تصحيح: ${faEsc(g.exam.title)}</div>
+      <div class="list-sub" style="margin-top:2px;">${faEsc([g.exam.subject, g.exam.grade, g.exam.classroomName].filter(Boolean).join(' · '))}</div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="btn block" onclick="examOpenResults('${faEsc(g.examId)}')">📊 النتائج</button>
+        <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="examSetView('library')">← رجوع</button>
+      </div></div>`;
+  if(g.loading) html += '<div class="empty">⏳ جاري التحميل...</div>';
+  else if(g.error) html += '<div class="empty">⚠️ حصل خطأ في تحميل النتائج</div>';
+  else if(!students.length) html += '<div class="empty">مفيش طلاب في مجموعات الامتحان ده</div>';
+  else {
+    const done = students.filter(c=> resBy[c.id]).length;
+    html += `<div class="section-title" style="margin-top:0;">الطلاب — اتصحّح ${done} من ${students.length}</div>`;
+    html += students.map(c=>{
+      const r = resBy[c.id];
+      const lv = r ? examLevel(r.percentage) : null;
+      return `<div class="list-row" onclick="examGradeStudent('${faEsc(c.id)}')" style="cursor:pointer;">
+        <div class="list-row-main"><div class="list-avatar" style="background:${r ? lv.color : '#7a8191'};">${r ? '✅' : '⏳'}</div>
+        <div class="list-info"><div class="list-name">${faEsc(c.name)}</div>
+        <div class="list-sub">${r ? faEsc(r.score + ' / ' + r.total_marks + ' (' + r.percentage + '%) · ' + lv.label + (r.version_letter ? ' · نموذج ' + r.version_letter : '')) : 'لسه ما اتصحّحش'}</div></div></div>
+        <span class="badge">${r ? 'تعديل' : 'صحّح'}</span></div>`;
+    }).join('');
+  }
+  body.innerHTML = html;
+}
+function examGradeStudent(childId){
+  const g = examState.grade; if(!g) return;
+  g.childId = childId; g.stage = 'form'; g.vIdx = 0; g.answers = {}; g.rubric = {}; g.note = ''; g.aiNote = false;
+  const prev = (g.results||[]).find(r=> r.child_id === childId);
+  if(prev){
+    const vi = g.model.versions.findIndex(v=> v.letter === prev.version_letter);
+    g.vIdx = vi >= 0 ? vi : 0; g.note = prev.note || '';
+    (Array.isArray(prev.details) ? prev.details : []).forEach(d=>{
+      const key = d.type + '-' + d.n;
+      if(d.type === 'essay') g.rubric[key] = (d.rubric||[]).map(p=> p.status || 'none');
+      else if(d.answer !== null && d.answer !== undefined) g.answers[key] = d.answer;
+    });
+  }
+  renderTeacherExams();
+}
+function examGradeBack(){
+  const g = examState.grade; if(!g) return;
+  g.stage = 'list'; renderTeacherExams();
+}
+function examGradeSetVersion(i){
+  const g = examState.grade; if(!g) return;
+  if((Object.keys(g.answers).length || Object.keys(g.rubric).length) && !confirm('تغيير النموذج هيمسح الإجابات اللي دخلتها. تكمّل؟')) return;
+  g.vIdx = i; g.answers = {}; g.rubric = {}; g.aiNote = false; renderExamGradeForm();
+}
+function examGradePick(key, val){
+  const g = examState.grade; if(!g) return;
+  if(g.answers[key] === val) delete g.answers[key]; else g.answers[key] = val;
+  renderExamGradeArea();
+}
+function examGradeRub(key, k, st){
+  const g = examState.grade; if(!g) return;
+  const arr = g.rubric[key] || (g.rubric[key] = []);
+  arr[k] = (arr[k] === st) ? 'none' : st;
+  renderExamGradeArea();
+}
+function examGradeNote(v){ if(examState.grade) examState.grade.note = v; }
+function renderExamGradeForm(){
+  const body = document.getElementById('exam-view-body'); const g = examState.grade;
+  if(!body || !g) return;
+  const child = loadDB().children.find(c=> c.id === g.childId) || { name:'' };
+  const model = g.model, multi = model.versions.length > 1;
+  const cfg = loadAiCfg();
+  body.innerHTML = `<div class="card" style="padding:12px 14px; margin-bottom:10px;">
+      <div style="font-weight:800;">✅ ${faEsc(child.name)}</div>
+      <div class="list-sub">${faEsc(g.exam.title)}</div>
+      ${multi ? `<div class="list-sub" style="margin:8px 0 4px;">النموذج اللي الطالب حلّه (مكتوب أعلى ورقته):</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">${model.versions.map((v,i)=>`<button class="badge" style="${i===g.vIdx?'background:var(--accent,#6b5b95); color:#fff;':''}" onclick="examGradeSetVersion(${i})">نموذج (${v.letter})</button>`).join('')}</div>` : ''}
+      ${cfg && cfg.key ? `<div style="margin-top:10px;"><div class="list-sub" style="margin-bottom:4px;">✨ صوّر ورقة الطالب والـAI يقترح التصحيح (وانت تراجع):</div>
+        <input type="file" id="grade-files" accept="image/*" multiple onchange="examGradeAi(this.files)">
+        <div class="list-sub" style="margin-top:4px; line-height:1.6;">🔒 الصور بتتبعت لمزوّد الذكاء الاصطناعي — ماتصوّرش اسم الطالب.</div></div>` : ''}
+    </div>
+    <div id="grade-q-area"></div>
+    <div class="card" style="padding:12px 14px; margin-top:10px;">
+      <div class="list-sub" style="margin-bottom:4px;">ملاحظة للطالب / ولي الأمر (اختياري)</div>
+      <textarea rows="2" oninput="examGradeNote(this.value)" style="margin-bottom:8px;">${faEsc(g.note||'')}</textarea>
+      <button class="btn block" id="grade-save-btn" onclick="examGradeSave()">💾 حفظ النتيجة</button>
+      <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="examGradeBack()">← رجوع للطلاب</button>
+    </div>`;
+  renderExamGradeArea();
+}
+function renderExamGradeArea(){
+  const area = document.getElementById('grade-q-area'); const g = examState.grade;
+  if(!area || !g) return;
+  const ver = g.model.versions[g.vIdx];
+  const calc = examGradeBuildDetails(ver, g.answers, g.rubric);
+  const pct = calc.total > 0 ? Math.round(calc.score * 1000 / calc.total) / 10 : 0;
+  const lv = examLevel(pct);
+  let h = `<div class="card" style="padding:12px 14px; margin-bottom:10px; position:sticky; top:0; z-index:3; border:1.5px solid ${lv.color};">
+      <div style="font-weight:800; font-size:17px;">الدرجة: ${calc.score} / ${calc.total} <span style="color:${lv.color};">(${pct}% · ${lv.label})</span></div>
+      ${g.aiNote ? '<div class="list-sub" style="margin-top:4px; color:#c98a1b;">✨ التصحيح ده اقتراح من الذكاء الاصطناعي — راجعه قبل الحفظ</div>' : ''}</div>`;
+  ver.sections.forEach(s=>{
+    h += `<div class="section-title" style="margin:10px 0 6px;">السؤال ${faEsc(s.ordinal)} — ${faEsc(({mcq:'اختيار من متعدد', tf:'صح / خطأ', essay:'مقالي'})[s.type])}</div>`;
+    s.items.forEach(q=>{
+      const key = s.type + '-' + q.n;
+      h += `<div class="card" style="padding:10px 12px; margin-bottom:8px;"><div style="margin-bottom:6px;"><b>${q.n})</b> ${faEsc(q.text)}</div>`;
+      if(q.type === 'mcq'){
+        h += '<div style="display:flex; gap:6px; flex-wrap:wrap;">' + q.options.map((o,k)=>{
+          const sel = g.answers[key] === k;
+          return `<button class="badge" style="${sel?'background:var(--accent,#6b5b95); color:#fff;':''}" onclick="examGradePick('${key}', ${k})">${EXAM_LETTERS[k]}) ${faEsc(o)}${k===q.answer?' ✓':''}</button>`;
+        }).join('') + '</div>';
+      } else if(q.type === 'tf'){
+        h += '<div style="display:flex; gap:6px;">' + [['true','صح'],['false','خطأ']].map(([v,l])=>{
+          const sel = (g.answers[key] === v);
+          const isKey = (v === 'true') === !!q.answer;
+          return `<button class="badge" style="${sel?'background:var(--accent,#6b5b95); color:#fff;':''}" onclick="examGradePick('${key}', '${v}')">${l}${isKey?' ✓':''}</button>`;
+        }).join('') + '</div>';
+      } else {
+        const sts = g.rubric[key] || [];
+        h += (q.rubric||[]).map((p,k)=>{
+          const st = sts[k] || 'none';
+          return `<div style="margin-top:6px; padding-top:6px; border-top:1px dashed var(--line, #ccc);"><div style="line-height:1.6;">• ${faEsc(p.point)} <span class="list-sub">(${p.marks})</span></div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">${['full','partial','none'].map(x=>`<button class="badge" style="${st===x && x!=='none'?'background:var(--accent,#6b5b95); color:#fff;':(st===x?'outline:2px solid #b3261e;':'')}" onclick="examGradeRub('${key}', ${k}, '${x}')">${EXAM_RUB_LABELS[x]}</button>`).join('')}</div></div>`;
+        }).join('');
+      }
+      h += '</div>';
+    });
+  });
+  area.innerHTML = h;
+}
+async function examGradeSave(){
+  const g = examState.grade; if(!g) return;
+  const db = loadDB();
+  const child = db.children.find(c=> c.id === g.childId); if(!child) return;
+  const ver = g.model.versions[g.vIdx];
+  const calc = examGradeBuildDetails(ver, g.answers, g.rubric);
+  const teacher = db.teachers.find(t=> t.id === session.personId);
+  const row = {
+    center_id: session.centerId, exam_id: g.examId, exam_title: g.exam.title, exam_date: g.exam.scheduled_at || new Date().toISOString(),
+    subject_name: g.exam.subject || null, grade_label: g.exam.grade || null, classroom_id: g.exam.classroomId || null, classroom_name: g.exam.classroomName || null,
+    teacher_id: session.personId, teacher_name: teacher ? teacher.name : null, child_id: child.id, child_name: child.name,
+    version_letter: g.model.versions.length > 1 ? ver.letter : null, total_marks: calc.total, score: calc.score, details: calc.details, note: g.note || null, graded_at: new Date().toISOString()
+  };
+  const btn = document.getElementById('grade-save-btn'); if(btn){ btn.disabled = true; btn.textContent = '⏳ بيحفظ...'; }
+  try{
+    const { error } = await supabaseClient.from('exam_results').upsert(row, { onConflict: 'exam_id,child_id' });
+    if(error) throw error;
+    g.results = await examFetchResults(g.examId);
+    showToast('✅ اتحفظت النتيجة');
+    g.stage = 'list'; renderTeacherExams();
+  }catch(e){
+    console.error('فشل حفظ النتيجة', e);
+    showToast('⚠️ مقدرتش أحفظ النتيجة — جرّب تاني');
+    if(btn){ btn.disabled = false; btn.textContent = '💾 حفظ النتيجة'; }
+  }
+}
+
+/* ----- اقتراح التصحيح من صورة الورقة (المدرّس يراجع) ----- */
+function examGradeAiPrompt(ver){
+  let p = 'دي صور ورقة إجابة طالب في امتحان. اقرأ إجابات الطالب المكتوبة فقط (من غير ما تحلّ أنت) وقيّمها.\nالأسئلة (بترتيب النموذج اللي الطالب حلّه):\n';
+  ver.sections.forEach(s=> s.items.forEach(q=>{
+    p += '[' + s.type + ' ' + q.n + '] ' + q.text;
+    if(q.type === 'mcq') p += ' | الاختيارات: ' + q.options.map((o,k)=> EXAM_LETTERS[k] + ') ' + o).join(' ، ');
+    if(q.type === 'essay') p += ' | نقاط التقييم بالترتيب: ' + (q.rubric||[]).map((r,k)=> (k+1) + '- ' + r.point).join(' ؛ ');
+    p += '\n';
+  }));
+  p += '\nقواعد: لو مفيش إجابة واضحة للسؤال اكتب null. في المقالي لكل نقطة تقييم اكتب "full" (ذكرها كاملة) أو "partial" (ذكرها جزئيًا) أو "none".\n'
+    + 'ارجع JSON فقط بدون markdown بالشكل ده:\n'
+    + '{"mcq":[{"n":1,"answer":"أ"}],"tf":[{"n":1,"answer":true}],"essay":[{"n":1,"points":["full","none"]}]}';
+  return p;
+}
+async function examGradeAi(files){
+  const g = examState.grade; const cfg = loadAiCfg();
+  if(!g || !cfg || !cfg.key){ showToast('اربط الذكاء الاصطناعي الأول'); return; }
+  const list = Array.from(files||[]).slice(0,3);
+  if(!list.length) return;
+  showToast('⏳ بيقرا الورقة... (ممكن ياخد نص دقيقة)');
+  try{
+    const imgs = [];
+    for(const f of list) imgs.push(await examFileToDataUrl(f));
+    const ver = g.model.versions[g.vIdx];
+    const out = await aiCall(cfg, examGradeAiPrompt(ver), imgs);
+    const data = aiExtractJson(out);
+    const letterIdx = {'أ':0,'ا':0,'ب':1,'ج':2,'د':3,'a':0,'b':1,'c':2,'d':3,'A':0,'B':1,'C':2,'D':3};
+    g.answers = {}; g.rubric = {};
+    (data.mcq||[]).forEach(a=>{ const k = letterIdx[String(a.answer||'').trim()]; if(k !== undefined) g.answers['mcq-' + a.n] = k; });
+    (data.tf||[]).forEach(a=>{ if(a.answer === true || a.answer === false) g.answers['tf-' + a.n] = String(a.answer); });
+    (data.essay||[]).forEach(a=>{ if(Array.isArray(a.points)) g.rubric['essay-' + a.n] = a.points.map(x=> (x==='full'||x==='partial') ? x : 'none'); });
+    g.aiNote = true;
+    renderExamGradeArea();
+    showToast('✨ اتقترح التصحيح — راجعه قبل الحفظ');
+  }catch(e){
+    showToast('⚠️ ' + aiErrorMsg(e));
+  }finally{
+    const inp = document.getElementById('grade-files'); if(inp) inp.value = '';
+  }
+}
+
+/* ----- نتائج الامتحان + تاريخ الطالب ----- */
+async function examOpenResults(id){
+  const r = (examState.library||[]).find(x=>x.id===id); if(!r) return;
+  examState.res = { examId:id, exam: examFromRow(r), rows:null, loading:true };
+  examState.view = 'results';
+  renderTeacherExams();
+  try{ examState.res.rows = await examFetchResults(id); }catch(e){ console.error(e); examState.res.error = true; }
+  examState.res.loading = false;
+  renderExamResults();
+}
+function renderExamResults(){
+  const body = document.getElementById('exam-view-body'); const s = examState.res;
+  if(!body || !s) return;
+  let h = `<div class="card" style="padding:12px 14px; margin-bottom:10px;">
+      <div style="font-weight:800;">📊 نتائج: ${faEsc(s.exam.title)}</div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="btn block" onclick="examOpenGrading('${faEsc(s.examId)}')">✅ تصحيح</button>
+        <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="examSetView('library')">← رجوع</button>
+      </div></div>`;
+  if(s.loading){ body.innerHTML = h + '<div class="empty">⏳ جاري التحميل...</div>'; return; }
+  if(s.error){ body.innerHTML = h + '<div class="empty">⚠️ حصل خطأ في تحميل النتائج</div>'; return; }
+  const rows = s.rows || [];
+  if(!rows.length){ body.innerHTML = h + '<div class="empty">لسه ماتصحّحش أي طالب — دوس "تصحيح"</div>'; return; }
+  const a = examAnalyze(rows);
+  h += `<div class="card" style="padding:12px 14px; margin-bottom:10px;">
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px; text-align:center;">
+        <div><div class="list-sub">الطلاب</div><b>${a.n}</b></div>
+        <div><div class="list-sub">المتوسط</div><b>${a.avg}%</b></div>
+        <div><div class="list-sub">الأعلى</div><b>${a.max}%</b></div>
+        <div><div class="list-sub">الأدنى</div><b>${a.min}%</b></div>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:10px;">${[['excellent','ممتاز','#1e8a52'],['vgood','جيد جدًا','#3d8a5f'],['good','جيد','#2f6fb3'],['pass','مقبول','#c98a1b'],['weak','يحتاج دعم','#b3261e']].map(([k,l,c])=>`<span class="badge" style="background:${c}; color:#fff;">${l}: ${a.levels[k]}</span>`).join('')}</div>
+    </div>`;
+  if(a.weak.length){
+    h += `<div class="section-title" style="margin-top:0;">⚠️ أضعف الأسئلة (محتاجة مراجعة)</div>` + a.weak.map(q=>`<div class="card" style="padding:10px 12px; margin-bottom:6px;"><div style="line-height:1.6;">${faEsc(String(q.text).slice(0,110))}</div><div class="list-sub" style="margin-top:2px;">نسبة الإجابة الصحيحة: <b style="color:${examLevel(q.pct).color};">${q.pct}%</b></div></div>`).join('');
+  }
+  h += `<div class="section-title">الطلاب</div>` + rows.map(r=>{
+    const lv = examLevel(r.percentage);
+    return `<div class="list-row" onclick="examShowStudentHistory('${faEsc(r.child_id||'')}', '${faEsc(r.child_name)}')" style="cursor:pointer;">
+      <div class="list-row-main"><div class="list-avatar" style="background:${lv.color};">${faEsc(String(Math.round(r.percentage)))}</div>
+      <div class="list-info"><div class="list-name">${faEsc(r.child_name)}</div><div class="list-sub">${faEsc(r.score + ' / ' + r.total_marks)} · ${lv.label}${r.version_letter ? ' · نموذج ' + faEsc(r.version_letter) : ''}</div></div></div>
+      <span class="badge">تاريخه</span></div>`;
+  }).join('');
+  body.innerHTML = h;
+}
+async function examShowStudentHistory(childId, name){
+  if(!childId){ showToast('الطالب اتحذف — مفيش تاريخ'); return; }
+  const box = document.getElementById('exam-history-body');
+  document.getElementById('exam-history-title').textContent = '📈 ' + name;
+  box.innerHTML = '<div class="empty">⏳ جاري التحميل...</div>';
+  document.getElementById('exam-history-modal-bg').classList.add('show');
+  try{
+    const { data, error } = await supabaseClient.from('exam_results').select('*').eq('child_id', childId).eq('center_id', session.centerId).order('graded_at', {ascending:false});
+    if(error) throw error;
+    const rows = data || [];
+    if(!rows.length){ box.innerHTML = '<div class="empty">مفيش نتايج</div>'; return; }
+    const tr = examTrend(rows);
+    const avg = Math.round(rows.reduce((s,r)=> s + (Number(r.percentage)||0), 0) / rows.length * 10) / 10;
+    box.innerHTML = `<div class="list-sub" style="line-height:1.8; margin-bottom:8px;">${rows.length} امتحان · المتوسط ${avg}% ${tr.arrow ? '· ' + tr.arrow + ' ' + faEsc(tr.text) : ''}</div>`
+      + rows.map(r=>{ const lv = examLevel(r.percentage); return `<div class="list-row"><div class="list-row-main"><div class="list-avatar" style="background:${lv.color};">${Math.round(r.percentage)}</div><div class="list-info"><div class="list-name">${faEsc(r.exam_title)}</div><div class="list-sub">${faEsc([r.subject_name, examNiceDate(r.exam_date||r.graded_at)].filter(Boolean).join(' · '))} · ${faEsc(r.score + '/' + r.total_marks)}</div></div></div></div>`; }).join('');
+  }catch(e){ box.innerHTML = '<div class="empty">⚠️ حصل خطأ في التحميل</div>'; }
+}
+function examNiceDate(iso){ try{ return new Date(iso).toLocaleDateString('ar-EG', {day:'numeric', month:'short'}); }catch(e){ return ''; } }
+
+/* ----- تاب "نتائج الامتحانات" عند ولي الأمر ----- */
+async function renderParentExams(){
+  const el = document.getElementById('parent-exams-view');
+  const sel = document.getElementById('parent-child-select');
+  if(!el || !sel || !sel.value) return;
+  el.innerHTML = '<div class="empty">⏳ جاري التحميل...</div>';
+  try{
+    const { data, error } = await supabaseClient.from('exam_results').select('*').eq('child_id', sel.value).order('graded_at', {ascending:false}).limit(60);
+    if(error) throw error;
+    const rows = data || [];
+    if(!rows.length){ el.innerHTML = '<div class="empty">لسه مفيش نتايج امتحانات</div>'; return; }
+    const avg = Math.round(rows.reduce((s,r)=> s + (Number(r.percentage)||0), 0) / rows.length * 10) / 10;
+    const lvAvg = examLevel(avg), tr = examTrend(rows);
+    const bySubj = {};
+    rows.forEach(r=>{ const k = r.subject_name || 'عام'; (bySubj[k] = bySubj[k] || []).push(Number(r.percentage)||0); });
+    let h = `<div class="card" style="padding:12px 14px; margin-bottom:10px;">
+        <div style="font-weight:800; font-size:17px;">المتوسط العام: <span style="color:${lvAvg.color};">${avg}% · ${lvAvg.label}</span></div>
+        <div class="list-sub" style="margin-top:4px;">${rows.length} امتحان ${tr.arrow ? '· ' + tr.arrow + ' ' + faEsc(tr.text) : ''}</div>
+        ${Object.keys(bySubj).length > 1 ? '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">' + Object.keys(bySubj).map(k=>{ const a = Math.round(bySubj[k].reduce((x,y)=>x+y,0)/bySubj[k].length*10)/10; return `<span class="badge" style="background:${examLevel(a).color}; color:#fff;">${faEsc(k)}: ${a}%</span>`; }).join('') + '</div>' : ''}
+      </div>`;
+    h += rows.map(r=>{
+      const lv = examLevel(r.percentage);
+      const det = Array.isArray(r.details) ? r.details : [];
+      return `<details class="card" style="padding:10px 12px; margin-bottom:8px;">
+        <summary style="cursor:pointer; list-style:none;">
+          <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+            <div><div style="font-weight:800;">${faEsc(r.exam_title)}</div><div class="list-sub">${faEsc([r.subject_name, examNiceDate(r.exam_date||r.graded_at)].filter(Boolean).join(' · '))}</div></div>
+            <span class="badge" style="background:${lv.color}; color:#fff; white-space:nowrap;">${faEsc(r.score + '/' + r.total_marks)} · ${r.percentage}%</span>
+          </div></summary>
+        ${r.note ? `<div class="list-sub" style="margin-top:8px; line-height:1.7;">📝 ملاحظة المدرّس: ${faEsc(r.note)}</div>` : ''}
+        <div style="margin-top:8px;">${det.map(d=>{
+          const full = Number(d.awarded) >= Number(d.marks);
+          const head = `${d.type==='essay' ? (full?'✅':(Number(d.awarded)>0?'◐':'❌')) : (full?'✅':'❌')} ${faEsc(String(d.text).slice(0,90))} <span class="list-sub">(${faEsc(d.awarded + '/' + d.marks)})</span>`;
+          const pts = d.type==='essay' ? (d.rubric||[]).map(p=>`<div class="list-sub" style="padding-right:18px;">${p.status==='full'?'✅':(p.status==='partial'?'◐':'❌')} ${faEsc(p.point)}</div>`).join('') : '';
+          return `<div style="margin-bottom:6px; line-height:1.6;">${head}${pts}</div>`;
+        }).join('')}</div>
+      </details>`;
+    }).join('');
+    el.innerHTML = h;
+  }catch(e){ console.error(e); el.innerHTML = '<div class="empty">⚠️ حصل خطأ في تحميل النتايج</div>'; }
 }
 
 function renderAdminList(){
