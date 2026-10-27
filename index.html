@@ -1144,6 +1144,7 @@
       <option value="custom">مزوّد تاني (متوافق مع OpenAI)</option>
     </select>
     <div id="ai-hint" class="list-sub" style="margin-bottom:8px; line-height:1.6;"></div>
+    <a id="ai-keylink" class="btn block" href="#" target="_blank" rel="noopener noreferrer" style="display:none; text-align:center; text-decoration:none; margin-bottom:10px;">🔗 افتح صفحة المفتاح</a>
     <div class="list-sub" style="margin-bottom:4px;">رابط الـAPI</div>
     <input type="text" id="ai-base" dir="ltr" style="margin-bottom:8px;">
     <div class="list-sub" style="margin-bottom:4px;">اسم الموديل</div>
@@ -5165,7 +5166,7 @@ async function assistantAsk(question){
   assistantAddMsg('me', faEsc(q));
   const cfg = loadAiCfg();
   if(!cfg || !cfg.key){
-    assistantAddMsg('card', `<div class="ai-card-title">محتاج تفعّل الـAI الأول</div><div style="font-size:12.5px; color:var(--muted);">مفتاح مجاني من Gemini بياخد دقيقتين.</div>${assistantActBtn({name:'openAiSettings', arg:'', label:'🚀 فعّل الـAI'}, true)}`);
+    assistantAddMsg('card', `<div class="ai-card-title">محتاج تفعّل الـAI الأول</div><div style="font-size:12.5px; color:var(--muted);">مفتاح مجاني من Gemini بياخد دقيقتين: افتح الصفحة، اعمل مفتاح، وارجع الصقه في الإعدادات.</div><a class="ai-act block" href="${AI_PROVIDERS.gemini.keyUrl}" target="_blank" rel="noopener noreferrer" style="display:block; text-align:center; text-decoration:none;">🔗 افتح صفحة المفتاح</a>${assistantActBtn({name:'openAiSettings', arg:'', label:'⚙️ الصق المفتاح في الإعدادات'}, true)}`);
     assistantBusy = false; if(sendBtn) sendBtn.disabled = false; return;
   }
   const typing = assistantAddMsg('bot ai-typing', '...');
@@ -5775,10 +5776,10 @@ function copyTempPassword(){
    المدرّس بيربط مفتاح API بتاعه (محفوظ على جهازه بس)، والتطبيق بيطلب من الموديل أسئلة (من نص أو صور كتاب)،
    والمدرّس بيراجع ويعدّل، وبعدين بيطبع ورقة الامتحان PDF (مع نموذج إجابة اختياري). */
 const AI_PROVIDERS = {
-  gemini:     { label:'Google Gemini', format:'gemini',    base:'https://generativelanguage.googleapis.com/v1beta', model:'gemini-flash-latest', hint:'مفتاح مجاني من aistudio.google.com (الأنسب للصور)' },
-  openrouter: { label:'OpenRouter',    format:'openai',    base:'https://openrouter.ai/api/v1', model:'', hint:'اكتب اسم موديل مجاني بيقبل صور (غالبًا اسمه بينتهي بـ :free)' },
-  groq:       { label:'Groq',          format:'openai',    base:'https://api.groq.com/openai/v1', model:'meta-llama/llama-4-scout-17b-16e-instruct', hint:'مفتاح مجاني من console.groq.com — لازم موديل بيقبل صور' },
-  anthropic:  { label:'Anthropic Claude', format:'anthropic', base:'https://api.anthropic.com/v1', model:'claude-haiku-5-5', hint:'' },
+  gemini:     { label:'Google Gemini', format:'gemini',    base:'https://generativelanguage.googleapis.com/v1beta', model:'gemini-flash-latest', keyUrl:'https://aistudio.google.com/apikey', hint:'مفتاح مجاني (الأنسب للصور)' },
+  openrouter: { label:'OpenRouter',    format:'openai',    base:'https://openrouter.ai/api/v1', model:'', keyUrl:'https://openrouter.ai/keys', hint:'اكتب اسم موديل مجاني بيقبل صور (غالبًا اسمه بينتهي بـ :free)' },
+  groq:       { label:'Groq',          format:'openai',    base:'https://api.groq.com/openai/v1', model:'meta-llama/llama-4-scout-17b-16e-instruct', keyUrl:'https://console.groq.com/keys', hint:'مفتاح مجاني — لازم موديل بيقبل صور' },
+  anthropic:  { label:'Anthropic Claude', format:'anthropic', base:'https://api.anthropic.com/v1', model:'claude-haiku-5-5', keyUrl:'https://platform.claude.com/settings/keys', hint:'' },
   custom:     { label:'مزوّد تاني (متوافق مع OpenAI)', format:'openai', base:'', model:'', hint:'أي مزوّد بيدعم /chat/completions' }
 };
 let examState = { images: [], draft: null, busy: false, dirty: false, view: 'new', filter: 'all', library: null, libLoading: false, libError: false, tick: null, schedTarget: null };
@@ -5879,6 +5880,8 @@ function aiFillProviderDefaults(prov, cfg){
   document.getElementById('ai-base').value = (cfg && cfg.base) || p.base;
   document.getElementById('ai-model').value = (cfg && cfg.model) || p.model;
   document.getElementById('ai-hint').textContent = p.hint || '';
+  const kl = document.getElementById('ai-keylink');
+  if(kl){ if(p.keyUrl){ kl.href = p.keyUrl; kl.style.display = 'block'; } else { kl.removeAttribute('href'); kl.style.display = 'none'; } }
 }
 function aiOnProviderChange(){ aiFillProviderDefaults(document.getElementById('ai-provider').value, null); }
 function aiReadForm(){
