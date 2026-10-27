@@ -5151,6 +5151,39 @@ const ASSIST_TOOLS = {
       };
     }
   },
+  absent_today: {
+    desc: 'الطلاب الغايبين النهاردة (مسجّلين في مجموعة ليها حصة النهاردة وبدأت، ومالهمش حضور). args: {}',
+    validate: () => ({}),
+    run: (a, db) => {
+      const now = getSystemNow();
+      const todayName = WEEKDAY_AR_BY_JS_INDEX[now.getDay()];
+      const todayStr = localDateStr();
+      const nowT = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+      const rooms = (db.classrooms||[]).map(r=>{
+        const m = (r.meetingTimes||[]).find(x=> x.day===todayName);
+        return m ? {room:r, start:m.start||''} : null;
+      }).filter(Boolean);
+      if(!rooms.length) return {text:'مفيش حصص متسجّلة النهاردة 👌'};
+      const started = rooms.filter(x=> !x.start || x.start<=nowT);
+      const notYet = rooms.length - started.length;
+      const rows = [];
+      started.forEach(x=>{
+        (db.enrollments||[]).filter(e=> e.classroomId===x.room.id).forEach(e=>{
+          const c = (db.children||[]).find(k=> k.id===e.childId); if(!c) return;
+          const came = (db.attendance||[]).some(t=> t.childId===c.id && t.classroomId===x.room.id && t.sessionDate===todayStr);
+          if(!came) rows.push({label:c.name, sub:x.room.name + (x.start ? ' · '+x.start : ''), act:{name:'openStudent', arg:c.id, label:'فتح'}});
+        });
+      });
+      const tail = notYet ? ` (${notYet} حصة لسه ماجاش معادها)` : '';
+      if(!rows.length) return {text:'كل الطلاب في الحصص اللي بدأت حضروا ✅' + tail};
+      return {
+        title:'🚫 الغايبين النهاردة',
+        summary:`${rows.length} طالب مالهمش حضور في حصص النهاردة اللي بدأت` + tail,
+        rows: rows.slice(0,8),
+        more: rows.length>8 ? `+${rows.length-8} طالب تاني` : ''
+      };
+    }
+  },
   open_screen: {
     desc: 'فتح قسم من لوحة المدير. args: {"screen":"<اسم القسم>"} والأقسام المسموحة: children, teachers, assistants, parents, links, classrooms, subjects, schedule, teacherAttendance, teacherEvaluations, teacherPayouts, payments, attendanceExceptions, calendar, complaints, financialArchive, passwordRequests',
     validate: a => { const s = String((a&&a.screen)||''); return ASSIST_SCREENS().includes(s) ? {screen:s} : null; },
@@ -5170,6 +5203,7 @@ let assistantTypeSpeed = 14;  // ms لكل حرفين — 0 يعني بدون ت
 const ASSIST_SUGGESTIONS = [
   {ico:'💳', txt:'مين المتأخرين في الدفع؟', send:true},
   {ico:'🔎', txt:'دوّر على طالب', send:false, fill:'دوّر على '},
+  {ico:'🚫', txt:'مين الغايبين النهاردة؟', send:true},
   {ico:'🧑‍🏫', txt:'افتح المدرّسين', send:true},
   {ico:'📅', txt:'افتح التقويم', send:true}
 ];
