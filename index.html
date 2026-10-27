@@ -526,6 +526,28 @@
   /* section screens: زرار الإضافة عايم تحت */
   #admin-section-screen .container{padding-bottom:84px;}
   #admin-add-btn.admin-fab{position:sticky; bottom:16px; z-index:4; margin:14px 0 0; border-radius:16px; padding:15px; font-size:15px; font-weight:800; box-shadow:0 10px 26px var(--shadow-3);}
+
+  /* ===== المساعد الذكي ===== */
+  .ai-asst{display:flex; flex-direction:column; max-height:86vh; padding:16px;}
+  .ai-asst-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;}
+  .ai-asst-note{font-size:11.5px; color:var(--muted); margin-bottom:10px; line-height:1.6;}
+  .ai-asst-log{flex:1 1 auto; overflow-y:auto; min-height:120px; display:flex; flex-direction:column; gap:10px; padding:2px 0 8px;}
+  .ai-msg{max-width:92%; padding:10px 13px; border-radius:16px; font-size:13.5px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere;}
+  .ai-msg.me{align-self:flex-start; background:linear-gradient(135deg,var(--admin-1),var(--admin-2)); color:#fff; border-bottom-right-radius:4px;}
+  .ai-msg.bot{align-self:flex-end; background:var(--cancel-bg); color:var(--text); border-bottom-left-radius:4px;}
+  .ai-card{align-self:stretch; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:12px; box-shadow:0 4px 14px var(--shadow-1);}
+  .ai-card .ai-card-title{font-family:'Cairo',sans-serif; font-weight:800; font-size:14px; margin-bottom:8px;}
+  .ai-card .ai-row{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--border); font-size:13px;}
+  .ai-card .ai-row:first-of-type{border-top:none;}
+  .ai-card .ai-row small{color:var(--muted); display:block; font-size:11.5px;}
+  .ai-act{background:linear-gradient(135deg,var(--admin-1),var(--admin-2)); color:#fff; border:none; border-radius:12px; padding:8px 14px; font-family:inherit; font-weight:700; font-size:12.5px; cursor:pointer; flex:0 0 auto;}
+  .ai-act.block{width:100%; margin-top:8px; padding:11px;}
+  .ai-act:active{transform:scale(.95);}
+  .ai-asst-chips{display:flex; gap:6px; flex-wrap:wrap; margin:4px 0 8px;}
+  .ai-asst-chips button{background:var(--cancel-bg); border:1px solid var(--border); color:var(--text); border-radius:14px; padding:6px 11px; font-size:12px; font-family:inherit; cursor:pointer;}
+  .ai-asst-input{display:flex; gap:8px;}
+  .ai-asst-input input{flex:1; min-width:0; padding:11px 12px; border-radius:12px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-family:inherit; font-size:14px;}
+  .ai-typing{opacity:.7; font-size:12.5px;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
@@ -896,6 +918,7 @@
       <span class="search-ico">🔍</span>
       <input type="text" id="admin-global-search-input" placeholder="دور عن أي حاجة في النظام..." oninput="renderGlobalSearchResults(this.value)">
     </div>
+    <button class="notif-bell" onclick="openAssistant()" aria-label="المساعد الذكي" id="admin-assistant-btn">🤖</button>
     <button class="notif-bell" onclick="toggleAdminGlobalSearch()" aria-label="بحث" id="admin-search-toggle-btn">🔍</button>
     <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-admin" style="display:none;">0</span></button>
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
@@ -1092,6 +1115,23 @@
 </div>
 
 <!-- مودال: ربط الذكاء الاصطناعي (المدرّس) -->
+<!-- ============ ASSISTANT (المساعد الذكي — قراءة فقط) ============ -->
+<div class="modal-bg" id="ai-assistant-bg" onclick="if(event.target===this) closeAssistant()">
+  <div class="modal ai-asst">
+    <div class="ai-asst-head">
+      <h3 style="margin:0; font-size:16px;">🤖 المساعد الذكي</h3>
+      <button class="back-link" style="font-size:20px; padding:0 6px;" onclick="closeAssistant()" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="ai-asst-note">بيقرا بيانات سنترك بس ومبيعدّلش حاجة. اللي بيتبعت للمزوّد كلامك إنت بس، مش بيانات الطلاب.</div>
+    <div class="ai-asst-log" id="ai-asst-log"></div>
+    <div class="ai-asst-chips" id="ai-asst-chips"></div>
+    <div class="ai-asst-input">
+      <input type="text" id="ai-asst-input" maxlength="200" placeholder="اسأل: مين المتأخرين في الدفع؟" autocomplete="off" onkeydown="if(event.key==='Enter'){assistantSend();}">
+      <button class="btn primary admin" id="ai-asst-send" onclick="assistantSend()">إرسال</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="ai-settings-modal-bg">
   <div class="modal">
     <h3>🔌 ربط الذكاء الاصطناعي</h3>
@@ -5011,6 +5051,168 @@ async function markInvoicePaid(invoiceId, centerId){
   });
 }
 
+
+
+/* ========================= المساعد الذكي (P0 — قراءة فقط) =========================
+   المبدأ: الموديل بيختار أداة من قايمة ثابتة بس. الأدوات بتتنفّذ محليًا على بيانات المدير
+   اللي اتحمّلت أصلًا من Supabase تحت RLS. نتيجة الأداة ما بترجعش للموديل (خصوصية + منع حقن الأوامر).
+   الأزرار بتنفّذ إجراءات من جدول سماح ثابت، وبتتحقق من المعرّف قبل التنفيذ. مفيش أي كتابة. */
+const ASSIST_SCREENS = () => Object.keys(ADMIN_TAB_META);
+const ASSIST_TOOLS = {
+  find_student: {
+    desc: 'بحث عن طالب بالاسم. args: {"name":"جزء من الاسم"}',
+    validate: a => { const n = String((a&&a.name)||'').trim().slice(0,60); return n ? {name:n} : null; },
+    run: (a, db) => {
+      const q = normalizeArabic(a.name);
+      const hits = db.children.filter(c=> normalizeArabic(c.name).includes(q));
+      if(!hits.length) return {text:`ما لقيتش طالب اسمه "${a.name}"`};
+      return {
+        title:`🧑‍🎓 نتايج البحث عن "${a.name}" (${hits.length})`,
+        rows: hits.slice(0,8).map(c=>({label:c.name, sub:GRADE_LABELS[c.grade]||'', act:{name:'openStudent', arg:c.id, label:'فتح الملف'}})),
+        more: hits.length>8 ? `+${hits.length-8} نتيجة تانية، دقّق الاسم أكتر` : ''
+      };
+    }
+  },
+  overdue_payments: {
+    desc: 'المدفوعات والاشتراكات المتأخرة أو المنتهية. args: {}',
+    validate: () => ({}),
+    run: (a, db) => {
+      const cm = localMonthStr();
+      const byChild = {};
+      db.payments.filter(p=> p.status!=='PAID' && p.month < cm).forEach(p=>{
+        const k = p.childId; if(!k) return;
+        (byChild[k] = byChild[k] || {n:0, sum:0}).n++; byChild[k].sum += parseFloat(p.amount)||0;
+      });
+      const subs = getAdminSubscriptionCounts(db);
+      const ids = Object.keys(byChild).filter(id=> db.children.some(c=>c.id===id));
+      if(!ids.length && !subs.expired && !subs.pending) return {text:'مفيش مدفوعات متأخرة ولا اشتراكات منتهية 👌'};
+      return {
+        title:'💳 المتابعة المالية',
+        summary:`${ids.length} طالب عليهم دفعات متأخرة · ${subs.expired} اشتراك منتهي · ${subs.pending} فاتورة معلّقة`,
+        rows: ids.slice(0,8).map(id=>{ const c = db.children.find(x=>x.id===id); return {label:c.name, sub:`${byChild[id].n} دفعة · ${byChild[id].sum} ج`, act:{name:'openStudent', arg:id, label:'فتح'}}; }),
+        more: ids.length>8 ? `+${ids.length-8} طالب تاني في تاب المدفوعات` : '',
+        footer: {name:'openSection', arg:'payments', label:'عرض كل المدفوعات'}
+      };
+    }
+  },
+  open_screen: {
+    desc: 'فتح قسم من لوحة المدير. args: {"screen":"<اسم القسم>"} والأقسام المسموحة: children, teachers, assistants, parents, links, classrooms, subjects, schedule, teacherAttendance, teacherEvaluations, teacherPayouts, payments, attendanceExceptions, calendar, complaints, financialArchive, passwordRequests',
+    validate: a => { const s = String((a&&a.screen)||''); return ASSIST_SCREENS().includes(s) ? {screen:s} : null; },
+    run: (a) => ({ title:`${ADMIN_TAB_META[a.screen].icon} ${ADMIN_TAB_META[a.screen].label}`, footer:{name:'openSection', arg:a.screen, label:'فتح '+ADMIN_TAB_META[a.screen].label} })
+  }
+};
+// الإجراءات المسموحة للأزرار — اسم ثابت + معرّف بيتراجع عليه قبل التنفيذ
+const ASSIST_ACTIONS = {
+  openStudent: arg => { const db = loadDB(); if(!db.children.some(c=>c.id===arg)) { showToast('الطالب مش موجود'); return; } closeAssistant(); openStudentDetail(arg); },
+  openSection: arg => { if(!ASSIST_SCREENS().includes(arg)) { showToast('القسم مش موجود'); return; } closeAssistant(); openAdminSection(arg); },
+  openAiSettings: () => { closeAssistant(); openAiSettings(); }
+};
+let assistantHistory = [];   // {u: سؤال المستخدم, b: رد الموديل النصي} — في الذاكرة بس، بيتمسح بقفل الصفحة
+let assistantBusy = false;
+
+function assistantCanUse(){ return typeof session!=='undefined' && session && session.role==='ADMIN'; }
+function assistantBuildPrompt(question){
+  const tools = Object.keys(ASSIST_TOOLS).map(k=>`- ${k}: ${ASSIST_TOOLS[k].desc}`).join('\n');
+  const hist = assistantHistory.slice(-2).map(h=>`المستخدم: ${h.u}\nأنت: ${h.b}`).join('\n');
+  return `إنت مساعد داخل نظام إدارة سناتر اسمه "مسار". بتساعد مدير السنتر. اختار أداة واحدة من القايمة دي بس، وماتخترعش أدوات تانية:
+${tools}
+
+ردّ بـ JSON واحد بس من غير أي كلام تاني، بأحد الشكلين:
+{"tool":"<اسم الأداة>","args":{...}}
+أو لو الطلب مش واضح أو مش متاح في الأدوات: {"reply":"جملة قصيرة بالعامية المصرية، سؤال توضيحي أو اعتذار"}
+
+لو المستخدم طلب تعديل أو حذف أو تسجيل حاجة قوله إن ده مش متاح لسه وإنه يعمله من الشاشة.
+${hist ? 'آخر كلام:\n'+hist+'\n' : ''}
+سؤال المستخدم: ${question}`;
+}
+// بيستخرج أول JSON من رد الموديل (ممكن يجي جوه ```json) ويتحقق منه — أي حاجة غير متوقعة بتتعامل كرد نصي
+function assistantParse(raw){
+  const m = String(raw||'').match(/\{[\s\S]*\}/);
+  if(!m) return {reply:String(raw||'').trim().slice(0,300) || 'مفهمتش، ممكن توضّح؟'};
+  let j; try{ j = JSON.parse(m[0]); }catch(e){ return {reply:'مفهمتش، ممكن توضّح؟'}; }
+  if(j && typeof j.tool==='string' && Object.prototype.hasOwnProperty.call(ASSIST_TOOLS, j.tool)){
+    const args = ASSIST_TOOLS[j.tool].validate(j.args||{});
+    if(args) return {tool:j.tool, args};
+    return {reply:'محتاج تفاصيل أكتر، تقصد مين أو أنهي قسم بالظبط؟'};
+  }
+  if(j && typeof j.reply==='string') return {reply:j.reply.slice(0,300)};
+  return {reply:'مفهمتش، ممكن توضّح؟'};
+}
+function assistantAddMsg(kind, html){
+  const log = document.getElementById('ai-asst-log'); if(!log) return null;
+  const d = document.createElement('div');
+  d.className = kind==='card' ? 'ai-card' : ('ai-msg '+kind);
+  d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; return d;
+}
+function assistantActBtn(act, block){
+  if(!act || !Object.prototype.hasOwnProperty.call(ASSIST_ACTIONS, act.name)) return '';
+  return `<button class="ai-act${block?' block':''}" data-act="${faEsc(act.name)}" data-arg="${faEsc(act.arg==null?'':act.arg)}">${faEsc(act.label)}</button>`;
+}
+function assistantRenderResult(r){
+  if(r.text){ assistantAddMsg('bot', faEsc(r.text)); return; }
+  let h = `<div class="ai-card-title">${faEsc(r.title||'')}</div>`;
+  if(r.summary) h += `<div style="font-size:12.5px; color:var(--muted); margin-bottom:6px;">${faEsc(r.summary)}</div>`;
+  (r.rows||[]).forEach(x=>{ h += `<div class="ai-row"><div>${faEsc(x.label)}${x.sub?`<small>${faEsc(x.sub)}</small>`:''}</div>${assistantActBtn(x.act)}</div>`; });
+  if(r.more) h += `<div style="font-size:11.5px; color:var(--muted); margin-top:6px;">${faEsc(r.more)}</div>`;
+  if(r.footer) h += assistantActBtn(r.footer, true);
+  assistantAddMsg('card', h);
+}
+async function assistantAsk(question){
+  const q = String(question||'').trim().slice(0,200);
+  if(!q || assistantBusy || !assistantCanUse()) return;
+  assistantBusy = true;
+  const sendBtn = document.getElementById('ai-asst-send'); if(sendBtn) sendBtn.disabled = true;
+  assistantAddMsg('me', faEsc(q));
+  const cfg = loadAiCfg();
+  if(!cfg || !cfg.key){
+    assistantAddMsg('card', `<div class="ai-card-title">محتاج تفعّل الـAI الأول</div><div style="font-size:12.5px; color:var(--muted);">مفتاح مجاني من Gemini بياخد دقيقتين.</div>${assistantActBtn({name:'openAiSettings', arg:'', label:'🚀 فعّل الـAI'}, true)}`);
+    assistantBusy = false; if(sendBtn) sendBtn.disabled = false; return;
+  }
+  const typing = assistantAddMsg('bot ai-typing', '...');
+  try{
+    const raw = await aiCall(cfg, assistantBuildPrompt(q), []);
+    const out = assistantParse(raw);
+    if(typing) typing.remove();
+    if(out.tool){
+      const r = ASSIST_TOOLS[out.tool].run(out.args, loadDB());
+      assistantRenderResult(r);
+      assistantHistory.push({u:q, b:'(نفّذت '+out.tool+')'});
+    } else {
+      assistantAddMsg('bot', faEsc(out.reply));
+      assistantHistory.push({u:q, b:out.reply});
+    }
+  }catch(e){
+    if(typing) typing.remove();
+    assistantAddMsg('bot', faEsc(aiErrorMsg(e)));
+  }
+  assistantBusy = false; if(sendBtn) sendBtn.disabled = false;
+}
+function assistantSend(){
+  const inp = document.getElementById('ai-asst-input'); if(!inp) return;
+  const v = inp.value; inp.value = ''; assistantAsk(v);
+}
+function openAssistant(){
+  if(!assistantCanUse()){ showToast('المساعد متاح لمدير السنتر بس'); return; }
+  document.getElementById('ai-assistant-bg').classList.add('show');
+  const log = document.getElementById('ai-asst-log');
+  if(log && !log.children.length) assistantAddMsg('bot', 'أهلًا 👋 اسألني عن طالب، أو المدفوعات المتأخرة، أو قولي افتح أي قسم.');
+  const chips = document.getElementById('ai-asst-chips');
+  if(chips && !chips.children.length){
+    ['مين المتأخرين في الدفع؟','افتح المدفوعات','دوّر على طالب'].forEach(t=>{
+      const b = document.createElement('button'); b.textContent = t;
+      b.onclick = ()=>{ if(t==='دوّر على طالب'){ const i=document.getElementById('ai-asst-input'); i.value='دوّر على '; i.focus(); } else assistantAsk(t); };
+      chips.appendChild(b);
+    });
+  }
+}
+function closeAssistant(){ const el = document.getElementById('ai-assistant-bg'); if(el) el.classList.remove('show'); }
+document.addEventListener('click', ev=>{
+  const b = ev.target && ev.target.closest ? ev.target.closest('#ai-asst-log [data-act]') : null;
+  if(!b) return;
+  const name = b.getAttribute('data-act');
+  if(!Object.prototype.hasOwnProperty.call(ASSIST_ACTIONS, name)) return;
+  ASSIST_ACTIONS[name](b.getAttribute('data-arg'));
+});
 
 function initAdminScreen(){
   renderAdminStats(); renderAdminAlerts();
