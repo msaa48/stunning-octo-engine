@@ -1196,7 +1196,7 @@
     <div class="list-sub" style="margin-bottom:4px;">المزوّد</div>
     <select id="ai-provider" onchange="aiOnProviderChange()" style="margin-bottom:6px;">
       <option value="gemini">Google Gemini (مجاني — الأنسب للصور)</option>
-      <option value="openrouter">OpenRouter</option>
+      <option value="openrouter">OpenRouter (مفتاح واحد لكل المجاني — نص وصور)</option>
       <option value="groq">Groq</option>
       <option value="anthropic">Anthropic Claude</option>
       <option value="custom">مزوّد تاني (متوافق مع OpenAI)</option>
@@ -5944,7 +5944,7 @@ function copyTempPassword(){
    والمدرّس بيراجع ويعدّل، وبعدين بيطبع ورقة الامتحان PDF (مع نموذج إجابة اختياري). */
 const AI_PROVIDERS = {
   gemini:     { label:'Google Gemini', format:'gemini',    base:'https://generativelanguage.googleapis.com/v1beta', model:'gemini-flash-latest', keyUrl:'https://aistudio.google.com/apikey', hint:'مفتاح مجاني (الأنسب للصور)' },
-  openrouter: { label:'OpenRouter',    format:'openai',    base:'https://openrouter.ai/api/v1', model:'', keyUrl:'https://openrouter.ai/keys', hint:'اكتب اسم موديل مجاني بيقبل صور (غالبًا اسمه بينتهي بـ :free)' },
+  openrouter: { label:'OpenRouter',    format:'openai',    base:'https://openrouter.ai/api/v1', model:'openrouter/free', keyUrl:'https://openrouter.ai/keys', hint:'مفتاح واحد بيوزّع على كل الموديلات المجانية، وبيختار لوحده موديل بيقبل صور لما الطلب فيه صور (الموديل openrouter/free)' },
   groq:       { label:'Groq',          format:'openai',    base:'https://api.groq.com/openai/v1', model:'meta-llama/llama-4-scout-17b-16e-instruct', keyUrl:'https://console.groq.com/keys', hint:'مفتاح مجاني — لازم موديل بيقبل صور' },
   anthropic:  { label:'Anthropic Claude', format:'anthropic', base:'https://api.anthropic.com/v1', model:'claude-haiku-5-5', keyUrl:'https://platform.claude.com/settings/keys', hint:'' },
   custom:     { label:'مزوّد تاني (متوافق مع OpenAI)', format:'openai', base:'', model:'', hint:'أي مزوّد بيدعم /chat/completions' }
