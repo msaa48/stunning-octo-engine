@@ -147,6 +147,7 @@
   .topbar.parent{background:linear-gradient(120deg,var(--parent-1),var(--parent-2));}
   .topbar.admin{background:linear-gradient(120deg,var(--admin-1),var(--admin-2));}
   .topbar .title{font-weight:700; font-size:16px; font-family:'Cairo',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 auto;}
+  .asst-status{display:block; margin:0 auto 14px; border:1px solid var(--border,#ddd); background:transparent; color:var(--ink); padding:7px 14px; border-radius:20px; font-size:12.5px; font-family:inherit; cursor:pointer;}
   .topbar .logout{background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff; padding:6px 13px; border-radius:20px; font-size:12.5px; cursor:pointer; font-family:inherit; font-weight:600; flex:0 0 auto; white-space:nowrap;}
   .notif-bell{position:relative; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff; width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; flex:0 0 auto; display:flex; align-items:center; justify-content:center;}
   .notif-badge{position:absolute; top:-4px; left:-4px; background:#e5484d; color:#fff; font-size:10px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px; border:1.5px solid; }
@@ -1164,7 +1165,8 @@
   <div class="topbar admin">
     <button class="back-link" style="color:#fff; font-size:20px; padding:0 6px;" onclick="assistantBack()" aria-label="رجوع">→</button>
     <div class="title">✨ المساعد الذكي</div>
-    <button class="logout" onclick="assistantNewChat()" id="asst-new-btn">＋ محادثة جديدة</button>
+    <button class="logout" onclick="openAiSettings()" id="asst-settings-btn" aria-label="إعدادات الذكاء الاصطناعي">⚙️</button>
+    <button class="logout" onclick="assistantNewChat()" id="asst-new-btn">＋ جديدة</button>
   </div>
   <div class="asst-scroll" id="asst-scroll">
     <div class="asst-inner">
@@ -1172,6 +1174,7 @@
         <div class="asst-orb"><span>✨</span></div>
         <h2>أهلًا بيك 👋</h2>
         <p>أنا مساعد مسار. اسألني عن طلابك ومدفوعاتك، أو قولّي أفتحلك أي قسم في السنتر.</p>
+        <button class="asst-status" id="asst-ai-status" onclick="openAiSettings()"></button>
         <div class="asst-sugs" id="asst-sugs"></div>
         <div class="asst-note">🔒 بقرا بيانات سنترك بس ومبعدّلش حاجة. اللي بيتبعت للمزوّد كلامك إنت بس، مش بيانات الطلاب.</div>
       </div>
@@ -5360,8 +5363,16 @@ function assistantRenderSuggestions(){
 function openAssistant(){
   if(!assistantCanUse()){ showToast('المساعد متاح لمدير السنتر بس'); return; }
   assistantRenderSuggestions();
+  assistantRefreshStatus();
   showScreen('ai-chat-screen');
   assistantInputChanged();
+}
+function assistantRefreshStatus(){
+  const el = document.getElementById('asst-ai-status'); if(!el) return;
+  const cfg = loadAiCfg();
+  el.textContent = (cfg && cfg.key)
+    ? '✅ متصل: ' + ((AI_PROVIDERS[cfg.provider]||{}).label || cfg.provider) + ' · تعديل'
+    : '⚠️ الذكاء الاصطناعي مش مربوط · اربط المفتاح';
 }
 function assistantBack(){ showScreen('admin-screen'); }
 function assistantNewChat(){
@@ -6081,13 +6092,15 @@ function aiSaveSettings(){
   if(!saveAiCfg(cfg)){ showToast('⚠️ المتصفح منع الحفظ على الجهاز'); return; }
   closeModal('ai-settings-modal-bg');
   showToast('✅ اتحفظ الربط على جهازك');
-  renderTeacherExams();
+  try{ renderTeacherExams(); }catch(e){}
+  assistantRefreshStatus();
 }
 function aiClearSettings(){
   if(!confirm('تمسح مفتاح الذكاء الاصطناعي من الجهاز ده؟')) return;
   try{ localStorage.removeItem(aiCfgKey()); }catch(e){}
   closeModal('ai-settings-modal-bg');
-  renderTeacherExams();
+  try{ renderTeacherExams(); }catch(e){}
+  assistantRefreshStatus();
 }
 
 /* ---------- دليل تفعيل الـAI: إزاي المدرّس يجيب المفتاح ---------- */
