@@ -5110,6 +5110,7 @@ const ASSIST_ACTIONS = {
 };
 let assistantHistory = [];   // {u: سؤال المستخدم, b: رد الموديل النصي} — في الذاكرة بس، بيتمسح بقفل الصفحة
 let assistantBusy = false;
+let assistantRetryDelay = 2000;
 
 function assistantCanUse(){ return typeof session!=='undefined' && session && session.role==='ADMIN'; }
 function assistantBuildPrompt(question){
@@ -5171,7 +5172,18 @@ async function assistantAsk(question){
   }
   const typing = assistantAddMsg('bot ai-typing', '...');
   try{
-    const raw = await aiCall(cfg, assistantBuildPrompt(q), []);
+    // أخطاء ضغط المزوّد (500/502/503/504) مؤقتة — نعيد المحاولة تلقائيًا مرتين قبل ما نعرض خطأ
+    let raw, attempt = 0;
+    for(;;){
+      try{ raw = await aiCall(cfg, assistantBuildPrompt(q), []); break; }
+      catch(err){
+        if(attempt<2 && /HTTP 5(00|02|03|04)/.test(String((err&&err.message)||err))){
+          attempt++; if(typing) typing.textContent = 'المزوّد مشغول، بحاول تاني...';
+          await new Promise(r=>setTimeout(r, assistantRetryDelay*attempt)); continue;
+        }
+        throw err;
+      }
+    }
     const out = assistantParse(raw);
     if(typing) typing.remove();
     if(out.tool){
@@ -5798,6 +5810,7 @@ function aiErrorMsg(e){
   if(/HTTP 429/.test(m)) return 'وصلت للحد المجاني — استنى شوية وجرّب تاني';
   if(/HTTP 404/.test(m)) return 'اسم الموديل غلط أو مش متاح';
   if(/HTTP 400/.test(m)) return 'الطلب اترفض — غالبًا الموديل ده مش بيقبل صور، أو اسمه غلط';
+  if(/HTTP 5\d\d/.test(m)) return 'المزوّد مشغول دلوقتي (ضغط عالي عنده). مش مشكلة في مفتاحك — جرّب تاني بعد دقيقة';
   return 'حصل خطأ: ' + m.slice(0, 120);
 }
 
