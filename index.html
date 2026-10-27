@@ -1210,6 +1210,8 @@
     <div class="list-sub" style="margin-bottom:4px;">المفتاح (API Key)</div>
     <input type="password" id="ai-key" dir="ltr" autocomplete="off" style="margin-bottom:8px;">
     <button class="btn block" onclick="aiTestConnection()">🔍 جرّب الاتصال</button>
+    <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="aiSaveBackup()">➕ احفظ المفتاح ده كاحتياطي</button>
+    <div id="ai-backups" style="margin-top:6px;"></div>
     <div id="ai-test-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
     <button class="btn block" onclick="aiSaveSettings()">حفظ</button>
     <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('ai-settings-modal-bg')">إلغاء</button>
@@ -5309,17 +5311,7 @@ async function assistantAsk(question){
   const th = assistantThinking();
   try{
     // أخطاء ضغط المزوّد (500/502/503/504) مؤقتة — نعيد المحاولة تلقائيًا مرتين قبل ما نعرض خطأ
-    let raw, attempt = 0;
-    for(;;){
-      try{ raw = await aiCall(cfg, assistantBuildPrompt(q), []); break; }
-      catch(err){
-        if(attempt<2 && /HTTP 5(00|02|03|04)/.test(String((err&&err.message)||err))){
-          attempt++; th.set('المزوّد مشغول، بحاول تاني…');
-          await new Promise(r=>setTimeout(r, assistantRetryDelay*attempt)); continue;
-        }
-        throw err;
-      }
-    }
+    const raw = await aiChainCall(assistantBuildPrompt(q), [], {onStatus: m=> th.set(m)});
     const out = assistantParse(raw);
     if(out.tool){
       th.set('ببحث في بيانات السنتر…');
@@ -5371,7 +5363,7 @@ function assistantRefreshStatus(){
   const el = document.getElementById('asst-ai-status'); if(!el) return;
   const cfg = loadAiCfg();
   el.textContent = (cfg && cfg.key)
-    ? '✅ متصل: ' + ((AI_PROVIDERS[cfg.provider]||{}).label || cfg.provider) + ' · تعديل'
+    ? '✅ متصل: ' + ((AI_PROVIDERS[cfg.provider]||{}).label || cfg.provider) + (loadAiBackups().length ? ' + ' + loadAiBackups().length + ' احتياطي' : '') + ' · تعديل'
     : '⚠️ الذكاء الاصطناعي مش مربوط · اربط المفتاح';
 }
 function assistantBack(){ showScreen('admin-screen'); }
@@ -5968,6 +5960,7 @@ function saveAiCfg(c){ try{ localStorage.setItem(aiCfgKey(), JSON.stringify(c));
 
 function aiErrorMsg(e){
   const m = String((e && e.message) || e || '');
+  if(m==='TIMEOUT') return 'المزوّد بطيء قوي دلوقتي — جرّب تاني بعد شوية';
   if(m==='NETWORK') return 'تعذّر الاتصال بالمزوّد. النت ضعيف، أو المزوّد بيمنع الاتصال من المتصفح (جرّب Gemini)';
   if(/HTTP 401|HTTP 403/.test(m)) return 'المفتاح مش مقبول — راجعه';
   if(/HTTP 429/.test(m)) return 'وصلت للحد المجاني — استنى شوية وجرّب تاني';
@@ -5978,7 +5971,7 @@ function aiErrorMsg(e){
 }
 
 // نداء موحّد لأي مزوّد (3 صيغ بتغطي أغلب الـAPIs): gemini / anthropic / openai-compatible
-async function aiCall(cfg, prompt, images){
+async function aiCall(cfg, prompt, images, timeoutMs){
   images = images || [];
   const b64 = d => String(d).split(',')[1];
   const base = String(cfg.base||'').replace(/\/+$/,'');
@@ -5997,11 +5990,15 @@ async function aiCall(cfg, prompt, images){
     const content = images.length ? [{type:'text', text:prompt}].concat(images.map(d=>({type:'image_url', image_url:{url:d}}))) : prompt;
     body = { model:cfg.model, messages:[{role:'user', content}], temperature:0.4 };
   }
-  let res;
-  try{ res = await fetch(url, {method:'POST', headers, body:JSON.stringify(body)}); }
-  catch(e){ throw new Error('NETWORK'); }
-  if(!res.ok){ let t=''; try{ t=(await res.text()).slice(0,300); }catch(e){} throw new Error('HTTP '+res.status+': '+t); }
-  const j = await res.json();
+  let res, ctl = null, timer = null;
+  if(timeoutMs && typeof AbortController!=='undefined'){ ctl = new AbortController(); timer = setTimeout(()=>ctl.abort(), timeoutMs); }
+  try{ res = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal: ctl ? ctl.signal : undefined}); }
+  catch(e){ if(timer) clearTimeout(timer); throw new Error(e && e.name==='AbortError' ? 'TIMEOUT' : 'NETWORK'); }
+  if(!res.ok){ if(timer) clearTimeout(timer); let t=''; try{ t=(await res.text()).slice(0,300); }catch(e){} throw new Error('HTTP '+res.status+': '+t); }
+  let j;
+  try{ j = await res.json(); }
+  catch(e){ throw new Error(e && e.name==='AbortError' ? 'TIMEOUT' : 'NETWORK'); }
+  finally{ if(timer) clearTimeout(timer); }
   if(cfg.format==='gemini'){
     const parts = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
     return parts.map(p=>p.text||'').join('');
@@ -6010,6 +6007,81 @@ async function aiCall(cfg, prompt, images){
     return (j.content||[]).map(c=>c.text||'').join('');
   }
   return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
+}
+
+
+/* ---------- مفاتيح احتياطية + تبديل تلقائي بين المزوّدين ---------- */
+function aiBackupsKey(){ return 'masar_ai_backups_' + aiPersonKey(); }
+function loadAiBackups(){ try{ const a = JSON.parse(localStorage.getItem(aiBackupsKey())||'[]'); return Array.isArray(a) ? a.filter(c=> c && c.key && c.base && c.model) : []; }catch(e){ return []; } }
+function saveAiBackups(a){ try{ localStorage.setItem(aiBackupsKey(), JSON.stringify(a)); return true; }catch(e){ return false; } }
+function aiLabel(c){ return ((AI_PROVIDERS[c.provider]||{}).label || c.provider || 'مزوّد') ; }
+let aiChainLastOk = '';   // آخر مزوّد نجح (في الذاكرة بس) — نبدأ بيه عشان ما نضيعش وقت على مزوّد واقع
+function aiChainList(){
+  const main = loadAiCfg();
+  const all = [main].concat(loadAiBackups()).filter(c=> c && c.key);
+  const seen = {}; const list = all.filter(c=>{ if(seen[c.key]) return false; seen[c.key] = 1; return true; });
+  const i = list.findIndex(c=> c.key===aiChainLastOk);
+  if(i>0) list.unshift(list.splice(i,1)[0]);
+  return list;
+}
+function aiTransient(e){ return /^(NETWORK|TIMEOUT)$|HTTP (408|429|5\d\d)/.test(String((e&&e.message)||e||'')); }
+// بيجرّب المزوّدين بالترتيب: لو واحد ضغط/وقع/بطّأ بيروح للي بعده. لو الكل فشل بسبب ضغط مؤقت بيستنى ويعيد لفّة.
+async function aiChainCall(prompt, images, opts){
+  opts = opts || {};
+  const list = aiChainList();
+  if(!list.length) throw new Error('HTTP 401: no key');
+  const multi = list.length > 1;
+  const rounds = multi ? 2 : 3;
+  const tmo = (images && images.length) ? 70000 : 30000;
+  let firstErr = null;
+  for(let round=0; round<rounds; round++){
+    let allTransient = true;
+    for(let i=0; i<list.length; i++){
+      const cfg = list[i];
+      const last = (i===list.length-1);
+      try{
+        const out = await aiCall(cfg, prompt, images, (multi && !last) ? tmo : 0);
+        aiChainLastOk = cfg.key;
+        return out;
+      }catch(err){
+        if(!firstErr) firstErr = err;
+        if(!aiTransient(err)) allTransient = false;
+        if(opts.onStatus){
+          if(!last) opts.onStatus(aiLabel(cfg) + ' مشغول، بجرّب ' + aiLabel(list[i+1]) + '…');
+          else if(round<rounds-1 && allTransient) opts.onStatus('المزوّدين مشغولين، بحاول تاني…');
+        }
+      }
+    }
+    if(!allTransient || round===rounds-1) break;
+    await new Promise(r=>setTimeout(r, (typeof assistantRetryDelay!=='undefined' ? assistantRetryDelay : 2000)*(round+1)));
+  }
+  throw firstErr;
+}
+function aiRenderBackups(){
+  const box = document.getElementById('ai-backups'); if(!box) return;
+  const a = loadAiBackups();
+  box.innerHTML = a.length
+    ? '<div class="list-sub" style="margin:4px 0;">مفاتيح احتياطية (بتتجرّب لو الأساسي مشغول):</div>' + a.map((c,i)=>
+        `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding:5px 0;"><span style="font-size:12.5px;" dir="ltr">${faEsc(aiLabel(c))} · ${faEsc(String(c.model).slice(0,28))}</span><button class="badge" onclick="aiRemoveBackup(${i})">✕</button></div>`).join('')
+    : '<div class="list-sub" style="margin:4px 0; line-height:1.6;">ضيف مفتاح من مزوّد تاني كاحتياطي، والنظام يبدّل لوحده لو الأساسي مشغول.</div>';
+}
+function aiSaveBackup(){
+  const cfg = aiReadForm();
+  const bad = aiValidate(cfg);
+  if(bad){ showToast('⚠️ ' + bad); return; }
+  const main = loadAiCfg();
+  const a = loadAiBackups();
+  if((main && main.key===cfg.key) || a.some(c=>c.key===cfg.key)){ showToast('المفتاح ده متضاف قبل كده'); return; }
+  if(a.length>=4){ showToast('كفاية 4 مفاتيح احتياطية'); return; }
+  a.push(cfg);
+  if(!saveAiBackups(a)){ showToast('⚠️ المتصفح منع الحفظ على الجهاز'); return; }
+  document.getElementById('ai-key').value = '';
+  aiRenderBackups(); assistantRefreshStatus();
+  showToast('✅ اتضاف كاحتياطي — تقدر تضيف غيره');
+}
+function aiRemoveBackup(i){
+  const a = loadAiBackups(); a.splice(i,1); saveAiBackups(a);
+  aiRenderBackups(); assistantRefreshStatus();
 }
 
 function aiExtractJson(text){
@@ -6049,6 +6121,7 @@ function openAiSettings(presetProvider){
   aiFillProviderDefaults(prov, cfg);
   document.getElementById('ai-key').value = cfg.key || '';
   document.getElementById('ai-test-result').textContent = '';
+  aiRenderBackups();
   document.getElementById('ai-settings-modal-bg').classList.add('show');
 }
 function aiFillProviderDefaults(prov, cfg){
@@ -6096,8 +6169,8 @@ function aiSaveSettings(){
   assistantRefreshStatus();
 }
 function aiClearSettings(){
-  if(!confirm('تمسح مفتاح الذكاء الاصطناعي من الجهاز ده؟')) return;
-  try{ localStorage.removeItem(aiCfgKey()); }catch(e){}
+  if(!confirm('تمسح مفتاح الذكاء الاصطناعي (والاحتياطي) من الجهاز ده؟')) return;
+  try{ localStorage.removeItem(aiCfgKey()); localStorage.removeItem(aiBackupsKey()); }catch(e){}
   closeModal('ai-settings-modal-bg');
   try{ renderTeacherExams(); }catch(e){}
   assistantRefreshStatus();
@@ -6365,7 +6438,7 @@ async function examGenerate(){
   const btn = document.getElementById('exam-gen-btn');
   if(btn){ btn.disabled = true; btn.textContent = '⏳ بيولّد الأسئلة... (ممكن ياخد نص دقيقة)'; }
   try{
-    const out = await aiCall(cfg, prompt, examState.images);
+    const out = await aiChainCall(prompt, examState.images, {onStatus: m=>{ const b = document.getElementById('exam-gen-btn'); if(b) b.textContent = '⏳ ' + m; }});
     const data = aiExtractJson(out);
     const questions = examNormalize(data);
     if(!questions.length) throw new Error('مفيش أسئلة صالحة في الرد — جرّب تاني');
@@ -7114,7 +7187,7 @@ async function examGradeAi(files){
     const imgs = [];
     for(const f of list) imgs.push(await examFileToDataUrl(f));
     const ver = g.model.versions[g.vIdx];
-    const out = await aiCall(cfg, examGradeAiPrompt(ver), imgs);
+    const out = await aiChainCall(examGradeAiPrompt(ver), imgs, {onStatus: m=> showToast(m)});
     const data = aiExtractJson(out);
     const letterIdx = {'أ':0,'ا':0,'ب':1,'ج':2,'د':3,'a':0,'b':1,'c':2,'d':3,'A':0,'B':1,'C':2,'D':3};
     g.answers = {}; g.rubric = {};
