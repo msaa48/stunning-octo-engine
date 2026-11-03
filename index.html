@@ -1195,11 +1195,14 @@
     <h3>🤖 الذكاء الاصطناعي</h3>
     <div id="ai-center-status" class="list-sub" style="margin-bottom:10px; line-height:1.8; font-weight:700;"></div>
     <div id="ai-simple-box">
-      <div class="list-sub" style="margin-bottom:10px; line-height:1.8;">الذكاء الاصطناعي شغّال تلقائي. ولو عايزه يشتغل بحصة مركزك إنت (أسرع وبحد أوسع) اربط مفتاح مجاني من جوجل. المفتاح بيتخزّن مشفّر على السيرفر ومابيظهرش لأي حد، وبيُستخدم لمركزك بس.</div>
       <button id="ai-connect-btn" class="btn block" onclick="aiStartGoogleKeyFlow()">🔗 افتح صفحة مفتاح جوجل</button>
-      <div class="list-sub" style="margin:8px 0; line-height:1.7;">اضغط Create API key وانسخ المفتاح وارجع هنا، هلقطه تلقائي.</div>
-      <div id="ai-paste-result" class="list-sub" style="margin:6px 0; line-height:1.7; min-height:18px;"></div>
-      <button id="ai-paste-fallback" class="btn block" style="display:none; margin-bottom:8px; background:var(--cancel-bg); color:var(--ink);" onclick="aiPasteKey()">📋 الصق المفتاح اللي نسخته</button>
+      <div style="display:flex; gap:6px; margin:10px 0 6px;">
+        <input type="text" id="ai-center-key" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="المفتاح هيظهر هنا" style="flex:1; margin:0;">
+        <button class="btn" style="flex:none;" onclick="aiPasteIntoField()">📋 لصق</button>
+      </div>
+      <button id="ai-activate-btn" class="btn block" onclick="aiActivateFromField()">✅ تفعيل</button>
+      <div id="ai-paste-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
+      <div class="list-sub" style="font-size:12px; margin-bottom:8px;">🔒 المفتاح بيتخزّن مشفّر على السيرفر</div>
       <button id="ai-disconnect-btn" class="btn block" style="display:none; margin-bottom:8px; background:transparent; color:var(--danger);" onclick="aiDisconnectCenterKey()">افصل مفتاح مركزي</button>
     </div>
     <button id="ai-adv-toggle" class="btn block" style="display:none; margin-bottom:8px; background:var(--cancel-bg); color:var(--ink);" onclick="aiToggleAdvanced()">⚙️ إعدادات متقدمة (للسوبر أدمن)</button>
@@ -6078,11 +6081,11 @@ function aiDetectProvider(k){
 async function aiRefreshCenterStatus(){
   const el = document.getElementById('ai-center-status'); if(!el) return;
   el.textContent = '⏳ …';
-  let txt = '✅ الذكاء الاصطناعي شغّال بمفتاح المنصة المجاني (بحد يومي)';
+  let txt = '✅ شغّال (بمفتاح المنصة)';
   let hasCenter = false;
   try{
     const { data } = await supabaseClient.rpc('ai_center_key_status');
-    if(data && data.length){ hasCenter = true; txt = '✅ شغّال بمفتاح مركزك (' + aiLabel({provider:data[0].provider}) + ')'; }
+    if(data && data.length){ hasCenter = true; txt = '✅ شغّال بمفتاح مركزك'; }
   }catch(e){}
   el.textContent = txt;
   const dc = document.getElementById('ai-disconnect-btn'); if(dc) dc.style.display = hasCenter ? 'block' : 'none';
@@ -6094,7 +6097,7 @@ async function aiSaveCenterKeyFromText(txt){
   txt = String(txt||'').trim();
   const prov = aiDetectProvider(txt);
   const isOwner = !!(session && session.isSuperAdmin);
-  if(!prov || (prov !== 'gemini' && !isOwner)){ out.textContent = '⚠️ ده مش شكل مفتاح جوجل (لازم يبدأ بـ AIza). ارجع للصفحة وانسخ المفتاح تاني'; return false; }
+  if(!prov || (prov !== 'gemini' && !isOwner)){ out.textContent = '⚠️ ده مش مفتاح جوجل (بيبدأ بـ AIza)'; return false; }
   out.textContent = '⏳ بحفظ المفتاح وبجرّبه…';
   const { error } = await supabaseClient.rpc('ai_set_center_key', { p_provider: prov, p_model: (AI_PROVIDERS[prov]||{}).model, p_key: txt });
   if(error){ out.textContent = '⚠️ ' + (/forbidden/.test(error.message || '') ? 'ربط مفتاح المركز متاح لمدير المركز بس' : 'ماقدرتش أحفظ المفتاح، جرّب تاني'); return false; }
@@ -6104,32 +6107,37 @@ async function aiSaveCenterKeyFromText(txt){
       ? '✅ اتفعّل! مركزك دلوقتي بيشتغل بمفتاحك'
       : '⚠️ المفتاح اتحفظ لكن ماشتغلش معايا (غالبًا اتنسخ ناقص). النظام شغّال بمفتاح المنصة في الوقت ده';
   }catch(e){ out.textContent = '⚠️ المفتاح اتحفظ لكن الاختبار فشل: ' + aiErrorMsg(e); }
-  const fb = document.getElementById('ai-paste-fallback'); if(fb) fb.style.display = 'none';
+  if(aiLastGw && aiLastGw.source === 'center'){ const kf = document.getElementById('ai-center-key'); if(kf) kf.value = ''; }
   aiRefreshCenterStatus(); assistantRefreshStatus();
   return true;
 }
 function aiStartGoogleKeyFlow(){
   aiAwaitingKey = true;
   const out = document.getElementById('ai-paste-result'); if(out) out.textContent = '';
-  const fb = document.getElementById('ai-paste-fallback'); if(fb) fb.style.display = 'none';
   try{ window.open('https://aistudio.google.com/apikey', '_blank', 'noopener'); }catch(e){}
 }
-async function aiPasteKey(){
+async function aiPasteIntoField(){
   let txt = '';
-  try{ txt = (await navigator.clipboard.readText()) || ''; }
-  catch(e){ txt = prompt('الصق المفتاح هنا:') || ''; }
+  try{ txt = (await navigator.clipboard.readText()) || ''; }catch(e){ txt = ''; }
+  const f = document.getElementById('ai-center-key'); const out = document.getElementById('ai-paste-result');
+  if(!txt.trim()){ if(out) out.textContent = 'اضغط مطوّلًا على الخانة والصق المفتاح'; if(f) f.focus(); return; }
+  if(f) f.value = txt.trim();
+  if(out) out.textContent = '';
+}
+async function aiActivateFromField(){
+  const f = document.getElementById('ai-center-key');
   aiAwaitingKey = false;
-  return aiSaveCenterKeyFromText(txt);
+  return aiSaveCenterKeyFromText(f ? f.value : '');
 }
 async function aiTryAutoCapture(){
   const modal = document.getElementById('ai-settings-modal-bg');
   if(!aiAwaitingKey || !modal || !modal.classList.contains('show')) return;
   let txt = '';
   try{ txt = (await navigator.clipboard.readText()) || ''; }catch(e){}
-  if(aiDetectProvider(txt) === 'gemini'){ aiAwaitingKey = false; aiSaveCenterKeyFromText(txt); return; }
+  const f = document.getElementById('ai-center-key');
+  if(aiDetectProvider(txt) === 'gemini'){ aiAwaitingKey = false; if(f) f.value = txt.trim(); aiSaveCenterKeyFromText(txt); return; }
   const out = document.getElementById('ai-paste-result');
-  if(out) out.textContent = 'لو نسخت المفتاح، اضغط "الصق" تحت:';
-  const fb = document.getElementById('ai-paste-fallback'); if(fb) fb.style.display = 'block';
+  if(out) out.textContent = 'الصق المفتاح في الخانة واضغط تفعيل';
 }
 document.addEventListener('visibilitychange', function(){ if(!document.hidden && aiAwaitingKey) aiTryAutoCapture(); });
 
@@ -6298,7 +6306,7 @@ function openAiSettings(presetProvider){
   const tg = document.getElementById('ai-adv-toggle'); if(tg) tg.style.display = (session && session.isSuperAdmin) ? 'block' : 'none';
   const av = document.getElementById('ai-advanced'); if(av) av.style.display = 'none';
   aiAwaitingKey = false;
-  const pf = document.getElementById('ai-paste-fallback'); if(pf) pf.style.display = 'none';
+  const kf0 = document.getElementById('ai-center-key'); if(kf0) kf0.value = '';
   if(session && session.isSuperAdmin){ aiPlatformProvChanged(); aiPlatformRender(); }
   const pr = document.getElementById('ai-paste-result'); if(pr) pr.textContent = '';
   aiRefreshCenterStatus();
