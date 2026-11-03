@@ -1195,14 +1195,29 @@
     <h3>🤖 الذكاء الاصطناعي</h3>
     <div id="ai-center-status" class="list-sub" style="margin-bottom:10px; line-height:1.8; font-weight:700;"></div>
     <div id="ai-simple-box">
-      <div class="list-sub" style="margin-bottom:10px; line-height:1.8;">الذكاء الاصطناعي شغّال تلقائي. ولو عايز يشتغل بحصة مركزك إنت (أسرع وبحد أوسع) اربط مفتاح مجاني من جوجل في خطوتين. المفتاح بيتخزّن مشفّر على السيرفر ومابيظهرش لأي حد، وبيُستخدم لذكاء مركزك بس.</div>
-      <a class="btn block" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="text-align:center; text-decoration:none; margin-bottom:8px;">1) افتح صفحة المفتاح واضغط Create API key ←</a>
-      <button class="btn block" onclick="aiPasteKey()">2) 📋 الصق المفتاح</button>
-      <div id="ai-paste-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
+      <div class="list-sub" style="margin-bottom:10px; line-height:1.8;">الذكاء الاصطناعي شغّال تلقائي. ولو عايزه يشتغل بحصة مركزك إنت (أسرع وبحد أوسع) اربط مفتاح مجاني من جوجل. المفتاح بيتخزّن مشفّر على السيرفر ومابيظهرش لأي حد، وبيُستخدم لمركزك بس.</div>
+      <button id="ai-connect-btn" class="btn block" onclick="aiStartGoogleKeyFlow()">🔗 افتح صفحة مفتاح جوجل</button>
+      <div class="list-sub" style="margin:8px 0; line-height:1.7;">اضغط Create API key وانسخ المفتاح وارجع هنا، هلقطه تلقائي.</div>
+      <div id="ai-paste-result" class="list-sub" style="margin:6px 0; line-height:1.7; min-height:18px;"></div>
+      <button id="ai-paste-fallback" class="btn block" style="display:none; margin-bottom:8px; background:var(--cancel-bg); color:var(--ink);" onclick="aiPasteKey()">📋 الصق المفتاح اللي نسخته</button>
       <button id="ai-disconnect-btn" class="btn block" style="display:none; margin-bottom:8px; background:transparent; color:var(--danger);" onclick="aiDisconnectCenterKey()">افصل مفتاح مركزي</button>
     </div>
     <button id="ai-adv-toggle" class="btn block" style="display:none; margin-bottom:8px; background:var(--cancel-bg); color:var(--ink);" onclick="aiToggleAdvanced()">⚙️ إعدادات متقدمة (للسوبر أدمن)</button>
     <div id="ai-advanced" style="display:none;">
+    <div class="list-sub" style="font-weight:700; margin:4px 0;">مفاتيح المنصة (بتشتغل تلقائي لو مفتاح العميل فشل)</div>
+    <div id="ai-plat-list" class="list-sub" style="line-height:1.9; margin-bottom:8px;"></div>
+    <select id="ai-plat-prov" onchange="aiPlatformProvChanged()" style="margin-bottom:6px;">
+      <option value="groq">Groq</option>
+      <option value="gemini">Google Gemini</option>
+      <option value="openrouter">OpenRouter</option>
+      <option value="anthropic">Anthropic Claude</option>
+    </select>
+    <input type="text" id="ai-plat-model" dir="ltr" placeholder="اسم الموديل" style="margin-bottom:6px;">
+    <input type="password" id="ai-plat-key" dir="ltr" autocomplete="off" placeholder="المفتاح (API Key)" oninput="aiPlatformKeyInput()" style="margin-bottom:6px;">
+    <input type="number" id="ai-plat-prio" dir="ltr" value="100" min="1" max="1000" placeholder="الأولوية (الأصغر أولًا)" style="margin-bottom:6px;">
+    <button class="btn block" onclick="aiPlatformAdd()">➕ أضف مفتاح منصة</button>
+    <div id="ai-plat-msg" class="list-sub" style="margin:6px 0; line-height:1.7; min-height:18px;"></div>
+    <details style="margin-top:12px;"><summary class="list-sub" style="cursor:pointer;">مفاتيح على هذا الجهاز (قديم)</summary>
     <div class="list-sub" style="margin-bottom:4px;">المزوّد</div>
     <select id="ai-provider" onchange="aiOnProviderChange()" style="margin-bottom:6px;">
       <option value="gemini">Google Gemini (مجاني — الأنسب للصور)</option>
@@ -1225,7 +1240,7 @@
     <div id="ai-test-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
     <button class="btn block" onclick="aiSaveSettings()">حفظ</button>
     <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('ai-settings-modal-bg')">إلغاء</button>
-    <button class="btn block" style="margin-top:8px; background:transparent; color:var(--danger);" onclick="aiClearSettings()">مسح المفتاح من الجهاز</button></div>
+    <button class="btn block" style="margin-top:8px; background:transparent; color:var(--danger);" onclick="aiClearSettings()">مسح المفتاح من الجهاز</button></details></div>
     <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('ai-settings-modal-bg')">إغلاق</button>
   </div>
 </div>
@@ -6073,24 +6088,93 @@ async function aiRefreshCenterStatus(){
   const dc = document.getElementById('ai-disconnect-btn'); if(dc) dc.style.display = hasCenter ? 'block' : 'none';
   return hasCenter;
 }
-async function aiPasteKey(){
+let aiAwaitingKey = false;
+async function aiSaveCenterKeyFromText(txt){
   const out = document.getElementById('ai-paste-result');
-  let txt = '';
-  try{ txt = (await navigator.clipboard.readText()) || ''; }
-  catch(e){ txt = prompt('الصق المفتاح هنا:') || ''; }
-  txt = txt.trim();
+  txt = String(txt||'').trim();
   const prov = aiDetectProvider(txt);
-  if(!prov){ out.textContent = '⚠️ اللي اتنسخ مش شكل مفتاح معروف. ارجع للصفحة وانسخ المفتاح تاني'; return; }
+  const isOwner = !!(session && session.isSuperAdmin);
+  if(!prov || (prov !== 'gemini' && !isOwner)){ out.textContent = '⚠️ ده مش شكل مفتاح جوجل (لازم يبدأ بـ AIza). ارجع للصفحة وانسخ المفتاح تاني'; return false; }
   out.textContent = '⏳ بحفظ المفتاح وبجرّبه…';
   const { error } = await supabaseClient.rpc('ai_set_center_key', { p_provider: prov, p_model: (AI_PROVIDERS[prov]||{}).model, p_key: txt });
-  if(error){ out.textContent = '⚠️ ' + (/forbidden/.test(error.message || '') ? 'ربط مفتاح المركز متاح لمدير المركز بس' : 'ماقدرتش أحفظ المفتاح، جرّب تاني'); return; }
+  if(error){ out.textContent = '⚠️ ' + (/forbidden/.test(error.message || '') ? 'ربط مفتاح المركز متاح لمدير المركز بس' : 'ماقدرتش أحفظ المفتاح، جرّب تاني'); return false; }
   try{
     await aiGatewayCall('Reply with the single word: ok', []);
     out.textContent = (aiLastGw && aiLastGw.source === 'center')
       ? '✅ اتفعّل! مركزك دلوقتي بيشتغل بمفتاحك'
       : '⚠️ المفتاح اتحفظ لكن ماشتغلش معايا (غالبًا اتنسخ ناقص). النظام شغّال بمفتاح المنصة في الوقت ده';
   }catch(e){ out.textContent = '⚠️ المفتاح اتحفظ لكن الاختبار فشل: ' + aiErrorMsg(e); }
+  const fb = document.getElementById('ai-paste-fallback'); if(fb) fb.style.display = 'none';
   aiRefreshCenterStatus(); assistantRefreshStatus();
+  return true;
+}
+function aiStartGoogleKeyFlow(){
+  aiAwaitingKey = true;
+  const out = document.getElementById('ai-paste-result'); if(out) out.textContent = '';
+  const fb = document.getElementById('ai-paste-fallback'); if(fb) fb.style.display = 'none';
+  try{ window.open('https://aistudio.google.com/apikey', '_blank', 'noopener'); }catch(e){}
+}
+async function aiPasteKey(){
+  let txt = '';
+  try{ txt = (await navigator.clipboard.readText()) || ''; }
+  catch(e){ txt = prompt('الصق المفتاح هنا:') || ''; }
+  aiAwaitingKey = false;
+  return aiSaveCenterKeyFromText(txt);
+}
+async function aiTryAutoCapture(){
+  const modal = document.getElementById('ai-settings-modal-bg');
+  if(!aiAwaitingKey || !modal || !modal.classList.contains('show')) return;
+  let txt = '';
+  try{ txt = (await navigator.clipboard.readText()) || ''; }catch(e){}
+  if(aiDetectProvider(txt) === 'gemini'){ aiAwaitingKey = false; aiSaveCenterKeyFromText(txt); return; }
+  const out = document.getElementById('ai-paste-result');
+  if(out) out.textContent = 'لو نسخت المفتاح، اضغط "الصق" تحت:';
+  const fb = document.getElementById('ai-paste-fallback'); if(fb) fb.style.display = 'block';
+}
+document.addEventListener('visibilitychange', function(){ if(!document.hidden && aiAwaitingKey) aiTryAutoCapture(); });
+
+/* ---------- مفاتيح المنصة (للمالك بس): بتتخزّن على السيرفر ---------- */
+async function aiPlatformRender(){
+  const box = document.getElementById('ai-plat-list'); if(!box) return;
+  box.textContent = '⏳ …';
+  const { data, error } = await supabaseClient.rpc('ai_platform_keys_list');
+  if(error){ box.textContent = '⚠️ ماقدرتش أجيب المفاتيح'; return; }
+  if(!data || !data.length){ box.textContent = 'مفيش مفاتيح منصة لسه.'; return; }
+  box.innerHTML = data.map(k =>
+    `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--border,#eee);"><span dir="ltr" style="font-size:12.5px;${k.enabled ? '' : ' opacity:.45;'}">${k.priority} · ${faEsc(aiLabel({provider:k.provider}))} · ${faEsc(String(k.model).slice(0,26))}</span><span><button class="badge" onclick="aiPlatformToggle('${k.id}', ${k.enabled ? 'false' : 'true'})">${k.enabled ? 'إيقاف' : 'تشغيل'}</button> <button class="badge" onclick="aiPlatformRemove('${k.id}')">✕</button></span></div>`).join('');
+}
+function aiPlatformProvChanged(){
+  const p = document.getElementById('ai-plat-prov').value;
+  document.getElementById('ai-plat-model').value = (AI_PROVIDERS[p]||{}).model || '';
+}
+function aiPlatformKeyInput(){
+  const prov = aiDetectProvider(document.getElementById('ai-plat-key').value);
+  if(prov){ const sel = document.getElementById('ai-plat-prov'); if(sel.value !== prov){ sel.value = prov; aiPlatformProvChanged(); } }
+}
+async function aiPlatformAdd(){
+  const msg = document.getElementById('ai-plat-msg');
+  const prov = document.getElementById('ai-plat-prov').value;
+  const model = document.getElementById('ai-plat-model').value.trim() || (AI_PROVIDERS[prov]||{}).model || '';
+  const key = document.getElementById('ai-plat-key').value.trim();
+  const prio = parseInt(document.getElementById('ai-plat-prio').value, 10) || 100;
+  if(key.length < 20){ msg.textContent = '⚠️ اكتب المفتاح الأول'; return; }
+  msg.textContent = '⏳ بحفظ…';
+  const { error } = await supabaseClient.rpc('ai_add_platform_key', { p_provider: prov, p_model: model, p_key: key, p_priority: prio, p_label: null });
+  if(error){ msg.textContent = '⚠️ ' + (/forbidden/.test(error.message || '') ? 'متاح للمالك بس' : 'ماقدرتش أحفظ المفتاح'); return; }
+  document.getElementById('ai-plat-key').value = '';
+  msg.textContent = '✅ اتضاف';
+  aiPlatformRender();
+}
+async function aiPlatformToggle(id, en){
+  const { error } = await supabaseClient.rpc('ai_toggle_platform_key', { p_id: id, p_enabled: en });
+  if(error){ showToast('⚠️ ماقدرتش أغيّر الحالة'); return; }
+  aiPlatformRender();
+}
+async function aiPlatformRemove(id){
+  if(!confirm('تمسح مفتاح المنصة ده نهائي؟')) return;
+  const { error } = await supabaseClient.rpc('ai_remove_platform_key', { p_id: id });
+  if(error){ showToast('⚠️ ماقدرتش أمسحه'); return; }
+  aiPlatformRender();
 }
 async function aiDisconnectCenterKey(){
   if(!confirm('تفصل مفتاح المركز؟ الذكاء الاصطناعي هيكمّل بمفتاح المنصة المجاني.')) return;
@@ -6213,6 +6297,9 @@ function openAiSettings(presetProvider){
   const sb = document.getElementById('ai-simple-box'); if(sb) sb.style.display = isAdm ? 'block' : 'none';
   const tg = document.getElementById('ai-adv-toggle'); if(tg) tg.style.display = (session && session.isSuperAdmin) ? 'block' : 'none';
   const av = document.getElementById('ai-advanced'); if(av) av.style.display = 'none';
+  aiAwaitingKey = false;
+  const pf = document.getElementById('ai-paste-fallback'); if(pf) pf.style.display = 'none';
+  if(session && session.isSuperAdmin){ aiPlatformProvChanged(); aiPlatformRender(); }
   const pr = document.getElementById('ai-paste-result'); if(pr) pr.textContent = '';
   aiRefreshCenterStatus();
   const cfg = presetProvider ? {} : (loadAiCfg() || {});
