@@ -1192,7 +1192,17 @@
 
 <div class="modal-bg" id="ai-settings-modal-bg">
   <div class="modal">
-    <h3>🔌 ربط الذكاء الاصطناعي</h3>
+    <h3>🤖 الذكاء الاصطناعي</h3>
+    <div id="ai-center-status" class="list-sub" style="margin-bottom:10px; line-height:1.8; font-weight:700;"></div>
+    <div id="ai-simple-box">
+      <div class="list-sub" style="margin-bottom:10px; line-height:1.8;">الذكاء الاصطناعي شغّال تلقائي. ولو عايز يشتغل بحصة مركزك إنت (أسرع وبحد أوسع) اربط مفتاح مجاني من جوجل في خطوتين. المفتاح بيتخزّن مشفّر على السيرفر ومابيظهرش لأي حد، وبيُستخدم لذكاء مركزك بس.</div>
+      <a class="btn block" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="text-align:center; text-decoration:none; margin-bottom:8px;">1) افتح صفحة المفتاح واضغط Create API key ←</a>
+      <button class="btn block" onclick="aiPasteKey()">2) 📋 الصق المفتاح</button>
+      <div id="ai-paste-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
+      <button id="ai-disconnect-btn" class="btn block" style="display:none; margin-bottom:8px; background:transparent; color:var(--danger);" onclick="aiDisconnectCenterKey()">افصل مفتاح مركزي</button>
+    </div>
+    <button id="ai-adv-toggle" class="btn block" style="display:none; margin-bottom:8px; background:var(--cancel-bg); color:var(--ink);" onclick="aiToggleAdvanced()">⚙️ إعدادات متقدمة (للسوبر أدمن)</button>
+    <div id="ai-advanced" style="display:none;">
     <div class="list-sub" style="margin-bottom:4px;">المزوّد</div>
     <select id="ai-provider" onchange="aiOnProviderChange()" style="margin-bottom:6px;">
       <option value="gemini">Google Gemini (مجاني — الأنسب للصور)</option>
@@ -1215,7 +1225,8 @@
     <div id="ai-test-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
     <button class="btn block" onclick="aiSaveSettings()">حفظ</button>
     <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('ai-settings-modal-bg')">إلغاء</button>
-    <button class="btn block" style="margin-top:8px; background:transparent; color:var(--danger);" onclick="aiClearSettings()">مسح المفتاح من الجهاز</button>
+    <button class="btn block" style="margin-top:8px; background:transparent; color:var(--danger);" onclick="aiClearSettings()">مسح المفتاح من الجهاز</button></div>
+    <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('ai-settings-modal-bg')">إغلاق</button>
   </div>
 </div>
 
@@ -5303,11 +5314,6 @@ async function assistantAsk(question){
   if(!q || assistantBusy || !assistantCanUse()) return;
   assistantSetBusy(true);
   assistantAddRow('me', faEsc(q));
-  const cfg = loadAiCfg();
-  if(!cfg || !cfg.key){
-    assistantAddRow('bot', `<div class="ai-card"><div class="ai-card-title">محتاج تفعّل الـAI الأول</div><div style="font-size:12.5px; color:var(--muted); line-height:1.7;">مفتاح مجاني من Gemini بياخد دقيقتين: افتح الصفحة، اعمل مفتاح، وارجع الصقه في الإعدادات.</div><a class="ai-act block" href="${AI_PROVIDERS.gemini.keyUrl}" target="_blank" rel="noopener noreferrer" style="display:block; text-align:center; text-decoration:none;">🔗 افتح صفحة المفتاح</a>${assistantActBtn({name:'openAiSettings', arg:'', label:'⚙️ الصق المفتاح في الإعدادات'}, true)}</div>`);
-    assistantSetBusy(false); return;
-  }
   const th = assistantThinking();
   try{
     // أخطاء ضغط المزوّد (500/502/503/504) مؤقتة — نعيد المحاولة تلقائيًا مرتين قبل ما نعرض خطأ
@@ -5359,12 +5365,14 @@ function openAssistant(){
   showScreen('ai-chat-screen');
   assistantInputChanged();
 }
-function assistantRefreshStatus(){
+async function assistantRefreshStatus(){
   const el = document.getElementById('asst-ai-status'); if(!el) return;
-  const cfg = loadAiCfg();
-  el.textContent = (cfg && cfg.key)
-    ? '✅ متصل: ' + ((AI_PROVIDERS[cfg.provider]||{}).label || cfg.provider) + (loadAiBackups().length ? ' + ' + loadAiBackups().length + ' احتياطي' : '') + ' · تعديل'
-    : '⚠️ الذكاء الاصطناعي مش مربوط · اربط المفتاح';
+  let txt = '✅ الذكاء الاصطناعي شغّال';
+  try{
+    const { data } = await supabaseClient.rpc('ai_center_key_status');
+    txt = (data && data.length) ? '✅ شغّال بمفتاح مركزك · تعديل' : '✅ شغّال بمفتاح المنصة المجاني · اربط مفتاح مركزك';
+  }catch(e){}
+  el.textContent = txt;
 }
 function assistantBack(){ showScreen('admin-screen'); }
 function assistantNewChat(){
@@ -5960,6 +5968,11 @@ function saveAiCfg(c){ try{ localStorage.setItem(aiCfgKey(), JSON.stringify(c));
 
 function aiErrorMsg(e){
   const m = String((e && e.message) || e || '');
+  if(m==='GW:NO_KEYS') return 'الذكاء الاصطناعي لسه مش متفعّل في مركزك. اربط مفتاح المركز من ⚙️ (دقيقة واحدة) أو كلّم الدعم';
+  if(m==='GW:PLATFORM_LIMIT') return 'خلص الحد اليومي المجاني للذكاء الاصطناعي. اربط مفتاح مركزك من ⚙️ أو جرّب بكره';
+  if(m==='GW:ALL_FAILED') return 'خدمة الذكاء الاصطناعي مشغولة دلوقتي. جرّب تاني بعد شوية';
+  if(m==='GW:UNAUTH') return 'الجلسة انتهت، سجّل دخول تاني';
+  if(/^GW:/.test(m)) return 'حصلت مشكلة مؤقتة في السيرفر، جرّب تاني';
   if(m==='TIMEOUT') return 'المزوّد بطيء قوي دلوقتي — جرّب تاني بعد شوية';
   if(m==='NETWORK') return 'تعذّر الاتصال بالمزوّد. النت ضعيف، أو المزوّد بيمنع الاتصال من المتصفح (جرّب Gemini)';
   if(/HTTP 401|HTTP 403/.test(m)) return 'المفتاح مش مقبول — راجعه';
@@ -6010,6 +6023,87 @@ async function aiCall(cfg, prompt, images, timeoutMs){
 }
 
 
+/* ---------- بوابة الذكاء الاصطناعي على السيرفر (مفتاح المركز أولًا ثم مفاتيح المنصة) ---------- */
+let aiGwNoKeys = false;
+let aiLastGw = null;
+function aiLocalKeysExist(){ return aiChainList().length > 0; }
+async function aiGatewayCall(prompt, images){
+  let r;
+  try{ r = await supabaseClient.functions.invoke('ai-gateway', { body:{ prompt: prompt, images: images || [] } }); }
+  catch(e){ throw new Error('NETWORK'); }
+  if(r && r.error){
+    let code = 'SERVER';
+    try{ const j = await r.error.context.json(); if(j && j.error) code = j.error; }
+    catch(e){ if(r.error.name === 'FunctionsFetchError') code = 'NETWORK'; }
+    throw new Error(code === 'NETWORK' ? 'NETWORK' : 'GW:' + code);
+  }
+  if(!r || !r.data || typeof r.data.text !== 'string') throw new Error('GW:SERVER');
+  aiGwNoKeys = false; aiLastGw = r.data;
+  return r.data.text;
+}
+async function aiChainCall(prompt, images, opts){
+  let gwErr;
+  try{ return await aiGatewayCall(prompt, images); }
+  catch(e){ gwErr = e; }
+  const code = String((gwErr && gwErr.message) || '');
+  if(code === 'GW:NO_KEYS') aiGwNoKeys = true;
+  if(/^GW:(UNAUTH|NO_CENTER|BAD_PROMPT|BAD_IMAGES)$/.test(code)) throw gwErr;
+  if(aiLocalKeysExist()) return await aiLocalChainCall(prompt, images, opts);
+  throw gwErr;
+}
+function aiDetectProvider(k){
+  k = String(k||'').trim();
+  if(/\s/.test(k) || k.length < 20) return '';
+  if(k.indexOf('AIza') === 0) return 'gemini';
+  if(k.indexOf('gsk_') === 0) return 'groq';
+  if(k.indexOf('sk-or-') === 0) return 'openrouter';
+  if(k.indexOf('sk-ant-') === 0) return 'anthropic';
+  return '';
+}
+async function aiRefreshCenterStatus(){
+  const el = document.getElementById('ai-center-status'); if(!el) return;
+  el.textContent = '⏳ …';
+  let txt = '✅ الذكاء الاصطناعي شغّال بمفتاح المنصة المجاني (بحد يومي)';
+  let hasCenter = false;
+  try{
+    const { data } = await supabaseClient.rpc('ai_center_key_status');
+    if(data && data.length){ hasCenter = true; txt = '✅ شغّال بمفتاح مركزك (' + aiLabel({provider:data[0].provider}) + ')'; }
+  }catch(e){}
+  el.textContent = txt;
+  const dc = document.getElementById('ai-disconnect-btn'); if(dc) dc.style.display = hasCenter ? 'block' : 'none';
+  return hasCenter;
+}
+async function aiPasteKey(){
+  const out = document.getElementById('ai-paste-result');
+  let txt = '';
+  try{ txt = (await navigator.clipboard.readText()) || ''; }
+  catch(e){ txt = prompt('الصق المفتاح هنا:') || ''; }
+  txt = txt.trim();
+  const prov = aiDetectProvider(txt);
+  if(!prov){ out.textContent = '⚠️ اللي اتنسخ مش شكل مفتاح معروف. ارجع للصفحة وانسخ المفتاح تاني'; return; }
+  out.textContent = '⏳ بحفظ المفتاح وبجرّبه…';
+  const { error } = await supabaseClient.rpc('ai_set_center_key', { p_provider: prov, p_model: (AI_PROVIDERS[prov]||{}).model, p_key: txt });
+  if(error){ out.textContent = '⚠️ ' + (/forbidden/.test(error.message || '') ? 'ربط مفتاح المركز متاح لمدير المركز بس' : 'ماقدرتش أحفظ المفتاح، جرّب تاني'); return; }
+  try{
+    await aiGatewayCall('Reply with the single word: ok', []);
+    out.textContent = (aiLastGw && aiLastGw.source === 'center')
+      ? '✅ اتفعّل! مركزك دلوقتي بيشتغل بمفتاحك'
+      : '⚠️ المفتاح اتحفظ لكن ماشتغلش معايا (غالبًا اتنسخ ناقص). النظام شغّال بمفتاح المنصة في الوقت ده';
+  }catch(e){ out.textContent = '⚠️ المفتاح اتحفظ لكن الاختبار فشل: ' + aiErrorMsg(e); }
+  aiRefreshCenterStatus(); assistantRefreshStatus();
+}
+async function aiDisconnectCenterKey(){
+  if(!confirm('تفصل مفتاح المركز؟ الذكاء الاصطناعي هيكمّل بمفتاح المنصة المجاني.')) return;
+  const { error } = await supabaseClient.rpc('ai_clear_center_key');
+  if(error){ showToast('⚠️ ماقدرتش أفصل المفتاح'); return; }
+  document.getElementById('ai-paste-result').textContent = '';
+  aiRefreshCenterStatus(); assistantRefreshStatus();
+}
+function aiToggleAdvanced(){
+  const el = document.getElementById('ai-advanced'); if(!el) return;
+  el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+}
+
 /* ---------- مفاتيح احتياطية + تبديل تلقائي بين المزوّدين ---------- */
 function aiBackupsKey(){ return 'masar_ai_backups_' + aiPersonKey(); }
 function loadAiBackups(){ try{ const a = JSON.parse(localStorage.getItem(aiBackupsKey())||'[]'); return Array.isArray(a) ? a.filter(c=> c && c.key && c.base && c.model) : []; }catch(e){ return []; } }
@@ -6026,7 +6120,7 @@ function aiChainList(){
 }
 function aiTransient(e){ return /^(NETWORK|TIMEOUT)$|HTTP (408|429|5\d\d)/.test(String((e&&e.message)||e||'')); }
 // بيجرّب المزوّدين بالترتيب: لو واحد ضغط/وقع/بطّأ بيروح للي بعده. لو الكل فشل بسبب ضغط مؤقت بيستنى ويعيد لفّة.
-async function aiChainCall(prompt, images, opts){
+async function aiLocalChainCall(prompt, images, opts){
   opts = opts || {};
   const list = aiChainList();
   if(!list.length) throw new Error('HTTP 401: no key');
@@ -6115,6 +6209,12 @@ function examNormalize(data){
 
 /* ---------- شاشة ربط الـAPI ---------- */
 function openAiSettings(presetProvider){
+  const isAdm = !!(session && session.role === 'ADMIN');
+  const sb = document.getElementById('ai-simple-box'); if(sb) sb.style.display = isAdm ? 'block' : 'none';
+  const tg = document.getElementById('ai-adv-toggle'); if(tg) tg.style.display = (session && session.isSuperAdmin) ? 'block' : 'none';
+  const av = document.getElementById('ai-advanced'); if(av) av.style.display = 'none';
+  const pr = document.getElementById('ai-paste-result'); if(pr) pr.textContent = '';
+  aiRefreshCenterStatus();
   const cfg = presetProvider ? {} : (loadAiCfg() || {});
   const prov = presetProvider || cfg.provider || 'gemini';
   document.getElementById('ai-provider').value = prov;
@@ -6401,8 +6501,6 @@ function renderExamImages(){
 }
 
 async function examGenerate(){
-  const cfg = loadAiCfg();
-  if(!cfg || !cfg.key){ showToast('اربط الذكاء الاصطناعي الأول'); openAiSettings(); return; }
   if(examState.busy) return;
   const wz = examState.wiz || {};
   const nM = Math.max(0, Math.min(20, Number(wz.counts && wz.counts.mcq)||0));
@@ -7178,8 +7276,8 @@ function examGradeAiPrompt(ver){
   return p;
 }
 async function examGradeAi(files){
-  const g = examState.grade; const cfg = loadAiCfg();
-  if(!g || !cfg || !cfg.key){ showToast('اربط الذكاء الاصطناعي الأول'); return; }
+  const g = examState.grade;
+  if(!g) return;
   const list = Array.from(files||[]).slice(0,3);
   if(!list.length) return;
   showToast('⏳ بيقرا الورقة... (ممكن ياخد نص دقيقة)');
@@ -7450,7 +7548,7 @@ function examStartWizard(){
 
 function renderExamNew(){
   const body = document.getElementById('exam-view-body'); if(!body) return;
-  const cfg = loadAiCfg(); const connected = !!(cfg && cfg.key);
+  const connected = !aiGwNoKeys || aiLocalKeysExist();
   const showWiz = !examState.draft || examState.showWizard;
   let h = '';
   if(!connected){
@@ -7462,7 +7560,7 @@ function renderExamNew(){
       <button class="btn block" style="margin-top:8px; background:var(--cancel-bg); color:var(--ink);" onclick="openAiSettings()">⚙️ عندي المفتاح</button></div>`;
   } else {
     h += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <span class="list-sub" dir="ltr">✅ ${faEsc((AI_PROVIDERS[cfg.provider]||{}).label || cfg.provider)}</span><button class="badge" onclick="openAiSettings()">⚙️</button></div>`;
+      <span class="list-sub" dir="ltr">✅ AI</span><button class="badge" onclick="openAiSettings()">⚙️</button></div>`;
     if(showWiz) h += '<div id="exam-wizard"></div>';
   }
   h += '<div id="exam-draft"></div>';
@@ -7668,7 +7766,6 @@ function renderExamGradeForm(){
   if(!body || !g) return;
   const child = loadDB().children.find(c=> c.id === g.childId) || { name:'' };
   const model = g.model, multi = model.versions.length > 1;
-  const cfg = loadAiCfg();
   const students = examStudentsFor(g.exam);
   const hasNext = !!examNextUngraded(students, g.results, g.childId);
   body.innerHTML = `<div class="card" style="padding:12px 14px; margin-bottom:10px;">
@@ -7676,7 +7773,7 @@ function renderExamGradeForm(){
       <div class="list-sub">${faEsc(g.exam.title)}</div>
       ${multi ? `<div class="list-sub" style="margin:8px 0 4px;">النموذج اللي الطالب حلّه (مكتوب أعلى ورقته):</div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">${model.versions.map((v,i)=>`<button class="badge" style="padding:10px 16px; ${i===g.vIdx?'background:var(--accent,#6b5b95); color:#fff;':''}" onclick="examGradeSetVersion(${i})">نموذج (${v.letter})</button>`).join('')}</div>` : ''}
-      ${cfg && cfg.key ? `<label class="btn block" for="grade-files" style="margin-top:10px; text-align:center;">📷 صوّر الورقة — الـAI يقترح التصحيح</label>
+      ${(!aiGwNoKeys || aiLocalKeysExist()) ? `<label class="btn block" for="grade-files" style="margin-top:10px; text-align:center;">📷 صوّر الورقة — الـAI يقترح التصحيح</label>
         <input type="file" id="grade-files" accept="image/*" multiple onchange="examGradeAi(this.files)" style="display:none;">
         <div class="list-sub" style="margin-top:4px; line-height:1.6;">🔒 الصور بتتبعت لمزوّد الذكاء الاصطناعي — ماتصوّرش اسم الطالب.</div>` : ''}
     </div>
