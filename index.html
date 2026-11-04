@@ -6072,7 +6072,7 @@ async function aiChainCall(prompt, images, opts){
 function aiDetectProvider(k){
   k = String(k||'').trim();
   if(/\s/.test(k) || k.length < 20) return '';
-  if(k.indexOf('AIza') === 0) return 'gemini';
+  if(k.indexOf('AIza') === 0 || k.indexOf('AQ.') === 0) return 'gemini';
   if(k.indexOf('gsk_') === 0) return 'groq';
   if(k.indexOf('sk-or-') === 0) return 'openrouter';
   if(k.indexOf('sk-ant-') === 0) return 'anthropic';
@@ -6097,7 +6097,7 @@ async function aiSaveCenterKeyFromText(txt){
   txt = String(txt||'').trim();
   const prov = aiDetectProvider(txt);
   const isOwner = !!(session && session.isSuperAdmin);
-  if(!prov || (prov !== 'gemini' && !isOwner)){ out.textContent = '⚠️ ده مش مفتاح جوجل (بيبدأ بـ AIza)'; return false; }
+  if(!prov || (prov !== 'gemini' && !isOwner)){ out.textContent = '⚠️ ده مش شكل مفتاح جوجل. انسخ المفتاح من الصفحة تاني'; return false; }
   out.textContent = '⏳ بحفظ المفتاح وبجرّبه…';
   const { error } = await supabaseClient.rpc('ai_set_center_key', { p_provider: prov, p_model: (AI_PROVIDERS[prov]||{}).model, p_key: txt });
   if(error){ out.textContent = '⚠️ ' + (/forbidden/.test(error.message || '') ? 'ربط مفتاح المركز متاح لمدير المركز بس' : 'ماقدرتش أحفظ المفتاح، جرّب تاني'); return false; }
