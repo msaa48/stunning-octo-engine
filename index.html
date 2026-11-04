@@ -1203,7 +1203,6 @@
       <button id="ai-activate-btn" class="btn block" onclick="aiActivateFromField()">✅ تفعيل</button>
       <div id="ai-paste-result" class="list-sub" style="margin:8px 0; line-height:1.7; min-height:18px;"></div>
       <div class="list-sub" style="font-size:12px; margin-bottom:8px;">🔒 المفتاح بيتخزّن مشفّر على السيرفر</div>
-      <button id="ai-disconnect-btn" class="btn block" style="display:none; margin-bottom:8px; background:transparent; color:var(--danger);" onclick="aiDisconnectCenterKey()">افصل مفتاح مركزي</button>
     </div>
     <button id="ai-adv-toggle" class="btn block" style="display:none; margin-bottom:8px; background:var(--cancel-bg); color:var(--ink);" onclick="aiToggleAdvanced()">⚙️ إعدادات متقدمة (للسوبر أدمن)</button>
     <div id="ai-advanced" style="display:none;">
@@ -1219,6 +1218,8 @@
     <input type="password" id="ai-plat-key" dir="ltr" autocomplete="off" placeholder="المفتاح (API Key)" oninput="aiPlatformKeyInput()" style="margin-bottom:6px;">
     <input type="number" id="ai-plat-prio" dir="ltr" value="100" min="1" max="1000" placeholder="الأولوية (الأصغر أولًا)" style="margin-bottom:6px;">
     <button class="btn block" onclick="aiPlatformAdd()">➕ أضف مفتاح منصة</button>
+    <button class="btn block" style="margin-top:6px; background:var(--cancel-bg); color:var(--ink);" onclick="aiDiagnose()">🔍 فحص المفاتيح</button>
+    <div id="ai-diag-out" class="list-sub" dir="ltr" style="margin:6px 0; line-height:1.7; white-space:pre-wrap; font-size:12px;"></div>
     <div id="ai-plat-msg" class="list-sub" style="margin:6px 0; line-height:1.7; min-height:18px;"></div>
     <details style="margin-top:12px;"><summary class="list-sub" style="cursor:pointer;">مفاتيح على هذا الجهاز (قديم)</summary>
     <div class="list-sub" style="margin-bottom:4px;">المزوّد</div>
@@ -5388,7 +5389,10 @@ async function assistantRefreshStatus(){
   let txt = '✅ الذكاء الاصطناعي شغّال';
   try{
     const { data } = await supabaseClient.rpc('ai_center_key_status');
-    txt = (data && data.length) ? '✅ شغّال بمفتاح مركزك · تعديل' : '✅ شغّال بمفتاح المنصة المجاني · اربط مفتاح مركزك';
+    if(data && data.length){
+      const h = aiCenterHealth(data[0]);
+      txt = h === 'INVALID' ? '⚠️ مفتاح مركزك محتاج تحديث · اضغط' : '✅ شغّال بمفتاح مركزك';
+    } else txt = '✅ شغّال بمفتاح المنصة · اربط مفتاح مركزك';
   }catch(e){}
   el.textContent = txt;
 }
@@ -5971,7 +5975,7 @@ function copyTempPassword(){
 const AI_PROVIDERS = {
   gemini:     { label:'Google Gemini', format:'gemini',    base:'https://generativelanguage.googleapis.com/v1beta', model:'gemini-flash-latest', keyUrl:'https://aistudio.google.com/apikey', hint:'مفتاح مجاني (الأنسب للصور)' },
   openrouter: { label:'OpenRouter',    format:'openai',    base:'https://openrouter.ai/api/v1', model:'openrouter/free', keyUrl:'https://openrouter.ai/keys', hint:'مفتاح واحد بيوزّع على كل الموديلات المجانية، وبيختار لوحده موديل بيقبل صور لما الطلب فيه صور (الموديل openrouter/free)' },
-  groq:       { label:'Groq',          format:'openai',    base:'https://api.groq.com/openai/v1', model:'meta-llama/llama-4-scout-17b-16e-instruct', keyUrl:'https://console.groq.com/keys', hint:'مفتاح مجاني — لازم موديل بيقبل صور' },
+  groq:       { label:'Groq',          format:'openai',    base:'https://api.groq.com/openai/v1', model:'openai/gpt-oss-120b', keyUrl:'https://console.groq.com/keys', hint:'مفتاح مجاني — لازم موديل بيقبل صور' },
   anthropic:  { label:'Anthropic Claude', format:'anthropic', base:'https://api.anthropic.com/v1', model:'claude-haiku-5-5', keyUrl:'https://platform.claude.com/settings/keys', hint:'' },
   custom:     { label:'مزوّد تاني (متوافق مع OpenAI)', format:'openai', base:'', model:'', hint:'أي مزوّد بيدعم /chat/completions' }
 };
@@ -5988,6 +5992,7 @@ function aiErrorMsg(e){
   const m = String((e && e.message) || e || '');
   if(m==='GW:NO_KEYS') return 'الذكاء الاصطناعي لسه مش متفعّل في مركزك. اربط مفتاح المركز من ⚙️ (دقيقة واحدة) أو كلّم الدعم';
   if(m==='GW:PLATFORM_LIMIT') return 'خلص الحد اليومي المجاني للذكاء الاصطناعي. اربط مفتاح مركزك من ⚙️ أو جرّب بكره';
+  if(m==='GW:ALL_FAILED' && aiLastGwErr && aiLastGwErr.center_key_problem === 'INVALID') return 'مفتاح مركزك واقف. افتح ⚙️ والصق مفتاح جديد';
   if(m==='GW:ALL_FAILED') return 'خدمة الذكاء الاصطناعي مشغولة دلوقتي. جرّب تاني بعد شوية';
   if(m==='GW:UNAUTH') return 'الجلسة انتهت، سجّل دخول تاني';
   if(/^GW:/.test(m)) return 'حصلت مشكلة مؤقتة في السيرفر، جرّب تاني';
@@ -6044,6 +6049,8 @@ async function aiCall(cfg, prompt, images, timeoutMs){
 /* ---------- بوابة الذكاء الاصطناعي على السيرفر (مفتاح المركز أولًا ثم مفاتيح المنصة) ---------- */
 let aiGwNoKeys = false;
 let aiLastGw = null;
+let aiLastGwErr = null;
+let aiProblemToastShown = false;
 function aiLocalKeysExist(){ return aiChainList().length > 0; }
 async function aiGatewayCall(prompt, images){
   let r;
@@ -6051,12 +6058,14 @@ async function aiGatewayCall(prompt, images){
   catch(e){ throw new Error('NETWORK'); }
   if(r && r.error){
     let code = 'SERVER';
-    try{ const j = await r.error.context.json(); if(j && j.error) code = j.error; }
+    aiLastGwErr = null;
+    try{ const j = await r.error.context.json(); aiLastGwErr = j; if(j && j.error) code = j.error; }
     catch(e){ if(r.error.name === 'FunctionsFetchError') code = 'NETWORK'; }
     throw new Error(code === 'NETWORK' ? 'NETWORK' : 'GW:' + code);
   }
   if(!r || !r.data || typeof r.data.text !== 'string') throw new Error('GW:SERVER');
   aiGwNoKeys = false; aiLastGw = r.data;
+  if(r.data.center_key_problem === 'INVALID' && !aiProblemToastShown){ aiProblemToastShown = true; try{ showToast('⚠️ مفتاح مركزك محتاج تحديث. افتح ⚙️ وحدّثه'); }catch(e){} }
   return r.data.text;
 }
 async function aiChainCall(prompt, images, opts){
@@ -6082,6 +6091,13 @@ function aiDetectProvider(k){
   if(k.indexOf('sk-ant-') === 0) return 'anthropic';
   return '';
 }
+let aiCenterProblem = '';   // '' | 'INVALID' | 'TEMPORARY'
+function aiCenterHealth(row){
+  const st = String((row && row.last_status) || '');
+  if(/^HTTP (400|401|403|404)$/.test(st)) return 'INVALID';
+  if(st && st !== 'ok') return 'TEMPORARY';
+  return '';
+}
 async function aiRefreshCenterStatus(){
   const el = document.getElementById('ai-center-status'); if(!el) return;
   el.textContent = '⏳ …';
@@ -6089,10 +6105,16 @@ async function aiRefreshCenterStatus(){
   let hasCenter = false;
   try{
     const { data } = await supabaseClient.rpc('ai_center_key_status');
-    if(data && data.length){ hasCenter = true; txt = '✅ شغّال بمفتاح مركزك'; }
+    if(data && data.length){
+      hasCenter = true;
+      aiCenterProblem = aiCenterHealth(data[0]);
+      txt = aiCenterProblem === 'INVALID' ? '⚠️ مفتاح مركزك واقف. الصق مفتاح جديد وفعّله'
+          : aiCenterProblem === 'TEMPORARY' ? '⚠️ مفتاح مركزك مش مستجيب دلوقتي (شغّال بمفتاح المنصة لحد ما يرجع)'
+          : '✅ شغّال بمفتاح مركزك';
+    }
   }catch(e){}
   el.textContent = txt;
-  const dc = document.getElementById('ai-disconnect-btn'); if(dc) dc.style.display = hasCenter ? 'block' : 'none';
+  const ab = document.getElementById('ai-activate-btn'); if(ab) ab.textContent = hasCenter ? '🔄 تحديث المفتاح' : '✅ تفعيل';
   return hasCenter;
 }
 let aiAwaitingKey = false;
@@ -6110,8 +6132,15 @@ async function aiSaveCenterKeyFromText(txt){
     await aiGatewayCall('Reply with the single word: ok', []);
     out.textContent = (aiLastGw && aiLastGw.source === 'center')
       ? '✅ اتفعّل! مركزك دلوقتي بيشتغل بمفتاحك'
-      : '⚠️ المفتاح اتحفظ لكن ماشتغلش معايا (غالبًا اتنسخ ناقص). النظام شغّال بمفتاح المنصة في الوقت ده';
-  }catch(e){ out.textContent = '⚠️ المفتاح اتحفظ لكن الاختبار فشل: ' + aiErrorMsg(e); }
+      : (aiLastGw && aiLastGw.center_key_problem === 'TEMPORARY'
+          ? '⚠️ المفتاح اتحفظ لكن جوجل ماردّتش دلوقتي. جرّب تفعيل تاني بعد شوية'
+          : '⚠️ المفتاح اتحفظ لكن جوجل رفضه. جرّب مفتاح جديد (النظام شغّال بمفتاح المنصة في الوقت ده)');
+  }catch(e){
+    const prob = aiLastGwErr && aiLastGwErr.center_key_problem;
+    out.textContent = prob === 'INVALID' ? '⚠️ المفتاح اتحفظ لكن جوجل رفضه. جرّب مفتاح جديد'
+      : prob === 'TEMPORARY' ? '⚠️ المفتاح اتحفظ لكن جوجل ماردّتش دلوقتي. جرّب تاني بعد شوية'
+      : '⚠️ المفتاح اتحفظ لكن الاختبار فشل: ' + aiErrorMsg(e);
+  }
   if(aiLastGw && aiLastGw.source === 'center'){ const kf = document.getElementById('ai-center-key'); if(kf) kf.value = ''; }
   aiRefreshCenterStatus(); assistantRefreshStatus();
   return true;
@@ -6147,6 +6176,16 @@ async function aiTryAutoCapture(){
 document.addEventListener('visibilitychange', function(){ if(!document.hidden && aiAwaitingKey) aiTryAutoCapture(); });
 
 /* ---------- مفاتيح المنصة (للمالك بس): بتتخزّن على السيرفر ---------- */
+async function aiDiagnose(){
+  const out = document.getElementById('ai-diag-out'); if(!out) return;
+  out.textContent = '⏳ بفحص كل المفاتيح…';
+  try{
+    const r = await supabaseClient.functions.invoke('ai-gateway', { body:{ diagnose:true } });
+    if(r.error || !r.data || !r.data.diagnose){ out.textContent = '⚠️ الفحص فشل'; return; }
+    out.textContent = r.data.diagnose.map(x => (x.ok ? 'OK  ' : 'FAIL') + ' ' + x.source + ' · ' + x.provider + ' · ' + x.model + ' · ' + x.ms + 'ms' + (x.ok ? '' : ' · ' + x.status + (x.detail ? ' · ' + x.detail : ''))).join('\n') || 'مفيش مفاتيح';
+  }catch(e){ out.textContent = '⚠️ الفحص فشل'; }
+  aiPlatformRender();
+}
 async function aiPlatformRender(){
   const box = document.getElementById('ai-plat-list'); if(!box) return;
   box.textContent = '⏳ …';
@@ -6154,7 +6193,7 @@ async function aiPlatformRender(){
   if(error){ box.textContent = '⚠️ ماقدرتش أجيب المفاتيح'; return; }
   if(!data || !data.length){ box.textContent = 'مفيش مفاتيح منصة لسه.'; return; }
   box.innerHTML = data.map(k =>
-    `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--border,#eee);"><span dir="ltr" style="font-size:12.5px;${k.enabled ? '' : ' opacity:.45;'}">${k.priority} · ${faEsc(aiLabel({provider:k.provider}))} · ${faEsc(String(k.model).slice(0,26))}</span><span><button class="badge" onclick="aiPlatformToggle('${k.id}', ${k.enabled ? 'false' : 'true'})">${k.enabled ? 'إيقاف' : 'تشغيل'}</button> <button class="badge" onclick="aiPlatformRemove('${k.id}')">✕</button></span></div>`).join('');
+    `<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--border,#eee);"><span dir="ltr" style="font-size:12.5px;${k.enabled ? '' : ' opacity:.45;'}">${k.priority} · ${faEsc(aiLabel({provider:k.provider}))} · ${faEsc(String(k.model).slice(0,26))} · ${faEsc(String(k.last_status||'—'))}</span><span><button class="badge" onclick="aiPlatformToggle('${k.id}', ${k.enabled ? 'false' : 'true'})">${k.enabled ? 'إيقاف' : 'تشغيل'}</button> <button class="badge" onclick="aiPlatformRemove('${k.id}')">✕</button></span></div>`).join('');
 }
 function aiPlatformProvChanged(){
   const p = document.getElementById('ai-plat-prov').value;
@@ -6188,13 +6227,6 @@ async function aiPlatformRemove(id){
   const { error } = await supabaseClient.rpc('ai_remove_platform_key', { p_id: id });
   if(error){ showToast('⚠️ ماقدرتش أمسحه'); return; }
   aiPlatformRender();
-}
-async function aiDisconnectCenterKey(){
-  if(!confirm('تفصل مفتاح المركز؟ الذكاء الاصطناعي هيكمّل بمفتاح المنصة المجاني.')) return;
-  const { error } = await supabaseClient.rpc('ai_clear_center_key');
-  if(error){ showToast('⚠️ ماقدرتش أفصل المفتاح'); return; }
-  document.getElementById('ai-paste-result').textContent = '';
-  aiRefreshCenterStatus(); assistantRefreshStatus();
 }
 function aiToggleAdvanced(){
   const el = document.getElementById('ai-advanced'); if(!el) return;
