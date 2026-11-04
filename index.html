@@ -6069,6 +6069,10 @@ async function aiChainCall(prompt, images, opts){
   if(aiLocalKeysExist()) return await aiLocalChainCall(prompt, images, opts);
   throw gwErr;
 }
+function aiLooksLikeKey(k){
+  k = String(k||'').trim();
+  return /^[A-Za-z0-9._\-]{30,300}$/.test(k) && !/^(gsk_|sk-)/.test(k);
+}
 function aiDetectProvider(k){
   k = String(k||'').trim();
   if(/\s/.test(k) || k.length < 20) return '';
@@ -6095,8 +6099,9 @@ let aiAwaitingKey = false;
 async function aiSaveCenterKeyFromText(txt){
   const out = document.getElementById('ai-paste-result');
   txt = String(txt||'').trim();
-  const prov = aiDetectProvider(txt);
+  let prov = aiDetectProvider(txt);
   const isOwner = !!(session && session.isSuperAdmin);
+  if(!prov && !isOwner && aiLooksLikeKey(txt)) prov = 'gemini';   // صيغة مفاتيح جوجل ممكن تتغير تاني: الاختبار بعد الحفظ هو اللي يحكم
   if(!prov || (prov !== 'gemini' && !isOwner)){ out.textContent = '⚠️ ده مش شكل مفتاح جوجل. انسخ المفتاح من الصفحة تاني'; return false; }
   out.textContent = '⏳ بحفظ المفتاح وبجرّبه…';
   const { error } = await supabaseClient.rpc('ai_set_center_key', { p_provider: prov, p_model: (AI_PROVIDERS[prov]||{}).model, p_key: txt });
