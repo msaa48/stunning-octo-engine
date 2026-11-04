@@ -5349,9 +5349,61 @@ async function assistantAsk(question){
       assistantHistory.push({u:q, b:out.reply});
     }
   }catch(e){
-    th.stop(); await assistantAddText(aiErrorMsg(e), true);
+    th.stop();
+    const code = String((e && e.message) || '');
+    let handled = false;
+    if(!/^GW:(UNAUTH|NO_CENTER|BAD_PROMPT|BAD_IMAGES)$/.test(code)){ try{ handled = await assistantLocalAnswer(q); }catch(e2){ handled = false; } }
+    if(!handled) await assistantAddText(aiErrorMsg(e), true);
   }
   assistantSetBusy(false);
+}
+// لو كل مزوّدي الذكاء الاصطناعي وقعوا: نجاوب الأسئلة الشائعة مباشرة من بيانات المركز (من غير AI)
+const ASSIST_SCREEN_WORDS = [
+  [/حضور.*مدرس|مدرس.*حضور/, 'teacherAttendance'],
+  [/تقييم/, 'teacherEvaluations'],
+  [/مرتب|راتب|رواتب|مستحقات/, 'teacherPayouts'],
+  [/استثناء/, 'attendanceExceptions'],
+  [/ارشيف/, 'financialArchive'],
+  [/كلمات? (السر|المرور)|باسورد/, 'passwordRequests'],
+  [/شكاو|شكوي/, 'complaints'],
+  [/مدفوعات|دفع|اقساط|مصروفات/, 'payments'],
+  [/جدول|مواعيد/, 'schedule'],
+  [/تقويم/, 'calendar'],
+  [/مواد|ماده/, 'subjects'],
+  [/مجموعات|مجموعه|فصول/, 'classrooms'],
+  [/ربط/, 'links'],
+  [/اولياء|ولي|اهالي/, 'parents'],
+  [/اسيستنت|مساعد/, 'assistants'],
+  [/مدرس|معلم/, 'teachers'],
+  [/طلاب|طالب|اطفال|اولاد/, 'children']
+];
+function assistantLocalIntent(q){
+  const raw = String(q||'').trim();
+  const n = normalizeArabic(raw);
+  const has = r => r.test(n) || r.test(raw);
+  let m = n.match(/^(?:افتح|فتح|روح|اذهب|وديني|اعرض)\s+(?:ل|علي|الي)?\s*(.+)$/);
+  if(m){
+    for(const [r, sc] of ASSIST_SCREEN_WORDS){ if(r.test(m[1])) return {tool:'open_screen', args:{screen:sc}}; }
+  }
+  if(has(/غياب|غايب|غائب/)) return {tool:'absent_today', args:{}};
+  if(has(/متاخر|مديون|مستحق|متبقي|قسط|اقساط|مدفوعات|مصروفات|فلوس|دفع/)) return {tool:'overdue_payments', args:{}};
+  m = n.match(/(?:ابحث|دور|هات|فين|بيانات|الطالب|طالب|الطفل)\s*(?:عن|علي)?\s+(.{2,})$/);
+  if(m){
+    let name = m[1].trim();
+    while(/^(?:بيانات|الطالب|طالب|الطفل|عن|علي|اسمه|اسمها|اسم)\s+/.test(name)) name = name.replace(/^(?:بيانات|الطالب|طالب|الطفل|عن|علي|اسمه|اسمها|اسم)\s+/, '');
+    if(name) return {tool:'find_student', args:{name}};
+  }
+  return null;
+}
+async function assistantLocalAnswer(q){
+  const it = assistantLocalIntent(q);
+  if(!it || !ASSIST_TOOLS[it.tool]) return false;
+  const args = ASSIST_TOOLS[it.tool].validate(it.args);
+  if(!args) return false;
+  await assistantAddText('الذكاء الاصطناعي مشغول دلوقتي، بس ده اللي لقيته مباشرة من بيانات المركز:');
+  await assistantRenderResult(ASSIST_TOOLS[it.tool].run(args, loadDB()));
+  assistantHistory.push({u:q, b:'(نتيجة '+it.tool+' محلية)'});
+  return true;
 }
 function assistantInputChanged(){
   const inp = document.getElementById('ai-asst-input'), btn = document.getElementById('ai-asst-send');
