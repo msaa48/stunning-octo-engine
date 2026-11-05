@@ -746,6 +746,7 @@
 <div id="teacher-screen" class="screen">
   <div class="topbar teacher">
     <div class="title">👩‍🏫 واجهة المدرّس</div>
+    <button class="notif-bell" onclick="openAssistant()" aria-label="المساعد الذكي">🤖</button>
     <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-teacher" style="display:none;">0</span></button>
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
@@ -861,6 +862,7 @@
 <div id="assistant-screen" class="screen">
   <div class="topbar teacher">
     <div class="title" id="assistant-title">🧑‍💼 واجهة الأسيستنت</div>
+    <button class="notif-bell" onclick="openAssistant()" aria-label="المساعد الذكي">🤖</button>
     <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-assistant" style="display:none;">0</span></button>
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
@@ -875,6 +877,7 @@
 <div id="parent-screen" class="screen">
   <div class="topbar parent">
     <div class="title">👨‍👩‍👧 ولي الأمر</div>
+    <button class="notif-bell" onclick="openAssistant()" aria-label="المساعد الذكي">🤖</button>
     <button class="notif-bell" onclick="openNotifModal()" aria-label="الإشعارات">🔔<span class="notif-badge" id="notif-badge-parent" style="display:none;">0</span></button>
     <button class="logout" onclick="exitOrStepBack()">خروج</button>
   </div>
@@ -1173,10 +1176,10 @@
       <div class="asst-welcome" id="asst-welcome">
         <div class="asst-orb"><span>✨</span></div>
         <h2>أهلًا بيك 👋</h2>
-        <p>أنا مساعد مسار. اسألني عن طلابك ومدفوعاتك، أو قولّي أفتحلك أي قسم في السنتر.</p>
+        <p id="asst-welcome-text">أنا مساعد مسار. اسألني عن طلابك ومدفوعاتك، أو قولّي أفتحلك أي قسم في السنتر.</p>
         <button class="asst-status" id="asst-ai-status" onclick="openAiSettings()"></button>
         <div class="asst-sugs" id="asst-sugs"></div>
-        <div class="asst-note">🔒 بقرا بيانات سنترك بس ومبعدّلش حاجة. اللي بيتبعت للمزوّد كلامك إنت بس، مش بيانات الطلاب.</div>
+        <div class="asst-note" id="asst-welcome-note">🔒 بقرا بيانات سنترك بس ومبعدّلش حاجة. اللي بيتبعت للمزوّد كلامك إنت بس، مش بيانات الطلاب.</div>
       </div>
       <div class="ai-asst-log" id="ai-asst-log"></div>
     </div>
@@ -2596,8 +2599,8 @@ function showScreen(id, opts){
   target.classList.add('active');
   void target.offsetWidth; /* force reflow to restart animation */
   target.style.animation = '';
-  if(id !== 'parent-screen' && parentPollTimer){ clearInterval(parentPollTimer); parentPollTimer=null; }
-  if(id !== 'teacher-screen' && teacherPollTimer){ clearInterval(teacherPollTimer); teacherPollTimer=null; }
+  if(id !== 'parent-screen' && id !== 'ai-chat-screen' && parentPollTimer){ clearInterval(parentPollTimer); parentPollTimer=null; }
+  if(id !== 'teacher-screen' && id !== 'ai-chat-screen' && teacherPollTimer){ clearInterval(teacherPollTimer); teacherPollTimer=null; }
   // زرار الوضع الليلي بيتخفى في أي شاشة فيها topbar عشان مايغطيش زرار الخروج
   const themeBtn = document.getElementById('theme-toggle');
   if(themeBtn) themeBtn.style.display = (id === 'login-screen') ? 'flex' : 'none';
@@ -2707,7 +2710,7 @@ window.addEventListener('popstate', async function(e){
 
       navHistory.pop();
       isPoppingState = true;
-      showScreen(prevId, { skipHistory:true });
+      showScreen(prevId.indexOf(TAB_STATE_MARKER) !== -1 ? prevId.split(TAB_STATE_MARKER)[0] : prevId, { skipHistory:true });
       isPoppingState = false;
     }
   } else {
@@ -5144,113 +5147,599 @@ async function markInvoicePaid(invoiceId, centerId){
 
 
 
-/* ========================= المساعد الذكي (P0 — قراءة فقط) =========================
-   المبدأ: الموديل بيختار أداة من قايمة ثابتة بس. الأدوات بتتنفّذ محليًا على بيانات المدير
-   اللي اتحمّلت أصلًا من Supabase تحت RLS. نتيجة الأداة ما بترجعش للموديل (خصوصية + منع حقن الأوامر).
-   الأزرار بتنفّذ إجراءات من جدول سماح ثابت، وبتتحقق من المعرّف قبل التنفيذ. مفيش أي كتابة. */
+/* ===== المساعد الذكي لكل الأدوار (قراءة فقط) =====
+   المبادئ:
+   1) كل دور (مدير / مدرّس / ولي أمر / أسيستنت) ليه مجموعة أدوات خاصة بيه بس (roles) — الأداة اللي مش بتاعته مابتتنفذش حتى لو الـAI اقترحها.
+   2) كل الأدوات بتتنفّذ محليًا على بيانات الجهاز (اللي RLS فلترتها أصلًا) + فلتر نطاق تاني على العميل (assistantScope) كطبقة حماية إضافية.
+   3) المحرّك المحلي بيفهم الطلب الأول (أوفلاين، من غير أي AI). الـAI بيتنادى بس لو الفهم المحلي مش واثق — ده بيوفّر حد المنصة اليومي.
+   4) نتيجة الأداة ما بترجعش للـAI أبدًا (خصوصية + منع حقن الأوامر). مفيش أي كتابة. */
+const ASSIST_ROLES = ['ADMIN','TEACHER','PARENT','ASSISTANT'];
+const ASSIST_HIGH = 4;   // أقل درجة ثقة لتنفيذ الطلب محليًا من غير ما نسأل الـAI
+function assistantRole(){ return (typeof session!=='undefined' && session && ASSIST_ROLES.indexOf(session.role)>=0) ? session.role : null; }
+function assistantCanUse(){ return !!assistantRole(); }
+
 const ASSIST_SCREENS = () => Object.keys(ADMIN_TAB_META);
+const TEACHER_TAB_META = {
+  log:{icon:'📝',label:'تسجيل اليوم'}, attendance:{icon:'🕒',label:'حضوري وانصرافي'}, schedule:{icon:'📅',label:'جدولي الأسبوعي'},
+  chat:{icon:'💬',label:'شات الأهالي'}, payouts:{icon:'💰',label:'مرتبي'}, evals:{icon:'⭐',label:'تقييم أدائي'},
+  calendar:{icon:'🗓️',label:'تقويم السنتر'}, history:{icon:'🗂️',label:'سجل الحصص'}, exams:{icon:'🧠',label:'امتحانات AI'}
+};
+const PARENT_TAB_META = {
+  log:{icon:'📋',label:'سجل الطالب'}, schedule:{icon:'📅',label:'الجدول'}, eval:{icon:'📊',label:'التقييم'},
+  chat:{icon:'💬',label:'شات المدرّس'}, payments:{icon:'💳',label:'الاشتراك'}, calendar:{icon:'🗓️',label:'تقويم السنتر'},
+  complaint:{icon:'📩',label:'شكوى'}, exams:{icon:'📝',label:'نتائج الامتحانات'}
+};
+function assistantScreenMeta(role){ return role==='ADMIN' ? ADMIN_TAB_META : role==='TEACHER' ? TEACHER_TAB_META : role==='PARENT' ? PARENT_TAB_META : null; }
+// كلمات الشاشات لكل دور (على النص بعد التطبيع: ة←ه، ى←ي، أإآ←ا)
+const ASSIST_SCREEN_WORDS_BY_ROLE = {
+  ADMIN: [
+    [/حضور.*مدرس|مدرس.*حضور/, 'teacherAttendance'], [/تقييم/, 'teacherEvaluations'], [/مرتب|راتب|رواتب|مستحقات/, 'teacherPayouts'],
+    [/استثناء/, 'attendanceExceptions'], [/ارشيف/, 'financialArchive'], [/كلمات? (السر|المرور)|باسورد/, 'passwordRequests'],
+    [/شكاو|شكوي/, 'complaints'], [/مدفوعات|دفع|اقساط|مصروفات/, 'payments'], [/جدول|مواعيد/, 'schedule'], [/تقويم/, 'calendar'],
+    [/مواد|ماده/, 'subjects'], [/مجموعات|مجموعه|فصول/, 'classrooms'], [/ربط/, 'links'], [/اولياء|ولي|اهالي/, 'parents'],
+    [/اسيستنت|مساعد/, 'assistants'], [/مدرس|معلم/, 'teachers'], [/طلاب|طالب|اطفال|اولاد/, 'children']
+  ],
+  TEACHER: [
+    [/حضوري|انصرافي|بصمه|حضور/, 'attendance'], [/جدول|مواعيد/, 'schedule'], [/شات|رسايل|رسائل|اولياء|اهالي|ولي/, 'chat'],
+    [/مرتب|راتب|مستحقات/, 'payouts'], [/تقييم/, 'evals'], [/تقويم|اجازات|مناسبات/, 'calendar'],
+    [/سجل الحصص|تاريخ|الحصص/, 'history'], [/امتحان|اختبار|exam/, 'exams'], [/تسجيل|اليوم|الطلاب|طلاب/, 'log']
+  ],
+  PARENT: [
+    [/امتحان|نتايج|نتائج/, 'exams'], [/شكوي|شكاوي|شكوه|شكاو/, 'complaint'], [/اشتراك|دفع|مصروفات|قسط|اقساط|فلوس/, 'payments'],
+    [/جدول|مواعيد/, 'schedule'], [/تقييم|تقييمات/, 'eval'], [/شات|رسايل|رسائل|مدرس|معلم/, 'chat'], [/تقويم/, 'calendar'], [/سجل/, 'log']
+  ]
+};
+// بنخلي الاسم القديم متاح لأي كود تاني بيستخدمه
+const ASSIST_SCREEN_WORDS = ASSIST_SCREEN_WORDS_BY_ROLE.ADMIN;
+const ASSIST_DAYS = [
+  {name:'الأحد',    re:/الاحد/}, {name:'الاثنين', re:/الاثنين|الاتنين/}, {name:'الثلاثاء', re:/الثلاثاء|التلات/},
+  {name:'الأربعاء', re:/الاربعاء|الاربع/}, {name:'الخميس', re:/الخميس/}, {name:'الجمعة', re:/الجمعه/}, {name:'السبت', re:/السبت/}
+];
+const ASSIST_STOP = new Set(['افتح','فتح','عايز','عاوز','اريد','مين','ايه','هل','في','من','عن','دور','ابحث','النهارده','النهاردة','لو','سمحت','ممكن','انا','ليا','كل','هات','اعرض','عرض','وريني','دلوقتي','تقصد','يعني','كام','هو','هي','اللي','ده','دي','دا','اخبار','اعرف','علي','الي','ال','لي','لا','ما','مش','كان','كانت','بتاع','بتاعه','بتاعها','عند','عندي','عندنا','يا','طب','وهو','وهي','طالب','الطالب','الطفل','ابني','بنتي','ولدي','اللى','لما','امتي','فين','ازاي','ليه','هما','احنا','اي','حاجه','حاجة','بس','كده','كدا','تاني','اكتر','اقل','النهارده','انهي','انهى','اليوم','بكره','بكرا','امبارح','امس','الاحد','الاثنين','الاتنين','الثلاثاء','التلات','الاربعاء','الاربع','الخميس','الجمعه','السبت']);
+const ASSIST_RATING = {EXCELLENT:'ممتاز 🌟', GOOD:'جيد 👍', NEEDS_IMPROVEMENT:'يحتاج تحسين 📌'};
+let assistantCtx = {childId:null};       // آخر طالب اتكلمنا عنه (للأسئلة المتابعة: "وهو غاب كام مرة؟")
+let assistantAiOffUntil = 0;             // لو الـAI وقع/خلص حده نوقف مناداته شوية ونكمّل محلي
+
+/* ---------- أدوات مساعدة عامة ---------- */
+function assistantNow(){
+  const now = getSystemNow();
+  return {now, todayName: WEEKDAY_AR_BY_JS_INDEX[now.getDay()], todayStr: localDateStr(), nowT: pad2(now.getHours())+':'+pad2(now.getMinutes())};
+}
+function assistantTokens(s){ return normalizeArabic(s).split(/[\s،,؟?!.:؛\-_/\\()"'«»]+/).filter(Boolean); }
+function assistantLev(a, b){
+  if(a===b) return 0; if(Math.abs(a.length-b.length)>1) return 2;
+  const m=a.length, n=b.length; let prev=[]; for(let j=0;j<=n;j++) prev[j]=j;
+  for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1)); } prev=cur; }
+  return prev[n];
+}
+function assistantNameMatch(child, toks){
+  const nt = assistantTokens(child.name).filter(t=>t.length>=2);
+  let sc = 0;
+  toks.forEach(t=>{ if(nt.some(c=> c===t || (t.length>=3 && (c.startsWith(t) || c.includes(t))) || (t.length>=5 && c.length>=5 && assistantLev(t,c)<=1))) sc++; });
+  return sc;
+}
+// بحث عن طالب بالاسم داخل نطاق الدور بس. بيرجّع [{c, s}] مرتبة بالأقرب
+function assistantSearchKids(children, name){
+  const toks = assistantTokens(name).filter(t=> t.length>=2 && !ASSIST_STOP.has(t));
+  if(!toks.length) return [];
+  return children.map(c=>({c, s:assistantNameMatch(c, toks)})).filter(x=>x.s>0).sort((a,b)=> b.s-a.s);
+}
+function assistantTopKids(hits){ if(!hits.length) return []; const top = hits[0].s; return hits.filter(x=>x.s===top).map(x=>x.c); }
+
+// نطاق الدور: مين الطلاب والمجموعات اللي ينفع الدور ده يشوفهم (طبقة حماية فوق RLS)
+function assistantScope(db){
+  const role = assistantRole(); const kids = db.children||[];
+  const uniq = a => Array.from(new Set(a));
+  let me = null, classroomIds = null, teacherIds = null, children = kids;
+  const kidsIn = ids => kids.filter(c=> (c.classroomIds||[]).some(id=> ids.indexOf(id)>=0));
+  if(role==='TEACHER'){
+    me = (db.teachers||[]).find(t=>t.id===session.personId) || null;
+    classroomIds = me ? (me.classroomIds||[]) : [];
+    children = kidsIn(classroomIds);
+  } else if(role==='ASSISTANT'){
+    me = (db.assistants||[]).find(a=>a.id===session.personId) || null;
+    teacherIds = me ? (me.teacherIds||[]) : [];
+    classroomIds = uniq([].concat(...teacherIds.map(id=>{ const t=(db.teachers||[]).find(x=>x.id===id); return t ? (t.classroomIds||[]) : []; })));
+    children = kidsIn(classroomIds);
+  } else if(role==='PARENT'){
+    me = (db.parents||[]).find(p=>p.id===session.personId) || null;
+    children = me ? kids.filter(c=> (me.childIds||[]).indexOf(c.id)>=0) : [];
+    classroomIds = uniq([].concat(...children.map(c=>c.classroomIds||[])));
+  }
+  const classrooms = (db.classrooms||[]).filter(r=> classroomIds===null || classroomIds.indexOf(r.id)>=0);
+  return {role, me, children, classroomIds, classrooms, teacherIds};
+}
+function assistantGroupNames(db, child, sc){
+  return (child.classroomIds||[]).filter(id=> sc.classroomIds===null || sc.classroomIds.indexOf(id)>=0)
+    .map(id=>(db.classrooms||[]).find(r=>r.id===id)).filter(Boolean).map(r=>r.name).join('، ');
+}
+function assistantChildAct(role, id){
+  if(role==='ADMIN') return {name:'openStudent', arg:id, label:'فتح الملف'};
+  if(role==='TEACHER') return {name:'openTeacherChild', arg:id, label:'فتح'};
+  return {name:'askLocal', arg:'report:'+id, label:'تفاصيل'};
+}
+function assistantTabFooter(role, tab, childId){
+  const meta = assistantScreenMeta(role); if(!meta || !meta[tab]) return null;
+  return {name:'openRoleTab', arg: tab + (childId ? '|'+childId : ''), label:'فتح '+meta[tab].label};
+}
+// بيحدد الطالب/الطلاب المقصودين. بيرجّع {kids} أو {reply: نتيجة جاهزة للعرض}
+function assistantResolveKids(sc, a, cap){
+  cap = cap || 4;
+  if(a && a.name){
+    const hits = assistantSearchKids(sc.children, a.name);
+    if(!hits.length) return {reply:{text:`ما لقيتش طالب اسمه "${a.name}"${sc.role==='PARENT'?' ضمن أولادك':''}`}};
+    const best = assistantTopKids(hits);
+    if(best.length>1){
+      return {reply:{title:'🔎 أنهي طالب تقصد؟', summary:`في ${best.length} أسماء متشابهة`, rows: best.slice(0,6).map(c=>({label:c.name, sub:GRADE_LABELS[c.grade]||'', act:{name:'askLocal', arg:'report:'+c.id, label:'اختار'}}))}};
+    }
+    return {kids:[best[0]]};
+  }
+  if(a && a.ctx && assistantCtx.childId){ const c = sc.children.find(x=>x.id===assistantCtx.childId); if(c) return {kids:[c]}; }
+  if(sc.role==='PARENT'){
+    if(!sc.children.length) return {reply:{text:'مفيش طلاب مرتبطين بحسابك لسه، كلّم إدارة السنتر.'}};
+    return {kids: sc.children.slice(0,cap)};
+  }
+  return {reply:{text:'تقصد أنهي طالب؟ اكتب اسمه، مثلًا: «تقرير أحمد».'}};
+}
+function assistantRememberKid(kids){ if(kids && kids.length===1) assistantCtx.childId = kids[0].id; }
+function assistantDayArg(v){
+  const s = String(v||'today');
+  if(s==='today'||s==='tomorrow'||s==='yesterday') return s;
+  return ASSIST_DAYS.some(d=> normalizeArabic(d.name)===normalizeArabic(s)) ? s : null;
+}
+function assistantResolveDay(a){
+  const t = assistantNow(); const v = String((a&&a.day)||'today');
+  const hit = ASSIST_DAYS.find(d=> normalizeArabic(d.name)===normalizeArabic(v));
+  if(hit) return {name:hit.name, label:'يوم '+hit.name, isToday: normalizeArabic(hit.name)===normalizeArabic(t.todayName), dateStr:null};
+  const off = v==='tomorrow' ? 1 : v==='yesterday' ? -1 : 0;
+  return {name: WEEKDAY_AR_BY_JS_INDEX[(t.now.getDay()+off+7)%7], label: off===0?'النهاردة':off===1?'بكرة':'امبارح', isToday: off===0, dateStr: addDaysStr(t.todayStr, off)};
+}
+function assistantRoomsOnDay(sc, dayName){
+  const d = normalizeArabic(dayName); const out = [];
+  sc.classrooms.forEach(r=>{ (r.meetingTimes||[]).forEach(m=>{ if(normalizeArabic(m.day)===d) out.push({room:r, start:m.start||'', end:m.end||''}); }); });
+  return out.sort((a,b)=> a.start.localeCompare(b.start));
+}
+function assistantSubInfo(db, childId, roomId){
+  const today = localDateStr();
+  const subs = (db.subscriptions||[]).filter(s=> s.childId===childId && s.classroomId===roomId);
+  const byEnd = (a,b)=> (b.periodEnd||'').localeCompare(a.periodEnd||'');
+  const sub = subs.filter(s=> s.status==='active' && s.periodEnd>=today).sort(byEnd)[0] || subs.filter(s=> s.status==='pending').sort(byEnd)[0] || subs.sort(byEnd)[0] || null;
+  return {sub, st: getSubscriptionState(sub, today)};
+}
+function assistantEnrolledRooms(db, sc, childId){
+  return (db.enrollments||[]).filter(e=> e.childId===childId && (sc.classroomIds===null || sc.classroomIds.indexOf(e.classroomId)>=0))
+    .map(e=>({e, room:(db.classrooms||[]).find(r=>r.id===e.classroomId)})).filter(x=>x.room);
+}
+function assistantAbsentRows(sc, db){
+  const t = assistantNow(); const rows = []; const kidIds = new Set(sc.children.map(c=>c.id));
+  const rooms = assistantRoomsOnDay(sc, t.todayName);
+  const started = rooms.filter(x=> !x.start || x.start<=t.nowT);
+  started.forEach(x=>{
+    (db.enrollments||[]).filter(e=> e.classroomId===x.room.id).forEach(e=>{
+      if(!kidIds.has(e.childId)) return;
+      const c = sc.children.find(k=>k.id===e.childId); if(!c) return;
+      const came = (db.attendance||[]).some(a=> a.childId===c.id && a.classroomId===x.room.id && a.sessionDate===t.todayStr);
+      if(!came) rows.push({child:c, room:x.room, start:x.start});
+    });
+  });
+  return {rows, notYet: rooms.length-started.length, total: rooms.length};
+}
+function assistantPendingExceptions(sc, db){
+  return (db.attendanceExceptions||[]).filter(x=> x.status==='pending' && (sc.classroomIds===null || sc.classroomIds.indexOf(x.classroomId)>=0));
+}
+function assistantUnpaidKids(sc, db){
+  const out = [];
+  sc.children.forEach(c=>{
+    assistantEnrolledRooms(db, sc, c.id).forEach(x=>{
+      const info = assistantSubInfo(db, c.id, x.room.id);
+      if(info.st.key==='expired' || info.st.key==='pending' || info.st.key==='none') out.push({child:c, room:x.room, st:info.st});
+    });
+  });
+  return out;
+}
+function assistantUpcomingEvents(db, days, cap){
+  const today = localDateStr(), until = addDaysStr(today, days||30);
+  return (db.calendarEvents||[]).filter(e=> e.date && e.date>=today && e.date<=until).sort((a,b)=> a.date.localeCompare(b.date)).slice(0, cap||6);
+}
+function assistantFmtDate(iso){ try{ return new Date(iso).toLocaleDateString('ar-EG',{day:'numeric', month:'short'}); }catch(e){ return String(iso||'').slice(0,10); } }
+function assistantFmtTime(iso){ try{ return (typeof timeStr==='function') ? timeStr(iso) : new Date(iso).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+
+// بيبني regex بحدود كلمات عربية (JS مابيعرفش \b للعربي) — بيسمح بـ"ال" وحرف عطف/جر قبل الكلمة وبحرفين زيادة بعد الكلمات الطويلة (اشتراكه، تقييماتها)
+function KW(){
+  const alts = Array.prototype.slice.call(arguments).map(w=> (w.indexOf(' ')<0 && w.length>=4) ? w+'\\S{0,2}' : w);
+  return new RegExp('(?:^|\\s)(?:[وفب]|ل)?(?:ال)?(?:'+alts.join('|')+')(?:\\s|$)');
+}
+/* ---------- الأدوات ----------
+   roles: مين يقدر يستخدمها | kid: أداة بتخص طالب (محتاجة اسم أو سياق، وولي الأمر بيتطبّق على كل أولاده لو مفيش اسم)
+   kw: [regex، وزن] على النص المطبّع | ex: جملة مثال للاقتراحات | desc: وصف للـAI */
 const ASSIST_TOOLS = {
   find_student: {
-    desc: 'بحث عن طالب بالاسم. args: {"name":"جزء من الاسم"}',
+    roles:['ADMIN','TEACHER','ASSISTANT'], ex:'دوّر على طالب',
+    desc:'بحث عن طالب بالاسم. args: {"name":"جزء من الاسم"}',
+    kw:[[KW('ابحث','دور','فين'),3]],
     validate: a => { const n = String((a&&a.name)||'').trim().slice(0,60); return n ? {name:n} : null; },
     run: (a, db) => {
-      const q = normalizeArabic(a.name);
-      const hits = db.children.filter(c=> normalizeArabic(c.name).includes(q));
+      const sc = assistantScope(db); const hits = assistantSearchKids(sc.children, a.name);
       if(!hits.length) return {text:`ما لقيتش طالب اسمه "${a.name}"`};
+      const kids = hits.map(x=>x.c);
+      if(kids.length===1) assistantRememberKid(kids);
       return {
-        title:`🧑‍🎓 نتايج البحث عن "${a.name}" (${hits.length})`,
-        rows: hits.slice(0,8).map(c=>({label:c.name, sub:GRADE_LABELS[c.grade]||'', act:{name:'openStudent', arg:c.id, label:'فتح الملف'}})),
-        more: hits.length>8 ? `+${hits.length-8} نتيجة تانية، دقّق الاسم أكتر` : ''
+        title:`🧑‍🎓 نتايج البحث عن "${a.name}" (${kids.length})`,
+        rows: kids.slice(0,8).map(c=>({label:c.name, sub:[GRADE_LABELS[c.grade]||'', assistantGroupNames(db,c,sc)].filter(Boolean).join(' · '), act:assistantChildAct(sc.role, c.id)})),
+        more: kids.length>8 ? `+${kids.length-8} نتيجة تانية، دقّق الاسم أكتر` : ''
       };
     }
   },
-  overdue_payments: {
-    desc: 'المدفوعات والاشتراكات المتأخرة أو المنتهية. args: {}',
+  student_report: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], kid:true, ex:'تقرير عن ابني',
+    desc:'ملخص شامل عن طالب (حضور الشهر، الاشتراك، آخر تقييم، آخر الأحداث). args: {"name":"اسم الطالب"} والاسم اختياري لولي الأمر',
+    kw:[[KW('تقرير','ملف','ملخص','اخباره','اخبارها','وضعه','وضعها','حالته','حالتها','احواله'),3],[KW('عامل ايه','بيعمل ايه','ماشي ازاي','ماشيه ازاي','مستواه','مستواها'),4]],
+    validate: a => ({name:String((a&&a.name)||'').trim().slice(0,60), ctx:!!(a&&a.ctx)}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const rs = assistantResolveKids(sc, a, 3);
+      if(rs.reply) return rs.reply;
+      assistantRememberKid(rs.kids);
+      const month = localMonthStr();
+      return {multi: rs.kids.map(c=>{
+        const rows = [];
+        const atts = (db.attendance||[]).filter(x=> x.childId===c.id && String(x.sessionDate||'').indexOf(month)===0 && (sc.classroomIds===null || sc.classroomIds.indexOf(x.classroomId)>=0)).sort((p,q)=> String(q.sessionDate).localeCompare(String(p.sessionDate)));
+        rows.push({label:`📅 حضر ${atts.length} حصة الشهر ده`, sub: atts.length ? 'آخر حضور: '+assistantFmtDate(atts[0].sessionDate) : 'لسه مسجلش حضور الشهر ده'});
+        assistantEnrolledRooms(db, sc, c.id).forEach(x=>{ const info = assistantSubInfo(db, c.id, x.room.id); rows.push({label:`💳 ${x.room.name}`, sub:info.st.label}); });
+        const ev = (db.evaluations||[]).filter(e=>e.childId===c.id).sort((p,q)=> new Date(q.date)-new Date(p.date))[0];
+        if(ev){ const subj = (db.subjects||[]).find(s=>s.id===ev.subjectId); rows.push({label:`⭐ آخر تقييم: ${subj?subj.name+' — ':''}${ASSIST_RATING[ev.rating]||ev.rating||''}`, sub: ev.note ? String(ev.note).slice(0,70) : ''}); }
+        const last = (db.events||[]).filter(e=>e.childId===c.id).sort((p,q)=> new Date(q.eventTime)-new Date(p.eventTime))[0];
+        if(last){ const m = EVENT_META[last.eventType]||{em:'•',label:last.eventType}; rows.push({label:`${m.em} آخر حدث: ${m.label}`, sub: assistantFmtDate(last.eventTime)+(last.note?' · '+String(last.note).slice(0,50):'')}); }
+        const footer = sc.role==='PARENT' ? assistantTabFooter('PARENT','log',c.id) : sc.role==='ADMIN' ? assistantChildAct('ADMIN', c.id) : sc.role==='TEACHER' ? assistantChildAct('TEACHER', c.id) : null;
+        return {title:`🧑‍🎓 ${c.name}`, summary:[GRADE_LABELS[c.grade]||'', assistantGroupNames(db,c,sc)].filter(Boolean).join(' · '), rows, footer,
+          chips: sc.role==='PARENT' ? [{label:'عمل إيه النهاردة؟', q:'ايه اللي حصل النهاردة مع '+c.name.split(' ')[0]},{label:'تقييماته', q:'تقييمات '+c.name.split(' ')[0]}] : []};
+      })};
+    }
+  },
+  child_today: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], kid:true, ex:'ابني عمل إيه النهاردة؟',
+    desc:'اللي حصل مع طالب النهاردة (حضور وأحداث الحصة والواجب). args: {"name":"اسم الطالب"} اختياري لولي الأمر',
+    kw:[[KW('حصل ايه','عمل ايه','بيعمل ايه','سجل اليوم','اتعلم ايه','حضر ايه'),5],[KW('واجب','سلم','مشاركه','سلوك'),4]],
+    validate: a => ({name:String((a&&a.name)||'').trim().slice(0,60), ctx:!!(a&&a.ctx)}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const rs = assistantResolveKids(sc, a, 4);
+      if(rs.reply) return rs.reply;
+      assistantRememberKid(rs.kids);
+      const t = assistantNow();
+      const rows = [];
+      rs.kids.forEach(c=>{
+        const evs = (db.events||[]).filter(e=> e.childId===c.id && isToday(e.eventTime)).sort((p,q)=> new Date(p.eventTime)-new Date(q.eventTime));
+        const came = (db.attendance||[]).some(x=> x.childId===c.id && x.sessionDate===t.todayStr);
+        const first = rs.kids.length>1 ? c.name.split(' ')[0]+' · ' : '';
+        if(!evs.length) rows.push({label:`${first}${came?'✅ حضر النهاردة':'مفيش أحداث متسجلة النهاردة'}`, sub: came?'ولسه مفيش تفاصيل من المدرّس':''});
+        evs.forEach(e=>{ const m = EVENT_META[e.eventType]||{em:'•',label:e.eventType}; rows.push({label:`${first}${m.em} ${m.label}`, sub:[assistantFmtTime(e.eventTime), e.note?String(e.note).slice(0,60):''].filter(Boolean).join(' · ')}); });
+      });
+      return {title:'📋 سجل النهاردة', summary: rs.kids.length===1 ? rs.kids[0].name : '', rows: rows.slice(0,10), more: rows.length>10?`+${rows.length-10} تانيين`:'', footer: sc.role==='PARENT' ? assistantTabFooter('PARENT','log', rs.kids[0].id) : null};
+    }
+  },
+  child_attendance: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], kid:true, ex:'ابني حضر النهاردة؟',
+    desc:'حضور طالب (النهاردة + عدد الحصص الشهر ده + آخر حضور). args: {"name":"اسم الطالب"} اختياري لولي الأمر',
+    kw:[[KW('حضر','حضور','حضرت','حضروا','جه','وصل','حاضر','غاب','غابوا','غياب','غايب','مجاش','ماجاش','راح'),4]],
+    validate: a => ({name:String((a&&a.name)||'').trim().slice(0,60), ctx:!!(a&&a.ctx)}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const rs = assistantResolveKids(sc, a, 4);
+      if(rs.reply) return rs.reply;
+      assistantRememberKid(rs.kids);
+      const t = assistantNow(); const month = localMonthStr();
+      return {multi: rs.kids.map(c=>{
+        const rows = [];
+        const myRooms = (c.classroomIds||[]).map(id=>sc.classrooms.find(r=>r.id===id)).filter(Boolean);
+        myRooms.forEach(r=>{
+          const m = (r.meetingTimes||[]).find(x=> normalizeArabic(x.day)===normalizeArabic(t.todayName)); if(!m) return;
+          const came = (db.attendance||[]).some(x=> x.childId===c.id && x.classroomId===r.id && x.sessionDate===t.todayStr);
+          const started = !m.start || m.start<=t.nowT;
+          rows.push({label: came ? `✅ حضر ${r.name}` : started ? `🚫 لسه ماسجلش حضور في ${r.name}` : `⏳ ${r.name} لسه ماجاش معادها`, sub: m.start ? 'الميعاد: '+m.start : ''});
+        });
+        if(!rows.length) rows.push({label:'مفيش حصص ليه النهاردة'});
+        const atts = (db.attendance||[]).filter(x=> x.childId===c.id && String(x.sessionDate||'').indexOf(month)===0 && (sc.classroomIds===null || sc.classroomIds.indexOf(x.classroomId)>=0)).sort((p,q)=> String(q.sessionDate).localeCompare(String(p.sessionDate)));
+        rows.push({label:`📅 ${atts.length} حصة حضور الشهر ده`, sub: atts.length ? 'آخر حضور: '+assistantFmtDate(atts[0].sessionDate) : ''});
+        return {title:`🗓️ حضور ${c.name}`, rows};
+      })};
+    }
+  },
+  child_evals: {
+    roles:['ADMIN','TEACHER','PARENT'], kid:true, ex:'تقييمات ابني',
+    desc:'آخر تقييمات طالب في المواد. args: {"name":"اسم الطالب"} اختياري لولي الأمر',
+    kw:[[KW('تقييم','تقييمات','درجه','درجات','مستوي','ملاحظات','ملاحظه','نتيجه'),4]],
+    validate: a => ({name:String((a&&a.name)||'').trim().slice(0,60), ctx:!!(a&&a.ctx)}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const rs = assistantResolveKids(sc, a, 3);
+      if(rs.reply) return rs.reply;
+      assistantRememberKid(rs.kids);
+      return {multi: rs.kids.map(c=>{
+        const list = (db.evaluations||[]).filter(e=>e.childId===c.id).sort((p,q)=> new Date(q.date)-new Date(p.date)).slice(0,5);
+        if(!list.length) return {text:`مفيش تقييمات متسجلة لـ${c.name} لسه`};
+        return {title:`⭐ تقييمات ${c.name}`, rows: list.map(e=>{ const subj=(db.subjects||[]).find(s=>s.id===e.subjectId); return {label:`${subj?subj.name:'مادة'} — ${ASSIST_RATING[e.rating]||e.rating||''}`, sub:[assistantFmtDate(e.date), e.note?String(e.note).slice(0,70):''].filter(Boolean).join(' · ')}; }),
+          footer: sc.role==='PARENT' ? assistantTabFooter('PARENT','eval',c.id) : null};
+      })};
+    }
+  },
+  subscription_status: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], kid:true, ex:'اشتراك ابني ساري؟',
+    desc:'حالة اشتراك طالب (ساري/منتهي/في انتظار الدفع) لكل مجموعة. args: {"name":"اسم الطالب"} اختياري لولي الأمر',
+    kw:[[KW('اشتراك','سدد','سداد','مدفوع','دفعت','دفع','قسط','اقساط','مصروفات','مصاريف','جدد','تجديد','ينتهي','منتهي','ساري'),4]],
+    validate: a => ({name:String((a&&a.name)||'').trim().slice(0,60), ctx:!!(a&&a.ctx)}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const rs = assistantResolveKids(sc, a, 4);
+      if(rs.reply) return rs.reply;
+      assistantRememberKid(rs.kids);
+      if(!(db.subscriptions||[]).length && sc.role!=='PARENT') return {text:'بيانات الاشتراكات مش متاحة لحسابك.'};
+      return {multi: rs.kids.map(c=>{
+        const rooms = assistantEnrolledRooms(db, sc, c.id);
+        if(!rooms.length) return {text:`${c.name} مش مسجّل في أي مجموعة لسه`};
+        return {title:`💳 اشتراك ${c.name}`, rows: rooms.map(x=>{ const info = assistantSubInfo(db, c.id, x.room.id); return {label:`${x.room.name} — ${x.e.paymentMode==='session'?'بالحصة':'شهري'}${info.sub?' · '+info.sub.amount+' ج':''}`, sub:info.st.label}; }),
+          footer: sc.role==='PARENT' ? assistantTabFooter('PARENT','payments',c.id) : null};
+      })};
+    }
+  },
+  my_children: {
+    roles:['PARENT'], ex:'مين أولادي المسجلين؟',
+    desc:'قايمة أولاد ولي الأمر ومجموعاتهم. args: {}',
+    kw:[[KW('اولادي','ولادي','ابنائي','اطفالي','عيالي','مين مسجل'),4]],
     validate: () => ({}),
     run: (a, db) => {
-      const cm = localMonthStr();
-      const byChild = {};
-      db.payments.filter(p=> p.status!=='PAID' && p.month < cm).forEach(p=>{
-        const k = p.childId; if(!k) return;
-        (byChild[k] = byChild[k] || {n:0, sum:0}).n++; byChild[k].sum += parseFloat(p.amount)||0;
-      });
-      const subs = getAdminSubscriptionCounts(db);
-      const ids = Object.keys(byChild).filter(id=> db.children.some(c=>c.id===id));
-      if(!ids.length && !subs.expired && !subs.pending) return {text:'مفيش مدفوعات متأخرة ولا اشتراكات منتهية 👌'};
-      return {
-        title:'💳 المتابعة المالية',
-        summary:`${ids.length} طالب عليهم دفعات متأخرة · ${subs.expired} اشتراك منتهي · ${subs.pending} فاتورة معلّقة`,
-        rows: ids.slice(0,8).map(id=>{ const c = db.children.find(x=>x.id===id); return {label:c.name, sub:`${byChild[id].n} دفعة · ${byChild[id].sum} ج`, act:{name:'openStudent', arg:id, label:'فتح'}}; }),
-        more: ids.length>8 ? `+${ids.length-8} طالب تاني في تاب المدفوعات` : '',
-        footer: {name:'openSection', arg:'payments', label:'عرض كل المدفوعات'}
-      };
+      const sc = assistantScope(db);
+      if(!sc.children.length) return {text:'مفيش طلاب مرتبطين بحسابك لسه، كلّم إدارة السنتر.'};
+      return {title:`👨‍👩‍👧 أولادي (${sc.children.length})`, rows: sc.children.map(c=>({label:c.name, sub:[GRADE_LABELS[c.grade]||'', assistantGroupNames(db,c,sc)].filter(Boolean).join(' · '), act:{name:'askLocal', arg:'report:'+c.id, label:'تقرير'}}))};
+    }
+  },
+  my_groups: {
+    roles:['TEACHER','ASSISTANT'], ex:'مجموعاتي',
+    desc:'مجموعات المدرّس وعدد طلاب كل مجموعة ومواعيدها. args: {}',
+    kw:[[KW('مجموعاتي','مجموعات','فصولي','فصول','مجموعه'),4]],
+    validate: () => ({}),
+    run: (a, db) => {
+      const sc = assistantScope(db);
+      if(!sc.classrooms.length) return {text:'مفيش مجموعات مربوطة بحسابك لسه.'};
+      return {title:`👥 المجموعات (${sc.classrooms.length})`, rows: sc.classrooms.map(r=>{
+        const n = (db.enrollments||[]).filter(e=>e.classroomId===r.id && sc.children.some(c=>c.id===e.childId)).length;
+        const times = (r.meetingTimes||[]).map(m=>`${m.day}${m.start?' '+m.start:''}`).join(' · ');
+        return {label:r.name, sub:`${n} طالب${times?' · '+times:''}`};
+      })};
     }
   },
   absent_today: {
-    desc: 'الطلاب الغايبين النهاردة (مسجّلين في مجموعة ليها حصة النهاردة وبدأت، ومالهمش حضور). args: {}',
+    roles:['ADMIN','TEACHER','ASSISTANT'], ex:'مين الغايبين النهاردة؟',
+    desc:'الطلاب الغايبين النهاردة (مسجّلين في مجموعة ليها حصة النهاردة وبدأت، ومالهمش حضور). args: {}',
+    kw:[[KW('غياب','غايب','غايبين','غائب','غابوا','مجوش','ماجوش','مجاوش'),4],[/مين.*(?:ماحضرش|محضرش)/,3]],
     validate: () => ({}),
     run: (a, db) => {
-      const now = getSystemNow();
-      const todayName = WEEKDAY_AR_BY_JS_INDEX[now.getDay()];
-      const todayStr = localDateStr();
-      const nowT = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-      const rooms = (db.classrooms||[]).map(r=>{
-        const m = (r.meetingTimes||[]).find(x=> x.day===todayName);
-        return m ? {room:r, start:m.start||''} : null;
-      }).filter(Boolean);
-      if(!rooms.length) return {text:'مفيش حصص متسجّلة النهاردة 👌'};
-      const started = rooms.filter(x=> !x.start || x.start<=nowT);
-      const notYet = rooms.length - started.length;
-      const rows = [];
-      started.forEach(x=>{
-        (db.enrollments||[]).filter(e=> e.classroomId===x.room.id).forEach(e=>{
-          const c = (db.children||[]).find(k=> k.id===e.childId); if(!c) return;
-          const came = (db.attendance||[]).some(t=> t.childId===c.id && t.classroomId===x.room.id && t.sessionDate===todayStr);
-          if(!came) rows.push({label:c.name, sub:x.room.name + (x.start ? ' · '+x.start : ''), act:{name:'openStudent', arg:c.id, label:'فتح'}});
-        });
-      });
-      const tail = notYet ? ` (${notYet} حصة لسه ماجاش معادها)` : '';
-      if(!rows.length) return {text:'كل الطلاب في الحصص اللي بدأت حضروا ✅' + tail};
-      return {
-        title:'🚫 الغايبين النهاردة',
-        summary:`${rows.length} طالب مالهمش حضور في حصص النهاردة اللي بدأت` + tail,
-        rows: rows.slice(0,8),
-        more: rows.length>8 ? `+${rows.length-8} طالب تاني` : ''
-      };
+      const sc = assistantScope(db); const r = assistantAbsentRows(sc, db);
+      if(!r.total) return {text:'مفيش حصص متسجّلة النهاردة 👌'};
+      const tail = r.notYet ? ` (${r.notYet} حصة لسه ماجاش معادها)` : '';
+      if(!r.rows.length) return {text:'كل الطلاب في الحصص اللي بدأت حضروا ✅' + tail};
+      return {title:'🚫 الغايبين النهاردة', summary:`${r.rows.length} طالب مالهمش حضور في حصص النهاردة اللي بدأت` + tail,
+        rows: r.rows.slice(0,8).map(x=>({label:x.child.name, sub:x.room.name+(x.start?' · '+x.start:''), act:assistantChildAct(sc.role, x.child.id)})),
+        more: r.rows.length>8 ? `+${r.rows.length-8} طالب تاني` : ''};
+    }
+  },
+  overdue_payments: {
+    roles:['ADMIN','TEACHER','ASSISTANT'], ex:'مين المتأخرين في الدفع؟',
+    desc:'المدفوعات والاشتراكات المتأخرة أو المنتهية. args: {}',
+    kw:[[KW('متاخر','متاخرين','مديون','مستحق','متبقي','قسط','اقساط','مدفوعات','مصروفات','مصاريف','فلوس','دفع','ماسددش','ماسددوش','منتهي','منتهيه','اشتراكه','اشتراكاته'),4]],
+    validate: () => ({}),
+    run: (a, db) => {
+      const sc = assistantScope(db);
+      if(sc.role!=='ADMIN'){
+        if(!(db.subscriptions||[]).length) return {text:'بيانات الاشتراكات مش متاحة لحسابك.'};
+        const list = assistantUnpaidKids(sc, db);
+        if(!list.length) return {text:'كل طلابك اشتراكاتهم سارية 👌'};
+        return {title:'💳 اشتراكات تحتاج متابعة', summary:`${list.length} حالة منتهية أو في انتظار الدفع`, rows: list.slice(0,8).map(x=>({label:x.child.name, sub:`${x.room.name} · ${x.st.label}`, act:assistantChildAct(sc.role, x.child.id)})), more: list.length>8 ? `+${list.length-8} حالة تانية` : ''};
+      }
+      const cm = localMonthStr(); const byChild = {};
+      (db.payments||[]).filter(p=> p.status!=='PAID' && p.month < cm).forEach(p=>{ const k = p.childId; if(!k) return; (byChild[k] = byChild[k] || {n:0, sum:0}).n++; byChild[k].sum += parseFloat(p.amount)||0; });
+      const subs = getAdminSubscriptionCounts(db);
+      const ids = Object.keys(byChild).filter(id=> (db.children||[]).some(c=>c.id===id));
+      if(!ids.length && !subs.expired && !subs.pending) return {text:'مفيش مدفوعات متأخرة ولا اشتراكات منتهية 👌'};
+      return {title:'💳 المتابعة المالية', summary:`${ids.length} طالب عليهم دفعات متأخرة · ${subs.expired} اشتراك منتهي · ${subs.pending} فاتورة معلّقة`,
+        rows: ids.slice(0,8).map(id=>{ const c = db.children.find(x=>x.id===id); return {label:c.name, sub:`${byChild[id].n} دفعة · ${byChild[id].sum} ج`, act:{name:'openStudent', arg:id, label:'فتح'}}; }),
+        more: ids.length>8 ? `+${ids.length-8} طالب تاني في تاب المدفوعات` : '', footer:{name:'openRoleTab', arg:'payments', label:'عرض كل المدفوعات'}};
+    }
+  },
+  today_schedule: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], day:true, ex:'عندي إيه النهاردة؟',
+    desc:'الحصص اللي ليها معاد في يوم معين (النهاردة افتراضيًا). args: {"day":"today|tomorrow|yesterday|اسم اليوم بالعربي"}',
+    kw:[[KW('حصص','حصه','ميعاد','مواعيد','جدول','جدولي','عندي ايه','عنده ايه','عندهم ايه','امتي','الساعه كام'),4]],
+    validate: a => { const d = assistantDayArg(a&&a.day); return d ? {day:d} : {day:'today'}; },
+    run: (a, db) => {
+      const sc = assistantScope(db); const d = assistantResolveDay(a); const t = assistantNow();
+      const list = assistantRoomsOnDay(sc, d.name);
+      const footer = assistantTabFooter(sc.role, 'schedule');
+      if(!list.length) return {text:`مفيش حصص ${d.label} 👌`};
+      return {title:`📅 حصص ${d.label}`, summary:`${list.length} حصة`, rows: list.slice(0,10).map(x=>{
+        let who = '';
+        if(sc.role==='PARENT') who = sc.children.filter(c=>(c.classroomIds||[]).indexOf(x.room.id)>=0).map(c=>c.name.split(' ')[0]).join('، ');
+        else who = ((db.enrollments||[]).filter(e=>e.classroomId===x.room.id && sc.children.some(c=>c.id===e.childId)).length)+' طالب';
+        const state = d.isToday && x.start ? (x.start<=t.nowT ? ' · بدأت' : '') : '';
+        return {label:x.room.name, sub:[x.start ? x.start+(x.end?' – '+x.end:'') : '', who].filter(Boolean).join(' · ')+state};
+      }), footer};
+    }
+  },
+  pending_exceptions: {
+    roles:['ADMIN','TEACHER','ASSISTANT'], ex:'في طلبات استثناء؟',
+    desc:'طلبات استثناء الحضور المعلّقة. args: {}',
+    kw:[[KW('استثناء','استثناءات','استثنايات','موافقه','معلق','معلقه'),4]],
+    validate: () => ({}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const list = assistantPendingExceptions(sc, db);
+      if(!list.length) return {text:'مفيش طلبات استثناء معلّقة 👌'};
+      return {title:'🎫 طلبات استثناء معلّقة', summary:`${list.length} طلب`, rows: list.slice(0,8).map(x=>{ const c=(db.children||[]).find(k=>k.id===x.childId), r=(db.classrooms||[]).find(k=>k.id===x.classroomId); return {label:c?c.name:'طالب', sub:`${r?r.name:''}${x.reason?' · '+String(x.reason).slice(0,50):''}`}; }),
+        footer: sc.role==='ADMIN' ? assistantTabFooter('ADMIN','attendanceExceptions') : sc.role==='TEACHER' ? assistantTabFooter('TEACHER','log') : null};
+    }
+  },
+  complaints: {
+    roles:['ADMIN','PARENT'], ex:'في شكاوي مفتوحة؟',
+    desc:'الشكاوى (للمدير: المفتوحة، لولي الأمر: شكاواه وحالتها). args: {}',
+    kw:[[KW('شكوي','شكاوي','شكوه','شكاو','اشتكي'),4]],
+    validate: () => ({}),
+    run: (a, db) => {
+      const role = assistantRole(); const all = db.complaints||[];
+      if(role==='PARENT'){
+        const mine = all.filter(c=>c.parentId===session.personId).sort((p,q)=> new Date(q.submittedAt)-new Date(p.submittedAt)).slice(0,5);
+        if(!mine.length) return {text:'مفيش شكاوي مبعوتة من حسابك.', footer:assistantTabFooter('PARENT','complaint')};
+        return {title:'📩 شكاواي', rows: mine.map(c=>({label:String(c.message||'').slice(0,60), sub:`${assistantFmtDate(c.submittedAt)} · ${c.status==='PENDING'?'قيد المراجعة':'اتراجعت'}`})), footer:assistantTabFooter('PARENT','complaint')};
+      }
+      const open = all.filter(c=>c.status==='PENDING').sort((p,q)=> new Date(q.submittedAt)-new Date(p.submittedAt));
+      if(!open.length) return {text:'مفيش شكاوي مفتوحة 👌'};
+      return {title:'📩 شكاوي مفتوحة', summary:`${open.length} شكوى`, rows: open.slice(0,6).map(c=>{ const p=(db.parents||[]).find(x=>x.id===c.parentId); return {label:String(c.message||'').slice(0,60), sub:`${p?p.name:'ولي أمر'} · ${assistantFmtDate(c.submittedAt)}`}; }), more: open.length>6?`+${open.length-6} تانيين`:'', footer:assistantTabFooter('ADMIN','complaints')};
+    }
+  },
+  last_messages: {
+    roles:['TEACHER','PARENT'], kidOpt:true, ex:'آخر رسايل المدرّس',
+    desc:'آخر الرسائل في الشات (للمدرّس: رسايل أولياء الأمور، لولي الأمر: رسايل المدرّس). args: {"name":"اسم الطالب"} اختياري',
+    kw:[[KW('رساله','رسايل','رسائل','شات','كلمني','بعتلي','بعت','رد'),4]],
+    validate: a => ({name:String((a&&a.name)||'').trim().slice(0,60), ctx:!!(a&&a.ctx)}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const ids = new Set(sc.children.map(c=>c.id));
+      let list = (db.messages||[]).filter(m=> ids.has(m.childId));
+      if(a && a.name){ const rs = assistantResolveKids(sc, a, 1); if(rs.reply) return rs.reply; list = list.filter(m=>m.childId===rs.kids[0].id); assistantRememberKid(rs.kids); }
+      if(sc.role==='TEACHER') list = list.filter(m=>m.sender==='PARENT');
+      list = list.sort((p,q)=> new Date(q.time)-new Date(p.time)).slice(0,5);
+      const footer = assistantTabFooter(sc.role, 'chat');
+      if(!list.length) return {text:'مفيش رسايل لسه.', footer};
+      return {title:'💬 آخر الرسايل', rows: list.map(m=>{ const c=(db.children||[]).find(k=>k.id===m.childId); return {label:String(m.text||'').slice(0,70), sub:[m.senderName||'', c?c.name.split(' ')[0]:'', assistantFmtDate(m.time)].filter(Boolean).join(' · ')}; }), footer};
+    }
+  },
+  my_payout: {
+    roles:['TEACHER'], ex:'مرتبي',
+    desc:'آخر كشوف مرتب المدرّس. args: {}',
+    kw:[[KW('مرتبي','مرتب','راتبي','راتب','قبضت','مستحقاتي','مستحقات','فلوسي','كشف'),4]],
+    validate: () => ({}),
+    run: (a, db) => {
+      const list = (db.teacherPayouts||[]).filter(p=>p.teacherId===session.personId).sort((p,q)=> String(q.periodEnd).localeCompare(String(p.periodEnd))).slice(0,3);
+      const footer = assistantTabFooter('TEACHER','payouts');
+      if(!list.length) return {text:'مفيش كشوف مرتب متسجلة لحسابك لسه.', footer};
+      const st = {paid:'اتصرف ✅', pending:'لسه ما اتصرفش', approved:'معتمد', draft:'مسودة'};
+      return {title:'💰 كشوف مرتبي', rows: list.map(p=>({label:`${p.finalAmount} ج — ${st[p.status]||p.status||''}`, sub:`${assistantFmtDate(p.periodStart)} → ${assistantFmtDate(p.periodEnd)} · ${p.sessionCount} حصة`})), footer};
+    }
+  },
+  calendar_upcoming: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], ex:'إيه الأحداث الجاية؟',
+    desc:'أحداث تقويم السنتر القادمة (إجازات، امتحانات، مناسبات). args: {}',
+    kw:[[KW('تقويم','اجازه','اجازات','مناسبه','مناسبات','فعاليات','احداث','امتحان قريب'),4]],
+    validate: () => ({}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const list = assistantUpcomingEvents(db, 45, 6);
+      const footer = assistantTabFooter(sc.role, 'calendar');
+      if(!list.length) return {text:'مفيش أحداث متسجلة في تقويم السنتر خلال الـ45 يوم الجايين.', footer};
+      return {title:'🗓️ الأحداث القادمة', rows: list.map(e=>({label:e.title, sub:[assistantFmtDate(e.date), e.note?String(e.note).slice(0,60):''].filter(Boolean).join(' · ')})), footer};
+    }
+  },
+  day_summary: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], ex:'ملخص النهاردة',
+    desc:'ملخص سريع لوضع النهاردة حسب الدور. args: {}',
+    kw:[[KW('ملخص','خلاصه','اخبار اليوم','ايه الاخبار','فيه ايه','يومي','وضع اليوم','اخر الاخبار','ايه الجديد','عامل ايه النهارده'),4]],
+    validate: () => ({}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const t = assistantNow(); const rows = [];
+      const ask = (txt, q) => ({name:'askText', arg:q, label:'تفاصيل'});
+      const rooms = assistantRoomsOnDay(sc, t.todayName);
+      if(sc.role==='PARENT'){
+        rows.push({label:`👨‍👩‍👧 ${sc.children.length} طالب مرتبطين بحسابك`, act:ask('', 'مين أولادي المسجلين؟')});
+        const evs = (db.events||[]).filter(e=> sc.children.some(c=>c.id===e.childId) && isToday(e.eventTime)).length;
+        rows.push({label:`📋 ${evs} حدث متسجل النهاردة`, act:ask('', 'ايه اللي حصل النهاردة')});
+        rows.push({label:`📅 ${rooms.length} حصة النهاردة`, act:ask('', 'عندي ايه النهاردة')});
+        const bad = (db.subscriptions||[]).length ? assistantUnpaidKids(sc, db).length : 0;
+        if(bad) rows.push({label:`💳 ${bad} اشتراك محتاج تجديد أو دفع`, act:ask('', 'اشتراك ابني ساري')});
+      } else {
+        rows.push({label:`📅 ${rooms.length} حصة النهاردة`, sub: rooms[0] ? 'أولها '+(rooms[0].start||'—') : '', act:ask('', 'عندي ايه النهاردة')});
+        rows.push({label:`🧑‍🎓 ${sc.children.length} طالب`});
+        const ab = assistantAbsentRows(sc, db).rows.length; rows.push({label:`🚫 ${ab} غايب لحد دلوقتي`, act:ask('', 'مين الغايبين النهاردة')});
+        const ex = assistantPendingExceptions(sc, db).length; rows.push({label:`🎫 ${ex} طلب استثناء معلّق`, act:ask('', 'في طلبات استثناء')});
+        if(sc.role==='ADMIN'){
+          const co = (db.complaints||[]).filter(c=>c.status==='PENDING').length; rows.push({label:`📩 ${co} شكوى مفتوحة`, act:ask('', 'في شكاوي مفتوحة')});
+          const subs = getAdminSubscriptionCounts(db); rows.push({label:`💳 ${subs.expired} اشتراك منتهي · ${subs.pending} فاتورة معلّقة`, act:ask('', 'مين المتأخرين في الدفع')});
+        }
+      }
+      return {title:'☀️ ملخص النهاردة', rows};
     }
   },
   open_screen: {
-    desc: 'فتح قسم من لوحة المدير. args: {"screen":"<اسم القسم>"} والأقسام المسموحة: children, teachers, assistants, parents, links, classrooms, subjects, schedule, teacherAttendance, teacherEvaluations, teacherPayouts, payments, attendanceExceptions, calendar, complaints, financialArchive, passwordRequests',
-    validate: a => { const s = String((a&&a.screen)||''); return ASSIST_SCREENS().includes(s) ? {screen:s} : null; },
-    run: (a) => ({ title:`${ADMIN_TAB_META[a.screen].icon} ${ADMIN_TAB_META[a.screen].label}`, footer:{name:'openSection', arg:a.screen, label:'فتح '+ADMIN_TAB_META[a.screen].label} })
+    roles:['ADMIN','TEACHER','PARENT'], ex:'افتح التقويم',
+    desc:'فتح قسم من واجهتك. args: {"screen":"<اسم القسم>"}',
+    kw:[],
+    validate: a => { const role = assistantRole(); const meta = assistantScreenMeta(role); const s = String((a&&a.screen)||''); return meta && Object.prototype.hasOwnProperty.call(meta, s) ? {screen:s} : null; },
+    run: (a) => { const role = assistantRole(); const m = assistantScreenMeta(role)[a.screen]; return {title:`${m.icon} ${m.label}`, footer:{name:'openRoleTab', arg:a.screen, label:'فتح '+m.label}}; }
+  },
+  help: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], ex:'تقدر تساعدني في إيه؟',
+    desc:'شرح إمكانيات المساعد. args: {}',
+    kw:[[KW('مساعده','تقدر تعمل','بتعمل ايه','تقدر تساعدني','اساعدك','ايه اللي تقدر','ايه اللي بتقدر','اسالك عن ايه','اسال عن ايه','help'),6]],
+    validate: () => ({}),
+    run: () => {
+      const role = assistantRole();
+      const rows = assistantToolsFor(role).filter(k=>k!=='help' && k!=='open_screen' && ASSIST_TOOLS[k].ex && (role==='PARENT' || !ASSIST_TOOLS[k].kid)).map(k=>({label:ASSIST_TOOLS[k].ex, act:{name:'askText', arg:ASSIST_TOOLS[k].ex, label:'جرّب'}}));
+      if(role!=='PARENT') rows.push({label:'اكتب اسم أي طالب وأنا أطلّعلك تقريره (حضور، اشتراك، تقييم)'});
+      return {title:'✨ أقدر أساعدك في', summary:'اكتب بالعامية عادي، وأنا أفهم حتى من غير نت. وأقدر أفتحلك أي قسم: قول «افتح …».', rows};
+    }
   }
 };
-// الإجراءات المسموحة للأزرار — اسم ثابت + معرّف بيتراجع عليه قبل التنفيذ
+function assistantToolsFor(role){ return Object.keys(ASSIST_TOOLS).filter(k=> ASSIST_TOOLS[k].roles.indexOf(role)>=0); }
+
+/* ---------- الإجراءات المسموحة للأزرار (اسم ثابت + معرّف بيتراجع عليه قبل التنفيذ) ---------- */
 const ASSIST_ACTIONS = {
-  openStudent: arg => { const db = loadDB(); if(!db.children.some(c=>c.id===arg)) { showToast('الطالب مش موجود'); return; } openStudentDetail(arg); },
-  openSection: arg => { if(!ASSIST_SCREENS().includes(arg)) { showToast('القسم مش موجود'); return; } openAdminSection(arg); },
-  openAiSettings: () => { openAiSettings(); },
-  askLocal: arg => { assistantRunCatalog(arg); }
+  openStudent: arg => { if(assistantRole()!=='ADMIN') return; const db = loadDB(); if(!db.children.some(c=>c.id===arg)) { showToast('الطالب مش موجود'); return; } openStudentDetail(arg); },
+  openSection: arg => { if(assistantRole()!=='ADMIN') return; if(!ASSIST_SCREENS().includes(arg)) { showToast('القسم مش موجود'); return; } openAdminSection(arg); },
+  openRoleTab: arg => {
+    const role = assistantRole(); const parts = String(arg||'').split('|'); const tab = parts[0], cid = parts[1];
+    const meta = assistantScreenMeta(role);
+    if(!meta || !Object.prototype.hasOwnProperty.call(meta, tab)){ showToast('القسم مش موجود'); return; }
+    if(role==='ADMIN'){ openAdminSection(tab); return; }
+    if(role==='TEACHER'){ showScreen('teacher-screen'); switchTeacherTab(tab); return; }
+    if(role==='PARENT'){
+      showScreen('parent-screen');
+      if(cid){ const s = document.getElementById('parent-child-select'); if(s && Array.prototype.some.call(s.options, o=>o.value===cid)){ s.value = cid; onParentChildChange(); } }
+      switchParentTab(tab);
+    }
+  },
+  openTeacherChild: arg => {
+    if(assistantRole()!=='TEACHER') return;
+    const db = loadDB(); const sc = assistantScope(db);
+    if(!sc.children.some(c=>c.id===arg)){ showToast('الطالب مش موجود'); return; }
+    showScreen('teacher-screen'); selectTeacherChild(arg); switchTeacherTab('log');
+  },
+  openAiSettings: () => { if(assistantRole()==='ADMIN') openAiSettings(); },
+  askLocal: arg => { assistantRunCatalog(arg); },
+  askText: arg => { assistantAsk(String(arg||'')); }
 };
 let assistantHistory = [];   // {u: سؤال المستخدم, b: رد الموديل النصي} — في الذاكرة بس
 let assistantBusy = false;
 let assistantRetryDelay = 2000;
 let assistantTypeSpeed = 14;  // ms لكل حرفين — 0 يعني بدون تأثير (للاختبار)
-const ASSIST_SUGGESTIONS = [
-  {ico:'💳', txt:'مين المتأخرين في الدفع؟', send:true},
-  {ico:'🔎', txt:'دوّر على طالب', send:false, fill:'دوّر على '},
-  {ico:'🚫', txt:'مين الغايبين النهاردة؟', send:true},
-  {ico:'🧑‍🏫', txt:'افتح المدرّسين', send:true},
-  {ico:'📅', txt:'افتح التقويم', send:true}
-];
+const ASSIST_SUGGESTIONS_BY_ROLE = {
+  ADMIN: [{ico:'☀️', txt:'ملخص النهاردة', send:true},{ico:'💳', txt:'مين المتأخرين في الدفع؟', send:true},{ico:'🔎', txt:'دوّر على طالب', send:false, fill:'دوّر على '},{ico:'🚫', txt:'مين الغايبين النهاردة؟', send:true},{ico:'🎫', txt:'في طلبات استثناء؟', send:true},{ico:'🧑‍🏫', txt:'افتح المدرّسين', send:true}],
+  TEACHER: [{ico:'☀️', txt:'ملخص النهاردة', send:true},{ico:'📅', txt:'عندي إيه النهاردة؟', send:true},{ico:'🚫', txt:'مين الغايبين النهاردة؟', send:true},{ico:'🎫', txt:'في طلبات استثناء؟', send:true},{ico:'💬', txt:'آخر رسايل الأهالي', send:true},{ico:'💰', txt:'مرتبي', send:true}],
+  ASSISTANT: [{ico:'☀️', txt:'ملخص النهاردة', send:true},{ico:'📅', txt:'عندي إيه النهاردة؟', send:true},{ico:'🚫', txt:'مين الغايبين النهاردة؟', send:true},{ico:'💳', txt:'مين اشتراكه منتهي؟', send:true},{ico:'🔎', txt:'دوّر على طالب', send:false, fill:'دوّر على '}],
+  PARENT: [{ico:'📋', txt:'ابني عمل إيه النهاردة؟', send:true},{ico:'✅', txt:'ابني حضر النهاردة؟', send:true},{ico:'⭐', txt:'تقييمات ابني', send:true},{ico:'💳', txt:'اشتراك ابني ساري؟', send:true},{ico:'📅', txt:'الحصص الجاية', send:true},{ico:'🗓️', txt:'إيه الأحداث الجاية؟', send:true}]
+};
+const ASSIST_WELCOME_BY_ROLE = {
+  ADMIN: 'أنا مساعد مسار. اسألني عن طلابك ومدفوعاتك، أو قولّي أفتحلك أي قسم في السنتر.',
+  TEACHER: 'أنا مساعدك الشخصي. اسألني عن حصصك وطلابك والغياب والاستثناءات ومرتبك، أو قولّي أفتحلك أي قسم.',
+  ASSISTANT: 'أنا مساعدك. اسألني عن حصص المدرّس وطلابه والغياب والاشتراكات.',
+  PARENT: 'أنا مساعد مسار. اسألني عن ابنك: حضوره، اللي حصل النهاردة، تقييماته، اشتراكه، ومواعيده.'
+};
+const ASSIST_NOTE_BY_ROLE = {
+  ADMIN: '🔒 بقرا بيانات سنترك بس ومبعدّلش حاجة. اللي بيتبعت للمزوّد كلامك إنت بس، مش بيانات الطلاب.',
+  TEACHER: '🔒 بشوف طلاب مجموعاتك بس ومبعدّلش حاجة. أغلب الأسئلة بجاوب عليها من غير إنترنت.',
+  ASSISTANT: '🔒 بشوف طلاب المدرّسين المربوطين بيك بس ومبعدّلش حاجة.',
+  PARENT: '🔒 بشوف بيانات أولادك إنت بس ومبعدّلش حاجة. أغلب الأسئلة بجاوب عليها من غير إنترنت.'
+};
 
-function assistantCanUse(){ return typeof session!=='undefined' && session && session.role==='ADMIN'; }
+function assistantAiReady(){ return typeof aiChainCall==='function' && (typeof navigator==='undefined' || navigator.onLine!==false) && Date.now()>assistantAiOffUntil; }
 function assistantBuildPrompt(question){
-  const tools = Object.keys(ASSIST_TOOLS).map(k=>`- ${k}: ${ASSIST_TOOLS[k].desc}`).join('\n');
+  const role = assistantRole();
+  const tools = assistantToolsFor(role).map(k=>`- ${k}: ${ASSIST_TOOLS[k].desc}`).join('\n');
+  const who = {ADMIN:'مدير السنتر', TEACHER:'مدرّس', PARENT:'ولي أمر', ASSISTANT:'أسيستنت (مساعد مدرّس)'}[role];
   const hist = assistantHistory.slice(-2).map(h=>`المستخدم: ${h.u}\nأنت: ${h.b}`).join('\n');
-  return `إنت مساعد داخل نظام إدارة سناتر اسمه "مسار". بتساعد مدير السنتر. اختار أداة واحدة من القايمة دي بس، وماتخترعش أدوات تانية:
+  const screens = role==='ADMIN' ? Object.keys(ADMIN_TAB_META).join(', ') : role==='TEACHER' ? Object.keys(TEACHER_TAB_META).join(', ') : role==='PARENT' ? Object.keys(PARENT_TAB_META).join(', ') : '';
+  return `إنت مساعد داخل نظام إدارة سناتر اسمه "مسار". بتساعد ${who}. اختار أداة واحدة من القايمة دي بس، وماتخترعش أدوات تانية:
 ${tools}
-
+${screens ? 'الأقسام المسموحة لـopen_screen: '+screens+'\n' : ''}
 ردّ بـ JSON واحد بس من غير أي كلام تاني، بأحد الشكلين:
 {"tool":"<اسم الأداة>","args":{...}}
 أو لو الطلب مش واضح أو مش متاح في الأدوات: {"reply":"جملة قصيرة بالعامية المصرية، سؤال توضيحي أو اعتذار"}
@@ -5264,13 +5753,99 @@ function assistantParse(raw){
   const m = String(raw||'').match(/\{[\s\S]*\}/);
   if(!m) return {reply:String(raw||'').trim().slice(0,300) || 'مفهمتش، ممكن توضّح؟'};
   let j; try{ j = JSON.parse(m[0]); }catch(e){ return {reply:'مفهمتش، ممكن توضّح؟'}; }
-  if(j && typeof j.tool==='string' && Object.prototype.hasOwnProperty.call(ASSIST_TOOLS, j.tool)){
+  const role = assistantRole();
+  if(j && typeof j.tool==='string' && Object.prototype.hasOwnProperty.call(ASSIST_TOOLS, j.tool) && ASSIST_TOOLS[j.tool].roles.indexOf(role)>=0){
     const args = ASSIST_TOOLS[j.tool].validate(j.args||{});
     if(args) return {tool:j.tool, args};
     return {reply:'محتاج تفاصيل أكتر، تقصد مين أو أنهي قسم بالظبط؟'};
   }
   if(j && typeof j.reply==='string') return {reply:j.reply.slice(0,300)};
   return {reply:'مفهمتش، ممكن توضّح؟'};
+}
+
+/* ---------- محرّك الفهم المحلي (أوفلاين) ---------- */
+let _assistAllKw = null;
+function assistantIsKwToken(t){
+  if(!_assistAllKw){
+    const src = []; Object.keys(ASSIST_TOOLS).forEach(k=> (ASSIST_TOOLS[k].kw||[]).forEach(p=> src.push(p[0].source)));
+    _assistAllKw = new RegExp(src.join('|'));
+  }
+  return _assistAllKw.test(t);
+}
+function assistantDetectKids(n, sc){
+  if(!sc.children.length) return null;
+  const toks = assistantTokens(n).filter(t=> t.length>=3 && !ASSIST_STOP.has(t) && !assistantIsKwToken(t));
+  if(!toks.length) return null;
+  const hits = sc.children.map(c=>({c, s:assistantNameMatch(c, toks)})).filter(x=>x.s>0).sort((p,q)=> q.s-p.s);
+  if(!hits.length) return null;
+  const top = hits[0].c;
+  const matched = toks.filter(t=> assistantNameMatch(top, [t])>0);   // بنبعت الكلمات اللي طابقت اسم الطالب بس (مش أي كلمة زيادة في الجملة)
+  return {name:(matched.length?matched:toks).join(' '), kids:assistantTopKids(hits), score:hits[0].s};
+}
+function assistantDetectDay(n){
+  if(/بكره|بكرا|غدا/.test(n)) return 'tomorrow';
+  if(/امبارح|امس|مبارح/.test(n)) return 'yesterday';
+  const d = ASSIST_DAYS.find(x=>x.re.test(n)); if(d) return d.name;
+  return 'today';
+}
+const ASSIST_OPEN_RE = /^(?:افتحلي|افتح|فتح|روح|اذهب|وديني|خدني|اعرض|وريني)\s*(?:ل|لي|علي|الي|ع)?\s*(.+)$/;
+const ASSIST_PRONOUN_RE = /(?:^|\s)(?:وهو|وهي|عنه|عنها|بتاعه|بتاعها|ده|دي|دا|نفسه|نفسها)(?:\s|$)/;
+function assistantPlan(q){
+  const role = assistantRole(); if(!role) return null;
+  const raw = String(q||'').trim(); const n = normalizeArabic(raw).replace(/[؟?!.,،؛:]+/g,' ').replace(/\s+/g,' ').trim();
+  if(!n) return null;
+  if(/^(?:سلام عليكم|السلام عليكم|سلام|اهلا|اهلين|مرحبا|هاي|هلا|صباح الخير|مساء الخير|صباح النور|ازيك)[\s!.؟?]*$/.test(n)) return {reply:'أهلًا بيك 👋 قولّي أساعدك في إيه؟ ممكن تسألني «تقدر تساعدني في إيه؟» عشان تشوف إمكانياتي.', conf:10};
+  if(/^(?:شكرا|متشكر|متشكره|تسلم|تسلمي|ميرسي|مشكور|جزاك الله)/.test(n)) return {reply:'العفو 🌷 لو محتاج أي حاجة تانية أنا موجود.', conf:10};
+  const db = loadDB(); const sc = assistantScope(db);
+  // 1) أوامر الفتح
+  const mo = n.match(ASSIST_OPEN_RE);
+  if(mo && ASSIST_SCREEN_WORDS_BY_ROLE[role]){
+    for(const pair of ASSIST_SCREEN_WORDS_BY_ROLE[role]){ if(pair[0].test(mo[1])) return {tool:'open_screen', args:{screen:pair[1]}, conf:10}; }
+  }
+  // 2) تسجيل نقاط لكل أداة متاحة للدور
+  const kidInfo = assistantDetectKids(n, sc);
+  const pronoun = ASSIST_PRONOUN_RE.test(n) && !!assistantCtx.childId;
+  const hasKidSlot = !!kidInfo || pronoun;
+  const scores = [];
+  assistantToolsFor(role).forEach((k, idx)=>{
+    const t = ASSIST_TOOLS[k]; let s = 0;
+    (t.kw||[]).forEach(p=>{ if(p[0].test(n)) s += p[1]; });
+    if(!s) return;
+    if(t.kid && role!=='PARENT' && !hasKidSlot) return;   // أداة طالب بدون تحديد طالب (لغير ولي الأمر) مالهاش معنى
+    if((t.kid||t.kidOpt) && kidInfo) s += 1;
+    scores.push({k, s, idx});
+  });
+  scores.sort((a,b)=> b.s-a.s || a.idx-b.idx);
+  const best = scores[0];
+  // 3) صيغة البحث الصريحة "دوّر على فلان / هات بيانات فلان"
+  const ms = n.match(/^(?:ابحث|دور|هات|فين|بيانات|ورين?ي|الطالب|طالب|الطفل)\s*(?:عن|علي)?\s+(.{2,})$/);
+  if((!best || best.s<ASSIST_HIGH) && ms){
+    let name = ms[1].trim();
+    while(/^(?:بيانات|الطالب|طالب|الطفل|عن|علي|اسمه|اسمها|اسم)\s+/.test(name)) name = name.replace(/^(?:بيانات|الطالب|طالب|الطفل|عن|علي|اسمه|اسمها|اسم)\s+/, '');
+    if(name){ return role==='PARENT' ? {tool:'student_report', args:{name}, conf:8} : {tool:'find_student', args:{name}, conf:8}; }
+  }
+  if(best){
+    const t = ASSIST_TOOLS[best.k]; const args = {};
+    if(t.kid||t.kidOpt){ if(kidInfo) args.name = kidInfo.name; else if(pronoun) args.ctx = true; }
+    if(t.day) args.day = assistantDetectDay(n);
+    return {tool:best.k, args, conf:best.s, alt:scores.slice(1,3).map(x=>x.k)};
+  }
+  // 4) اسم طالب لوحده (أو مع كلام عام) → تقرير/بحث
+  if(kidInfo){
+    const nm = kidInfo.name;
+    return role==='PARENT' || kidInfo.kids.length===1 ? {tool:'student_report', args:{name:nm}, conf:6} : {tool:'find_student', args:{name:nm}, conf:6};
+  }
+  return null;
+}
+async function assistantExecute(p){
+  const role = assistantRole(); const t = ASSIST_TOOLS[p.tool];
+  if(!t || t.roles.indexOf(role)<0) return false;
+  const args = t.validate(p.args||{});
+  if(!args){ await assistantAddText('محتاج تفاصيل أكتر، تقصد مين أو أنهي قسم بالظبط؟'); return false; }
+  const r = t.run(args, loadDB());
+  const list = r && r.multi ? r.multi : [r];
+  for(const x of list){ await assistantRenderResult(x); }
+  return true;
 }
 
 /* ---------- واجهة المحادثة ---------- */
@@ -5324,133 +5899,131 @@ function assistantRenderResult(r){
   (r.rows||[]).forEach(x=>{ h += `<div class="ai-row"><div>${faEsc(x.label)}${x.sub?`<small>${faEsc(x.sub)}</small>`:''}</div>${assistantActBtn(x.act)}</div>`; });
   if(r.more) h += `<div style="font-size:11.5px; color:var(--muted); margin-top:6px;">${faEsc(r.more)}</div>`;
   if(r.footer) h += assistantActBtn(r.footer, true);
+  if(r.chips && r.chips.length){
+    h += '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">' + r.chips.map(c=>`<button class="ai-act" data-act="askText" data-arg="${faEsc(c.q)}" style="padding:5px 10px; font-size:12px;">${faEsc(c.label)}</button>`).join('') + '</div>';
+  }
   h += '</div>';
   assistantAddRow('bot', h);
   return Promise.resolve();
 }
 function assistantSetBusy(b){ assistantBusy = b; assistantInputChanged(); }
+// الترتيب: (1) فهم محلي أوفلاين — لو واثق بينفّذ فورًا من غير AI (أسرع وبيوفّر حد المنصة اليومي)
+// (2) لو مش واثق والـAI متاح بنسأله يختار أداة (3) لو الـAI وقع/مش متاح بنرجع للمحلي أو لاقتراحات "هل تقصد؟"
 async function assistantAsk(question){
   const q = String(question||'').trim().slice(0,200);
   if(!q || assistantBusy || !assistantCanUse()) return;
   assistantSetBusy(true);
   assistantAddRow('me', faEsc(q));
-  const th = assistantThinking();
   try{
-    // أخطاء ضغط المزوّد (500/502/503/504) مؤقتة — نعيد المحاولة تلقائيًا مرتين قبل ما نعرض خطأ
-    const raw = await aiChainCall(assistantBuildPrompt(q), [], {onStatus: m=> th.set(m)});
-    const out = assistantParse(raw);
-    if(out.tool){
-      th.set('ببحث في بيانات السنتر…');
-      if(assistantTypeSpeed) await new Promise(r=>setTimeout(r, 450)); // لمسة بصرية بس
-      const r = ASSIST_TOOLS[out.tool].run(out.args, loadDB());
-      th.stop(); await assistantRenderResult(r);
-      assistantHistory.push({u:q, b:'(نفّذت '+out.tool+')'});
-    } else {
-      th.stop(); await assistantAddText(out.reply);
-      assistantHistory.push({u:q, b:out.reply});
+    let plan = null;
+    try{ plan = assistantPlan(q); }catch(e){ console.error('assistantPlan', e); plan = null; }
+    if(plan && plan.reply){ await assistantAddText(plan.reply); assistantHistory.push({u:q, b:plan.reply}); return; }
+    if(plan && plan.conf >= ASSIST_HIGH){
+      await assistantExecute(plan);
+      assistantHistory.push({u:q, b:'(نفّذت '+plan.tool+')'});
+      return;
     }
-  }catch(e){
-    th.stop();
-    const code = String((e && e.message) || '');
-    let handled = false;
-    if(!/^GW:(UNAUTH|NO_CENTER|BAD_PROMPT|BAD_IMAGES)$/.test(code)){ try{ handled = await assistantLocalAnswer(q); }catch(e2){ handled = false; } }
-    if(!handled) await assistantAddText(aiErrorMsg(e), true);
+    if(assistantAiReady()){
+      const th = assistantThinking();
+      try{
+        const raw = await aiChainCall(assistantBuildPrompt(q), [], {onStatus: m=> th.set(m)});
+        const out = assistantParse(raw);
+        if(out.tool){
+          th.set('ببحث في بياناتك…');
+          if(assistantTypeSpeed) await new Promise(r=>setTimeout(r, 450)); // لمسة بصرية بس
+          th.stop(); await assistantExecute(out);
+          assistantHistory.push({u:q, b:'(نفّذت '+out.tool+')'});
+        } else {
+          th.stop(); await assistantAddText(out.reply);
+          assistantHistory.push({u:q, b:out.reply});
+        }
+        return;
+      }catch(e){
+        th.stop();
+        const code = String((e && e.message) || '');
+        if(/^GW:(UNAUTH|NO_CENTER|BAD_PROMPT|BAD_IMAGES)$/.test(code)){ await assistantAddText(aiErrorMsg(e), true); return; }
+        // حد المنصة خلص أو مفيش مفاتيح أو كله وقع: نوقف مناداة الـAI شوية ونكمّل محلي
+        assistantAiOffUntil = Date.now() + 5*60*1000;
+      }
+    }
+    await assistantFallback(q, plan);
+  } finally {
+    assistantSetBusy(false);
   }
-  assistantSetBusy(false);
 }
-// لو كل مزوّدي الذكاء الاصطناعي وقعوا: نجاوب الأسئلة الشائعة مباشرة من بيانات المركز (من غير AI)
-const ASSIST_SCREEN_WORDS = [
-  [/حضور.*مدرس|مدرس.*حضور/, 'teacherAttendance'],
-  [/تقييم/, 'teacherEvaluations'],
-  [/مرتب|راتب|رواتب|مستحقات/, 'teacherPayouts'],
-  [/استثناء/, 'attendanceExceptions'],
-  [/ارشيف/, 'financialArchive'],
-  [/كلمات? (السر|المرور)|باسورد/, 'passwordRequests'],
-  [/شكاو|شكوي/, 'complaints'],
-  [/مدفوعات|دفع|اقساط|مصروفات/, 'payments'],
-  [/جدول|مواعيد/, 'schedule'],
-  [/تقويم/, 'calendar'],
-  [/مواد|ماده/, 'subjects'],
-  [/مجموعات|مجموعه|فصول/, 'classrooms'],
-  [/ربط/, 'links'],
-  [/اولياء|ولي|اهالي/, 'parents'],
-  [/اسيستنت|مساعد/, 'assistants'],
-  [/مدرس|معلم/, 'teachers'],
-  [/طلاب|طالب|اطفال|اولاد/, 'children']
-];
-function assistantLocalIntent(q){
-  const raw = String(q||'').trim();
-  const n = normalizeArabic(raw);
-  const has = r => r.test(n) || r.test(raw);
-  let m = n.match(/^(?:افتح|فتح|روح|اذهب|وديني|اعرض)\s+(?:ل|علي|الي)?\s*(.+)$/);
-  if(m){
-    for(const [r, sc] of ASSIST_SCREEN_WORDS){ if(r.test(m[1])) return {tool:'open_screen', args:{screen:sc}}; }
+// الـAI مش متاح أو الفهم المحلي مش واثق: لو في تخمين معقول ننفّذه، وإلا نعرض "هل تقصد؟"
+async function assistantFallback(q, plan){
+  if(plan && plan.tool && plan.conf >= 2){
+    await assistantAddText('مش متأكد 100% من قصدك، بس ده أقرب حاجة لقيتها من بياناتك:');
+    await assistantExecute(plan);
+    assistantHistory.push({u:q, b:'(نتيجة '+plan.tool+' محلية)'});
+    return;
   }
-  if(has(/غياب|غايب|غائب/)) return {tool:'absent_today', args:{}};
-  if(has(/متاخر|مديون|مستحق|متبقي|قسط|اقساط|مدفوعات|مصروفات|فلوس|دفع/)) return {tool:'overdue_payments', args:{}};
-  m = n.match(/(?:ابحث|دور|هات|فين|بيانات|الطالب|طالب|الطفل)\s*(?:عن|علي)?\s+(.{2,})$/);
-  if(m){
-    let name = m[1].trim();
-    while(/^(?:بيانات|الطالب|طالب|الطفل|عن|علي|اسمه|اسمها|اسم)\s+/.test(name)) name = name.replace(/^(?:بيانات|الطالب|طالب|الطفل|عن|علي|اسمه|اسمها|اسم)\s+/, '');
-    if(name) return {tool:'find_student', args:{name}};
-  }
-  return null;
+  const opts = assistantSuggest(q);
+  if(!opts.length){ await assistantAddText('مفهمتش طلبك. جرّب «تقدر تساعدني في إيه؟» عشان تشوف أسئلة أقدر أجاوب عليها.'); return; }
+  await assistantAddText('مش قادر أفهم طلبك بالظبط. تقصد واحد من دول؟');
+  await assistantRenderResult({title:'هل تقصد؟', rows: opts.map(o=>({label:o.text, act:{name:'askLocal', arg:o.id, label:'نفّذ'}}))});
+  assistantHistory.push({u:q, b:'(اقتراحات)'});
 }
-// "هل تقصد؟": لو مفهمناش الطلب (والـAI واقع) نقترح أقرب أوامر من الكتالوج
-const ASSIST_STOP = new Set(['افتح','فتح','عايز','عاوز','اريد','مين','ايه','هل','في','من','عن','دور','ابحث','النهارده','النهاردة','لو','سمحت','ممكن','انا','ليا','كل','هات','اعرض','عرض','وريني','دلوقتي','تقصد','يعني','كام','هو','هي','اللي','ده','دي','دا','اخبار','اعرف']);
+// كتالوج الأوامر الجاهزة للدور الحالي (بيتبني من الأدوات المتاحة + أقسام الواجهة)
 function assistantCatalog(){
-  const list = [
-    {id:'absent',  text:'مين الغايبين النهاردة؟', kw:[/غياب|غايب|غائب|حضور/], label:'', it:{tool:'absent_today', args:{}}},
-    {id:'overdue', text:'المتأخرين في الدفع',     kw:[/متاخر|مديون|مستحق|متبقي|قسط|اقساط|مدفوعات|مصروفات|مصاريف|مصروف|فلوس|دفع/], label:'', it:{tool:'overdue_payments', args:{}}}
-  ];
-  ASSIST_SCREENS().forEach(sc=>{
-    const meta = ADMIN_TAB_META[sc]; if(!meta) return;
-    list.push({id:'open_'+sc, text:'افتح '+meta.label, kw: ASSIST_SCREEN_WORDS.filter(x=>x[1]===sc).map(x=>x[0]), label: normalizeArabic(meta.label), it:{tool:'open_screen', args:{screen:sc}}});
+  const role = assistantRole(); const list = [];
+  if(!role) return list;
+  assistantToolsFor(role).forEach(k=>{
+    const t = ASSIST_TOOLS[k];
+    if(k==='open_screen' || k==='help' || !t.ex) return;
+    if(t.kid && role!=='PARENT') return;
+    const kws = (t.kw||[]).map(p=>p[0]);
+    list.push({id:'t:'+k, text:t.ex, kw:kws, label:'', it:{tool:k, args: t.day ? {day:'today'} : {}}});
   });
+  const meta = assistantScreenMeta(role);
+  if(meta){
+    const words = ASSIST_SCREEN_WORDS_BY_ROLE[role] || [];
+    Object.keys(meta).forEach(sc=>{
+      list.push({id:'open_'+sc, text:'افتح '+meta[sc].label, kw: words.filter(x=>x[1]===sc).map(x=>x[0]), label: normalizeArabic(meta[sc].label), it:{tool:'open_screen', args:{screen:sc}}});
+    });
+  }
   return list;
 }
 function assistantSuggest(q){
-  const n = normalizeArabic(q);
-  const toks = n.split(/[\s،,؟?!.]+/).filter(t=> t.length>=2 && !ASSIST_STOP.has(t));
-  const cat = assistantCatalog();
+  const n = normalizeArabic(q).replace(/[؟?!.,،؛:]+/g,' ');
+  const toks = n.split(/\s+/).filter(t=> t.length>=2 && !ASSIST_STOP.has(t));
+  const role = assistantRole(); const cat = assistantCatalog();
   const scored = cat.map(c=>{
     let sc = 0;
-    toks.forEach(t=>{ if(c.kw.some(r=>r.test(t)) || (t.length>=3 && c.label && c.label.includes(t))) sc++; });
+    toks.forEach(t=>{ if(c.kw.some(r=>r.test(' '+t+' ')) || (t.length>=3 && c.label && c.label.includes(t)) || (t.length>=3 && normalizeArabic(c.text).includes(t))) sc++; });
     return {c, sc};
   }).filter(x=>x.sc>0).sort((a,b)=>b.sc-a.sc).map(x=>x.c);
-  const nameLike = toks.length>=1 && toks.length<=3;
   const out = scored.slice(0,3);
-  if(nameLike){ const nm = toks.join(' '); out.push({id:'find:'+nm, text:'ابحث عن طالب «'+nm+'»'}); }
+  if(role!=='PARENT' && toks.length>=1 && toks.length<=3){ const nm = toks.join(' '); out.push({id:'find:'+nm, text:'ابحث عن طالب «'+nm+'»'}); }
   if(out.length < 3){
-    ['absent','overdue','open_children','open_teachers'].forEach(id=>{ const c = cat.find(x=>x.id===id); if(c && !out.some(o=>o.id===id) && out.length<4) out.push(c); });
+    const common = role==='PARENT' ? ['t:student_report','t:child_attendance','t:subscription_status'] : ['t:day_summary','t:absent_today','t:overdue_payments','t:today_schedule'];
+    common.forEach(id=>{ const c = cat.find(x=>x.id===id); if(c && !out.some(o=>o.id===id) && out.length<4) out.push(c); });
   }
   return out.slice(0,4);
 }
 async function assistantRunCatalog(id){
-  if(assistantBusy) return;
+  if(assistantBusy || !assistantCanUse()) return;
+  const role = assistantRole(); const sid = String(id||'');
   let it, text;
-  if(String(id).indexOf('find:') === 0){ const name = String(id).slice(5); it = {tool:'find_student', args:{name}}; text = 'ابحث عن طالب ' + name; }
-  else { const c = assistantCatalog().find(x=>x.id===id); if(!c) return; it = c.it; text = c.text; }
-  const args = ASSIST_TOOLS[it.tool].validate(it.args); if(!args) return;
-  assistantAddRow('me', faEsc(text));
-  await assistantRenderResult(ASSIST_TOOLS[it.tool].run(args, loadDB()));
-}
-async function assistantLocalAnswer(q){
-  const it = assistantLocalIntent(q);
-  if(!it || !ASSIST_TOOLS[it.tool]){
-    const opts = assistantSuggest(q);
-    if(!opts.length) return false;
-    await assistantAddText('مش قادر أفهم طلبك دلوقتي (الذكاء الاصطناعي مشغول).');
-    await assistantRenderResult({title:'هل تقصد؟', rows: opts.map(o=>({label:o.text, act:{name:'askLocal', arg:o.id, label:'نفّذ'}}))});
-    assistantHistory.push({u:q, b:'(اقتراحات)'});
-    return true;
+  if(sid.indexOf('find:')===0){
+    if(role==='PARENT') return;
+    const name = sid.slice(5); it = {tool:'find_student', args:{name}}; text = 'ابحث عن طالب ' + name;
+  } else if(sid.indexOf('report:')===0){
+    const cid = sid.slice(7); const sc = assistantScope(loadDB()); const c = sc.children.find(x=>x.id===cid);
+    if(!c){ showToast('الطالب مش موجود'); return; }
+    it = {tool:'student_report', args:{name:c.name}}; text = 'تقرير عن ' + c.name;
+    // نثبّت الطالب بالمعرّف لو في أسماء متشابهة
+    assistantCtx.childId = c.id; it.args = {name:'', ctx:true};
+  } else {
+    const c = assistantCatalog().find(x=>x.id===sid); if(!c) return; it = c.it; text = c.text;
   }
-  const args = ASSIST_TOOLS[it.tool].validate(it.args);
-  if(!args) return false;
-  await assistantAddText('الذكاء الاصطناعي مشغول دلوقتي، بس ده اللي لقيته مباشرة من بيانات المركز:');
-  await assistantRenderResult(ASSIST_TOOLS[it.tool].run(args, loadDB()));
-  assistantHistory.push({u:q, b:'(نتيجة '+it.tool+' محلية)'});
-  return true;
+  const t = ASSIST_TOOLS[it.tool]; if(!t || t.roles.indexOf(role)<0) return;
+  const args = t.validate(it.args); if(!args) return;
+  assistantAddRow('me', faEsc(text));
+  const r = t.run(args, loadDB());
+  const list = r && r.multi ? r.multi : [r];
+  for(const x of list){ await assistantRenderResult(x); }
 }
 function assistantInputChanged(){
   const inp = document.getElementById('ai-asst-input'), btn = document.getElementById('ai-asst-send');
@@ -5468,8 +6041,14 @@ function assistantSend(){
   inp.value = ''; assistantInputChanged(); assistantAsk(v);
 }
 function assistantRenderSuggestions(){
-  const box = document.getElementById('asst-sugs'); if(!box || box.children.length) return;
-  ASSIST_SUGGESTIONS.forEach(sg=>{
+  const box = document.getElementById('asst-sugs'); if(!box) return;
+  const role = assistantRole() || 'ADMIN';
+  if(box.getAttribute('data-role')===role && box.children.length) return;
+  box.innerHTML = ''; box.setAttribute('data-role', role);
+  const wt = document.getElementById('asst-welcome-text'); if(wt) wt.textContent = ASSIST_WELCOME_BY_ROLE[role] || '';
+  const wn = document.getElementById('asst-welcome-note'); if(wn) wn.textContent = ASSIST_NOTE_BY_ROLE[role] || '';
+  const sb = document.getElementById('asst-settings-btn'); if(sb) sb.style.display = role==='ADMIN' ? '' : 'none';
+  (ASSIST_SUGGESTIONS_BY_ROLE[role] || []).forEach(sg=>{
     const b = document.createElement('button'); b.className = 'asst-sug';
     b.innerHTML = `<span class="s-ico">${sg.ico}</span><span class="s-txt">${faEsc(sg.txt)}</span>`;
     b.onclick = ()=>{ if(sg.send) assistantAsk(sg.txt); else { const i = document.getElementById('ai-asst-input'); i.value = sg.fill; assistantInputChanged(); i.focus(); } };
@@ -5477,7 +6056,7 @@ function assistantRenderSuggestions(){
   });
 }
 function openAssistant(){
-  if(!assistantCanUse()){ showToast('المساعد متاح لمدير السنتر بس'); return; }
+  if(!assistantCanUse()){ showToast('المساعد مش متاح لحسابك'); return; }
   assistantRenderSuggestions();
   assistantRefreshStatus();
   showScreen('ai-chat-screen');
@@ -5485,6 +6064,12 @@ function openAssistant(){
 }
 async function assistantRefreshStatus(){
   const el = document.getElementById('asst-ai-status'); if(!el) return;
+  if(assistantRole()!=='ADMIN'){
+    el.textContent = (typeof navigator!=='undefined' && navigator.onLine===false) ? '📴 أوفلاين — بجاوب من بياناتك المحفوظة' : '✅ جاهز — بجاوب فورًا من بياناتك';
+    el.onclick = null; el.style.pointerEvents = 'none';
+    return;
+  }
+  el.style.pointerEvents = ''; el.onclick = ()=>openAiSettings();
   let txt = '✅ الذكاء الاصطناعي شغّال';
   try{
     const { data } = await supabaseClient.rpc('ai_center_key_status');
@@ -5495,10 +6080,13 @@ async function assistantRefreshStatus(){
   }catch(e){}
   el.textContent = txt;
 }
-function assistantBack(){ showScreen('admin-screen'); }
+function assistantBack(){
+  const role = assistantRole();
+  showScreen(role==='TEACHER' ? 'teacher-screen' : role==='PARENT' ? 'parent-screen' : role==='ASSISTANT' ? 'assistant-screen' : 'admin-screen');
+}
 function assistantNewChat(){
   if(assistantBusy) return;
-  assistantHistory = [];
+  assistantHistory = []; assistantCtx = {childId:null};
   const log = document.getElementById('ai-asst-log'); if(log) log.innerHTML = '';
   const scr = document.getElementById('ai-chat-screen'); if(scr) scr.classList.remove('has-msgs');
   const sc = document.getElementById('asst-scroll'); if(sc) sc.scrollTop = 0;
