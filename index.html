@@ -1056,6 +1056,21 @@
     <div id="sa-invoices-list"></div>
 
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <span>🔑 مفاتيح الذكاء الاصطناعي</span>
+      <span style="display:flex; gap:6px;">
+        <button class="badge" onclick="saKeysDiagnose()">🔍 فحص</button>
+        <button class="badge" onclick="saKeysRender()">تحديث</button>
+      </span>
+    </div>
+    <div id="sa-keys-summary" class="list-sub" style="margin-bottom:6px; line-height:1.8;"></div>
+    <div id="sa-keys-list"></div>
+    <pre id="sa-keys-diag" dir="ltr" style="display:none; font-size:11.5px; white-space:pre-wrap; margin:6px 0;"></pre>
+    <div style="margin:6px 0 14px;">
+      <button class="badge" onclick="saAuditToggle()">📜 سجل التعديلات</button>
+      <div id="sa-keys-audit" class="list-sub" style="display:none; line-height:1.8; margin-top:6px;"></div>
+    </div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
       <span>🗑️ سلة المهملات</span>
       <button class="badge" onclick="toggleTrashView()" id="sa-trash-toggle">عرض</button>
     </div>
@@ -1079,6 +1094,28 @@
       <div style="display:flex; gap:8px; margin-top:14px;">
         <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('sa-create-modal-bg')">إلغاء</button>
         <button class="btn primary admin block" onclick="createCenter()">إنشاء</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: تعديل مفتاح AI -->
+  <div class="modal-bg" id="sa-key-modal-bg">
+    <div class="modal">
+      <h3>تعديل مفتاح</h3>
+      <div id="sa-key-info" class="list-sub" dir="ltr" style="margin-bottom:8px;"></div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <input type="text" id="sa-key-model" dir="ltr" placeholder="الموديل">
+        <input type="number" id="sa-key-prio" min="1" max="1000" placeholder="الأولوية (الأصغر أول)">
+        <input type="text" id="sa-key-label" placeholder="اسم توضيحي (اختياري)">
+        <input type="password" id="sa-key-new" dir="ltr" autocomplete="off" placeholder="مفتاح جديد (سيبه فاضي لو مش هتغيّر السر)">
+        <label style="display:flex; gap:8px; align-items:center; font-size:14px;">
+          <input type="checkbox" id="sa-key-enabled"> مفعّل
+        </label>
+        <div id="sa-key-msg" style="font-size:13px; min-height:18px;"></div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn block" style="background:var(--cancel-bg); color:var(--ink);" onclick="closeModal('sa-key-modal-bg')">إلغاء</button>
+        <button class="btn primary admin block" onclick="saKeySave()">حفظ</button>
       </div>
     </div>
   </div>
@@ -4784,6 +4821,126 @@ let saTeamCache = [];
 let saInvoicesCache = [];
 let saShowTrash = false;
 
+/* ---------- لوحة مفاتيح الـAI عند مالك المنصة ----------
+   السر الكامل مابيرجعش للمتصفح أبدًا (بيتخزّن في Vault): بنعرض آخر 4 حروف بس، والتعديل = استبدال السر.
+   كل التعديلات بتتسجّل في ai_key_audit. القراءة لمالك المنصة وفريقه، والتعديل للمالك الأساسي فقط. */
+let saKeysCache = [];
+let saKeyEditId = null;
+const SA_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SA_PLATFORM_LIMIT = 30;   // نفس AI_PLATFORM_DAILY_LIMIT الافتراضي في البوابة (للعرض بس)
+function saKeyBadge(k){
+  const st = k.last_status;
+  if(!k.enabled) return {t:'موقوف', c:'#6b7280'};
+  if(!st) return {t:'لم يُفحص', c:'#6b7280'};
+  if(st==='ok') return {t:'سليم ✅', c:'#16a34a'};
+  if(/^HTTP (400|401|403|404)$/.test(st)) return {t:'مرفوض — محتاج مفتاح جديد', c:'#dc2626'};
+  return {t:'مشكلة مؤقتة: '+st, c:'#d97706'};
+}
+function saKeyRow(k){
+  const b = saKeyBadge(k);
+  const calls = k.scope==='center' ? ` · النهاردة: ${k.calls_today} طلب` : '';
+  return `<div style="padding:7px 0; border-bottom:1px solid var(--border,#eee);">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+      <span dir="ltr" style="font-size:12.5px;${k.enabled?'':' opacity:.5;'}">${faEsc(k.provider)} · ${faEsc(k.model)}</span>
+      <span style="font-size:11.5px; color:${b.c}; white-space:nowrap;">${faEsc(b.t)}</span>
+    </div>
+    <div class="list-sub" dir="ltr" style="font-size:11.5px;">${k.key_tail?'••••'+faEsc(k.key_tail):'—'} · priority ${k.priority}${k.label?' · '+faEsc(k.label):''}${calls}</div>
+    <div style="display:flex; gap:6px; margin-top:4px;">
+      <button class="badge" onclick="saKeyEdit('${k.id}')">✏️ تعديل</button>
+      <button class="badge" onclick="saKeyToggle('${k.id}', ${k.enabled?'false':'true'})">${k.enabled?'⏸ إيقاف':'▶️ تشغيل'}</button>
+    </div>
+  </div>`;
+}
+async function saKeysRender(){
+  const box = document.getElementById('sa-keys-list'), sum = document.getElementById('sa-keys-summary');
+  if(!box || !sum) return;
+  box.textContent = '⏳ …';
+  const [k, c] = await Promise.all([supabaseClient.rpc('ai_keys_overview'), supabaseClient.rpc('ai_centers_ai_status')]);
+  if(k.error){ box.textContent = '⚠️ ' + (/forbidden/.test(k.error.message||'') ? 'متاح للمالك وفريق المنصة بس' : 'ماقدرتش أجيب المفاتيح'); sum.textContent = ''; return; }
+  saKeysCache = (k.data || []).filter(x=> SA_UUID_RE.test(String(x.id)));
+  const centers = c.error ? [] : (c.data || []);
+  const bad = saKeysCache.filter(x=> x.enabled && x.last_status && x.last_status!=='ok').length;
+  const noKey = centers.filter(x=> !x.own_keys_enabled).length;
+  const atLimit = centers.filter(x=> x.platform_calls_today >= SA_PLATFORM_LIMIT).length;
+  sum.innerHTML = `${saKeysCache.length} مفتاح · <span style="color:${bad?'#dc2626':'inherit'}">${bad} محتاج انتباه</span> · ${noKey} مؤسسة بمفاتيح المنصة بس · <span style="color:${atLimit?'#d97706':'inherit'}">${atLimit} وصلت حد المنصة اليومي</span>`;
+  const platform = saKeysCache.filter(x=> x.scope==='platform');
+  const byCenter = {};
+  saKeysCache.filter(x=> x.scope==='center').forEach(x=>{ (byCenter[x.center_name||'—'] = byCenter[x.center_name||'—'] || []).push(x); });
+  let h = `<div style="font-weight:600; margin:6px 0 2px;">🌐 مفاتيح المنصة (مشتركة)</div>`;
+  h += platform.length ? platform.map(saKeyRow).join('') : '<div class="list-sub">مفيش مفاتيح منصة.</div>';
+  Object.keys(byCenter).forEach(name=>{
+    const cs = centers.find(x=> x.center_name===name);
+    h += `<div style="font-weight:600; margin:12px 0 2px;">🏢 ${faEsc(name)}${cs?` <span class="list-sub" style="font-weight:400;">· استهلاك المنصة النهاردة ${cs.platform_calls_today}/${SA_PLATFORM_LIMIT}</span>`:''}</div>` + byCenter[name].map(saKeyRow).join('');
+  });
+  const without = centers.filter(x=> !x.own_keys);
+  if(without.length) h += `<div class="list-sub" style="margin-top:12px; line-height:1.8;">بدون مفتاح خاص: ${without.map(x=>faEsc(x.center_name)+' ('+x.platform_calls_today+'/'+SA_PLATFORM_LIMIT+')').join('، ')}</div>`;
+  box.innerHTML = h;
+}
+function saKeyEdit(id){
+  const k = saKeysCache.find(x=> x.id===id); if(!k) return;
+  saKeyEditId = id;
+  document.getElementById('sa-key-info').textContent = `${k.scope==='platform'?'platform':(k.center_name||'center')} · ${k.provider} · ${k.key_tail?'••••'+k.key_tail:''}${k.key_len?' ('+k.key_len+' حرف)':''}`;
+  document.getElementById('sa-key-model').value = k.model || '';
+  document.getElementById('sa-key-prio').value = k.priority;
+  document.getElementById('sa-key-label').value = k.label || '';
+  document.getElementById('sa-key-new').value = '';
+  document.getElementById('sa-key-enabled').checked = !!k.enabled;
+  document.getElementById('sa-key-msg').textContent = '';
+  document.getElementById('sa-key-modal-bg').classList.add('show');
+}
+function saKeyErr(error){
+  const m = (error && error.message) || '';
+  if(/forbidden/.test(m)) return 'التعديل للمالك الأساسي بس';
+  if(/invalid key/.test(m)) return 'المفتاح شكله غلط (20–400 حرف)';
+  if(/invalid model/.test(m)) return 'اسم الموديل غلط';
+  return 'ماقدرتش أحفظ';
+}
+async function saKeySave(){
+  const id = saKeyEditId; if(!id || !SA_UUID_RE.test(id)) return;
+  const msg = document.getElementById('sa-key-msg');
+  const newKey = document.getElementById('sa-key-new').value.trim();
+  const prio = parseInt(document.getElementById('sa-key-prio').value, 10);
+  msg.textContent = '⏳ بحفظ…';
+  const { error } = await supabaseClient.rpc('ai_update_key', {
+    p_id: id,
+    p_model: document.getElementById('sa-key-model').value.trim() || null,
+    p_priority: isNaN(prio) ? null : prio,
+    p_enabled: document.getElementById('sa-key-enabled').checked,
+    p_label: document.getElementById('sa-key-label').value,
+    p_key: newKey || null
+  });
+  if(error){ msg.textContent = '⚠️ ' + saKeyErr(error); return; }
+  document.getElementById('sa-key-new').value = '';
+  closeModal('sa-key-modal-bg');
+  showToast(newKey ? '✅ اتحدّث المفتاح — اضغط 🔍 فحص للتأكد' : '✅ اتحفظ');
+  saKeysRender();
+}
+async function saKeyToggle(id, en){
+  if(!SA_UUID_RE.test(String(id))) return;
+  const { error } = await supabaseClient.rpc('ai_update_key', { p_id: id, p_enabled: en });
+  if(error){ showToast('⚠️ ' + saKeyErr(error)); return; }
+  saKeysRender();
+}
+async function saKeysDiagnose(){
+  const out = document.getElementById('sa-keys-diag'); if(!out) return;
+  out.style.display = 'block'; out.textContent = '⏳ بفحص كل المفاتيح…';
+  try{
+    const r = await supabaseClient.functions.invoke('ai-gateway', { body:{ diagnose:true } });
+    if(r.error || !r.data || !r.data.diagnose){ out.textContent = '⚠️ الفحص فشل'; return; }
+    out.textContent = r.data.diagnose.map(x => (x.ok ? 'OK   ' : 'FAIL ') + x.source + ' · ' + x.provider + ' · ' + x.model + ' · ' + x.ms + 'ms' + (x.ok ? '' : ' · ' + x.status + (x.detail ? ' · ' + x.detail : ''))).join('\n') || 'مفيش مفاتيح للفحص';
+  }catch(e){ out.textContent = '⚠️ الفحص فشل'; }
+  saKeysRender();
+}
+async function saAuditToggle(){
+  const el = document.getElementById('sa-keys-audit'); if(!el) return;
+  if(el.style.display==='block'){ el.style.display = 'none'; return; }
+  el.style.display = 'block'; el.textContent = '⏳ …';
+  const { data, error } = await supabaseClient.rpc('ai_key_audit_list', { p_limit: 30 });
+  if(error){ el.textContent = '⚠️ ماقدرتش أجيب السجل'; return; }
+  if(!data || !data.length){ el.textContent = 'مفيش تعديلات متسجلة لسه.'; return; }
+  el.innerHTML = data.map(a=> `${faEsc(new Date(a.at).toLocaleString('ar-EG'))} — ${faEsc(a.actor_email||'؟')} — ${faEsc(a.center_name||'المنصة')} — ${faEsc(a.detail||a.action)}`).join('<br>');
+}
+
 async function initSuperAdminScreen(){
   const { data: centers, error } = await supabaseClient.from('centers').select('*').is('deleted_at', null).order('created_at', {ascending:false});
   if(error){ showToast('فشل تحميل قائمة المؤسسات'); return; }
@@ -4804,6 +4961,7 @@ async function initSuperAdminScreen(){
 
   const statusLabel = {trial:'تجربة', active:'مفعّلة', past_due:'متأخرة بالدفع', suspended:'موقوفة', cancelled:'ملغاة'};
   const statusColor = {trial:'#6b7280', active:'#16a34a', past_due:'#d97706', suspended:'#dc2626', cancelled:'#6b7280'};
+  saKeysRender();
 
   document.getElementById('sa-centers-list').innerHTML = saCentersCache.map(c=>`
     <div class="list-row">
