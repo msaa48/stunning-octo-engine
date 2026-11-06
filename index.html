@@ -1044,6 +1044,12 @@
   <div class="container">
     <div class="stat-grid" id="sa-stats"></div>
 
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <span>🧭 خريطة النظام ومركز التحكم</span>
+      <button class="badge" id="sa-map-toggle" onclick="saMapToggle()">فتح</button>
+    </div>
+    <div id="sa-map-body" style="display:none; margin-bottom:14px;"></div>
+
     <div class="section-title" style="margin-top:4px; display:flex; justify-content:space-between; align-items:center;">
       <span>🏢 المؤسسات</span>
       <button class="badge" onclick="openCreateCenterModal()">+ مؤسسة جديدة</button>
@@ -4939,6 +4945,192 @@ async function saAuditToggle(){
   if(error){ el.textContent = '⚠️ ماقدرتش أجيب السجل'; return; }
   if(!data || !data.length){ el.textContent = 'مفيش تعديلات متسجلة لسه.'; return; }
   el.innerHTML = data.map(a=> `${faEsc(new Date(a.at).toLocaleString('ar-EG'))} — ${faEsc(a.actor_email||'؟')} — ${faEsc(a.center_name||'المنصة')} — ${faEsc(a.detail||a.action)}`).join('<br>');
+}
+
+/* ---------- خريطة النظام ومركز التحكم (حسابات المطورين) ----------
+   شرح مرئي للنظام كله + إحصائيات حيّة (قراءة فقط من dev_system_overview) + خريطة الصلاحيات حسب درجة الخطورة + فحص شامل.
+   قايمة الخدمات المساعدة (Edge Functions) مكتوبة يدويًا هنا — حدّثها لو اتضافت خدمة جديدة. */
+let saMapOv = null, saMapOpen = false;
+const SA_TABLE_GROUPS = [
+  ['👤 الحسابات والمؤسسات', ['centers','center_admins','center_invoices','profiles','super_admin_emails','app_settings','password_reset_requests','family_link_logs','impersonation_audit_log']],
+  ['🧑‍🎓 الطلاب والحضور', ['children','parents','teachers','assistants','assistant_teachers','classrooms','enrollments','subjects','attendance','attendance_exceptions','schedule','schedule_settings_by_classroom','calendar_events','events','evaluations','subject_tasks','task_completions']],
+  ['💰 المالية', ['payments','subscriptions','teacher_payouts','teacher_raises','teacher_attendance','teacher_evaluations']],
+  ['💬 التواصل', ['messages','notifications','complaints']],
+  ['🧠 الامتحانات', ['exams','exam_results']],
+  ['🤖 الذكاء الاصطناعي', ['ai_provider_keys','ai_usage','ai_key_audit']]
+];
+const SA_ROLE_LABEL = {ADMIN:'مدير', TEACHER:'مدرّس', PARENT:'ولي أمر', ASSISTANT:'أسيستنت', OWNER:'مالك/فريق'};
+const SA_NODES = [
+  {id:'users', ico:'👥', t:'المستخدمين', s:'5 أنواع حسابات',
+   what:'مدير المؤسسة، المدرّس، الأسيستنت، ولي الأمر، ومالك المنصة وفريقه. كل واحد بيشوف شاشته هو بس.',
+   fail:'لو حساب اتسرق: بيتغيّر الباسورد وبيتقفل من نفس الشاشة.',
+   ctl:'إنشاء الحسابات وإعادة الباسورد من الخدمات المساعدة. المالك يقدر يدخل بأي حساب (وبيتسجّل).',
+   live:o=> o ? Object.keys(o.users||{}).map(k=>(SA_ROLE_LABEL[k]||k)+' '+o.users[k]).join(' · ') : ''},
+  {id:'app', ico:'📱', t:'التطبيق (الواجهة)', s:'ملف واحد بيشتغل في المتصفح',
+   what:'كل الشاشات في ملف index.html واحد بيتحمّل في موبايل المستخدم. مفيش سيرفر بينا وبين الواجهة، هي بس ملفات.',
+   fail:'لو الاستضافة وقعت: الموقع مايفتحش، لكن البيانات سليمة ومحفوظة في قاعدة البيانات.',
+   ctl:'التحديث بيتم برفع الملف على الريبو. الاستضافة لازم تسمح بالاستخدام التجاري قبل البيع.',
+   live:()=>'ملف واحد'},
+  {id:'auth', ico:'🔐', t:'تسجيل الدخول', s:'Supabase Auth',
+   what:'بيتأكد مين الداخل (إيميل وباسورد) وبيدّيه جلسة. بعدها كل طلب للبيانات بيتبعت ومعاه هويته.',
+   fail:'لو وقع: محدش يقدر يدخل، والمفتوحين بيكملوا لحد ما الجلسة تخلص.',
+   ctl:'من لوحة Supabase: المستخدمين، إعدادات الدخول، الروابط المسموحة.',
+   live:()=>'مدارة من Supabase'},
+  {id:'rls', ico:'🛡️', t:'حماية البيانات (RLS)', s:'مين يشوف إيه',
+   what:'قاعدة مكتوبة على كل جدول بتقول مين يقرا ومين يكتب. بسببها كل مؤسسة معزولة عن غيرها، وولي الأمر مايشوفش غير ولاده.',
+   fail:'جدول من غير RLS = أي حد داخل يقدر يشوفه. ده أخطر عطل ممكن يحصل.',
+   ctl:'الفحص الشامل تحت بيراجع إن كل الجداول عليها RLS. أي جدول جديد لازم يتفعّل عليه قبل الاستخدام.',
+   live:o=> o ? (o.tables.filter(t=>t.rls).length+'/'+o.tables.length+' جدول محمي') : ''},
+  {id:'db', ico:'🗄️', t:'قاعدة البيانات', s:'Postgres',
+   what:'مخزن كل حاجة: طلاب، حضور، مدفوعات، رسايل. كل صف عليه رقم المؤسسة (center_id) وبيه بتتفصل المؤسسات.',
+   fail:'لو وقعت: التطبيق كله بيقف. وفي الخطة المجانية مفيش نسخ احتياطية تلقائية.',
+   ctl:'خريطة الجداول تحت. التغييرات بتتعمل بملفات migrations في الريبو.',
+   live:o=> o ? (o.tables.length+' جدول · '+o.db_size) : ''},
+  {id:'fn', ico:'⚙️', t:'الخدمات المساعدة', s:'Edge Functions',
+   what:'برامج صغيرة على السيرفر لحاجات مينفعش تتعمل من المتصفح: ai-gateway (الذكاء الاصطناعي)، create-account (إنشاء حسابات)، reset-password (إعادة الباسورد)، migrate-legacy-accounts (نقل الحسابات القديمة).',
+   fail:'لو ai-gateway وقعت: المساعد الذكي بيشتغل أوفلاين بس. لو create-account وقعت: مفيش حسابات جديدة.',
+   ctl:'من لوحة Supabase ← Edge Functions: السجلات، النشر، إعادة التشغيل.',
+   live:()=>'4 رئيسية'},
+  {id:'vault', ico:'🔒', t:'الخزنة (Vault)', s:'أسرار مشفّرة',
+   what:'هنا بتتخزن مفاتيح الذكاء الاصطناعي مشفّرة. المتصفح مايقدرش يقراها أبدًا، والخدمة المساعدة بس هي اللي بتستخدمها.',
+   fail:'لو مفتاح اتسرب: بتستبدله من قسم مفاتيح الذكاء الاصطناعي من غير ما تمس الخزنة.',
+   ctl:'قسم «مفاتيح الذكاء الاصطناعي» تحت: استبدال، إيقاف، فحص.',
+   live:()=> saKeysCache.length ? (saKeysCache.length+' مفتاح') : ''},
+  {id:'ai', ico:'🤖', t:'مزوّدو الذكاء الاصطناعي', s:'Gemini · Groq · OpenRouter · Anthropic',
+   what:'الشركات اللي بنبعتلها سؤال المستخدم ونرجّع الرد. لو الأول وقع بنجرّب اللي بعده تلقائي.',
+   fail:'لو كلهم وقعوا: المساعد بيكمل أوفلاين من بيانات الجهاز، والمميزات الأساسية مش بتتأثر.',
+   ctl:'الأولويات والموديلات والتشغيل والإيقاف من قسم المفاتيح. حد المنصة اليومي لكل مؤسسة 30 طلب.',
+   live:()=> saKeysCache.length ? (saKeysCache.filter(k=>k.enabled && k.last_status && k.last_status!=='ok').length+' محتاج انتباه') : ''}
+];
+function saMeCan(perm){ return !!(session.isOwner || (session.permissions && session.permissions[perm])); }
+// مستويات التحكم: ok = مراقبة بس، mid = تغيير شغّال، high = خطر أو صعب الرجوع
+function saControlItems(){
+  return [
+    {lv:'ok', t:'فحص شامل للنظام', d:'بيراجع الحماية والمفاتيح والمؤسسات ويقولك لو في حاجة محتاجة انتباه. مفيش أي تغيير.', who:'المالك والفريق', go:'saHealthCheck()', btn:'شغّل الفحص', can:true},
+    {lv:'ok', t:'فحص مفاتيح الذكاء', d:'بيجرّب كل مفتاح فعليًا ويقولك مين شغّال ومين لأ.', who:'المالك والفريق', go:'saKeysDiagnose(); saScrollTo(\'sa-keys-summary\')', btn:'افتح', can:true},
+    {lv:'ok', t:'سجل تعديلات المفاتيح', d:'مين غيّر إيه ومتى.', who:'المالك والفريق', go:'saScrollTo(\'sa-keys-summary\')', btn:'روح للقسم', can:true},
+    {lv:'mid', t:'إيقاف / تفعيل مؤسسة', d:'الإيقاف بيمنع المؤسسة من الدخول فورًا، والتفعيل بيرجّعها. البيانات ما بتتمسحش.', who:'مالك أو «إدارة المؤسسات»', go:'saScrollTo(\'sa-centers-list\')', btn:'قايمة المؤسسات', can:saMeCan('manage_centers')},
+    {lv:'mid', t:'الدخول كأي حساب', d:'تشوف النظام بعين مدير أو مدرّس أو ولي أمر معيّن عشان تحل مشكلته. بيتسجّل في سجل التدقيق.', who:'المالك والفريق', go:'saScrollTo(\'sa-centers-list\')', btn:'قايمة المؤسسات', can:true},
+    {lv:'mid', t:'محاكاة الوقت', d:'تقدّم ساعة المؤسسة عشان تجرّب انتهاء الاشتراكات والحضور من غير ما تستنى.', who:'المالك والفريق', go:'saScrollTo(\'sa-centers-list\')', btn:'قايمة المؤسسات', can:true},
+    {lv:'mid', t:'استبدال / إيقاف مفتاح ذكاء', d:'تغيّر السر أو الموديل أو الأولوية لأي مفتاح، منصة أو مؤسسة.', who:'المالك الأساسي فقط', go:'saScrollTo(\'sa-keys-summary\')', btn:'قسم المفاتيح', can:!!session.isOwner},
+    {lv:'mid', t:'فواتير المؤسسات', d:'متابعة اشتراكات المؤسسات والمتأخر منها.', who:'مالك أو «إدارة الفواتير»', go:'saScrollTo(\'sa-invoices-title\')', btn:'افتح', can:saMeCan('manage_billing')},
+    {lv:'high', t:'فريق المنصة وصلاحياتهم', d:'تدّي عضو صلاحية إدارة مؤسسات أو فواتير أو حذف نهائي. الصلاحيات دي بتتحكم في كل العملاء.', who:'المالك أو «إدارة الفريق»', go:'saScrollTo(\'sa-team-title\')', btn:'افتح', can:saMeCan('manage_team')},
+    {lv:'high', t:'أرشفة مؤسسة', d:'بتنقل المؤسسة لسلة المهملات وبتخفيها. بتقدر ترجّعها من السلة.', who:'مالك أو «إدارة المؤسسات»', go:'saScrollTo(\'sa-centers-list\')', btn:'قايمة المؤسسات', can:saMeCan('manage_centers')},
+    {lv:'high', t:'حذف نهائي', d:'مسح مؤسسة من سلة المهملات للأبد. مفيش رجوع، ومفيش نسخة احتياطية تلقائية.', who:'مالك أو «الحذف النهائي»', go:'saScrollTo(\'sa-trash-toggle\')', btn:'سلة المهملات', can:saMeCan('permanent_delete')}
+  ];
+}
+const SA_MISSING = [
+  'نسخ احتياطي وتصدير بيانات كل مؤسسة بضغطة واحدة',
+  'إيقاف تلقائي للتجارب المنتهية',
+  'تنبيه تلقائي لما مفتاح ذكاء يقع أو مؤسسة توصل للحد',
+  'مراقبة إن الموقع شغّال (Uptime)'
+];
+function saScrollTo(id){ const el = document.getElementById(id); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }
+function saMapNode(id){ const el = document.getElementById('sa-node-'+id); if(el) el.style.display = (el.style.display==='block') ? 'none' : 'block'; }
+async function saMapToggle(){
+  saMapOpen = !saMapOpen;
+  document.getElementById('sa-map-body').style.display = saMapOpen ? 'block' : 'none';
+  document.getElementById('sa-map-toggle').textContent = saMapOpen ? 'إغلاق' : 'فتح';
+  if(saMapOpen) await saMapRender();
+}
+async function saMapRender(){
+  const box = document.getElementById('sa-map-body'); if(!box) return;
+  box.innerHTML = '<div class="list-sub">⏳ …</div>';
+  const { data, error } = await supabaseClient.rpc('dev_system_overview');
+  saMapOv = error ? null : data;
+  const o = saMapOv;
+  const badge = (txt)=> txt ? `<span style="font-size:11.5px; background:var(--cancel-bg); border-radius:10px; padding:2px 8px; white-space:nowrap;">${faEsc(txt)}</span>` : '';
+  let h = '';
+  if(error) h += '<div class="list-sub" style="color:var(--danger); margin-bottom:8px;">⚠️ الإحصائيات الحيّة مش متاحة (الشرح شغّال).</div>';
+  // 1) الرسم المعماري
+  h += '<div style="font-weight:600; margin:4px 0 8px;">1) إزاي النظام متركّب (اضغط على أي مربع)</div>';
+  SA_NODES.forEach((n, i)=>{
+    h += `<div style="border:1px solid var(--border); border-radius:14px; padding:10px 12px; background:var(--card);">
+      <div onclick="saMapNode('${n.id}')" style="display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer;">
+        <div><div style="font-weight:600;">${n.ico} ${faEsc(n.t)}</div><div class="list-sub" style="font-size:12px;">${faEsc(n.s)}</div></div>
+        ${badge(n.live(o))}
+      </div>
+      <div id="sa-node-${n.id}" style="display:none; margin-top:8px; font-size:13px; line-height:1.9; border-top:1px dashed var(--border); padding-top:8px;">
+        <div><b>إيه ده؟</b> ${faEsc(n.what)}</div>
+        <div><b>لو وقع؟</b> ${faEsc(n.fail)}</div>
+        <div><b>إزاي تتحكم فيه؟</b> ${faEsc(n.ctl)}</div>
+      </div>
+    </div>`;
+    if(i < SA_NODES.length-1) h += '<div style="text-align:center; color:var(--muted); line-height:1.2; margin:2px 0;">⬇</div>';
+  });
+  // 2) خريطة البيانات
+  h += '<div style="font-weight:600; margin:18px 0 6px;">2) فين بياناتك (الأرقام تقريبية، 🔒 = عليها حماية)</div>';
+  if(o){
+    const byName = {}; o.tables.forEach(t=> byName[t.name] = t);
+    const used = new Set();
+    const groups = SA_TABLE_GROUPS.map(([title, names])=>[title, names.filter(n=>byName[n])]);
+    groups.forEach(g=> g[1].forEach(n=> used.add(n)));
+    const rest = o.tables.filter(t=> !used.has(t.name)).map(t=>t.name);
+    if(rest.length) groups.push(['📦 أخرى', rest]);
+    groups.forEach(([title, names])=>{
+      if(!names.length) return;
+      h += `<div style="margin:8px 0 4px; font-size:13px;">${faEsc(title)}</div><div style="display:flex; flex-wrap:wrap; gap:5px;">` +
+        names.map(n=>{ const t = byName[n]; return `<span dir="ltr" style="font-size:11.5px; border:1px solid var(--border); border-radius:10px; padding:2px 8px; background:var(--card);${t.rls?'':' border-color:var(--danger); color:var(--danger);'}">${t.rls?'🔒 ':'⚠️ '}${faEsc(n)} · ${t.rows}</span>`; }).join('') + '</div>';
+    });
+    const pct = Math.round((o.db_bytes/(500*1024*1024))*100);
+    h += `<div class="list-sub" style="margin-top:8px;">حجم القاعدة ${faEsc(o.db_size)} (${pct}% من حد الخطة المجانية 500MB لو لسه عليها)</div>`;
+  } else h += '<div class="list-sub">مش متاحة.</div>';
+  // 3) مركز التحكم
+  h += '<div style="font-weight:600; margin:18px 0 6px;">3) إيه اللي تقدر تتحكم فيه</div>';
+  h += '<div class="list-sub" style="margin-bottom:6px;">🟢 مراقبة بس · 🟡 تغيير شغّال · 🔴 خطر أو صعب الرجوع</div>';
+  const lvIco = {ok:'🟢', mid:'🟡', high:'🔴'};
+  saControlItems().forEach(c=>{
+    h += `<div style="border:1px solid var(--border); border-radius:12px; padding:9px 11px; margin-bottom:6px; background:var(--card);${c.can?'':' opacity:.6;'}">
+      <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+        <div style="font-weight:600; font-size:14px;">${lvIco[c.lv]} ${faEsc(c.t)}</div>
+        <span style="font-size:11.5px; white-space:nowrap;">${c.can?'✅ متاح ليك':'🔒 مش متاح لحسابك'}</span>
+      </div>
+      <div style="font-size:12.5px; line-height:1.8; margin-top:3px;">${faEsc(c.d)}</div>
+      <div class="list-sub" style="font-size:11.5px;">مين: ${faEsc(c.who)}</div>
+      ${c.can ? `<button class="badge" style="margin-top:5px;" onclick="${c.go}">${faEsc(c.btn)}</button>` : ''}
+    </div>`;
+  });
+  h += '<div style="font-weight:600; margin:14px 0 4px;">⚪ لسه مش موجود (هيقلل الصيانة لو اتبنى)</div>' + SA_MISSING.map(x=>`<div style="font-size:12.5px; line-height:1.9;">• ${faEsc(x)}</div>`).join('');
+  h += '<div id="sa-health-out" style="margin-top:14px; font-size:13px; line-height:1.9;"></div>';
+  box.innerHTML = h;
+}
+async function saHealthCheck(){
+  await saMapRender();
+  saMapOpen = true; document.getElementById('sa-map-body').style.display = 'block'; document.getElementById('sa-map-toggle').textContent = 'إغلاق';
+  const out = document.getElementById('sa-health-out'); if(!out) return;
+  out.innerHTML = '⏳ بفحص النظام…'; saScrollTo('sa-health-out');
+  const lines = []; const add = (lv, txt)=> lines.push({lv, txt});
+  const o = saMapOv;
+  if(!o) add('bad', 'ماقدرتش أقرا إحصائيات النظام');
+  else {
+    const noRls = o.tables.filter(t=>!t.rls).map(t=>t.name);
+    if(noRls.length) add('bad', 'جداول من غير حماية RLS: ' + noRls.join('، ')); else add('ok', `كل الجداول (${o.tables.length}) عليها حماية RLS`);
+    const noPol = o.tables.filter(t=> t.rls && t.policies===0 && t.name.indexOf('ai_')!==0).map(t=>t.name);
+    if(noPol.length) add('warn', 'جداول محمية بس مفيش لها سياسات (محدش يقدر يوصلها من التطبيق): ' + noPol.join('، ')); else add('ok', 'كل جدول ليه سياسات وصول واضحة');
+    const pct = Math.round((o.db_bytes/(500*1024*1024))*100);
+    add(pct>=70?'warn':'ok', `حجم القاعدة ${o.db_size} (${pct}% من 500MB)`);
+    const c = o.centers||{};
+    add((c.suspended||c.past_due)?'warn':'ok', `المؤسسات: ${Object.keys(c).map(k=>k+' '+c[k]).join(' · ')||'لسه مفيش'}`);
+  }
+  try{
+    const k = await supabaseClient.rpc('ai_keys_overview');
+    if(k.error) add('warn', 'ماقدرتش أقرا المفاتيح');
+    else {
+      const keys = k.data||[]; const bad = keys.filter(x=> x.enabled && x.last_status && x.last_status!=='ok');
+      const never = keys.filter(x=> x.enabled && !x.last_status).length;
+      add(bad.length?'warn':'ok', `مفاتيح الذكاء: ${keys.length} · ${bad.length} فيها مشكلة${never?` · ${never} لسه ماتفحصتش`:''}`);
+      if(!keys.some(x=> x.scope==='platform' && x.enabled)) add('warn', 'مفيش مفتاح منصة شغّال (المؤسسات من غير مفتاح خاص هتفقد الذكاء الاصطناعي)');
+    }
+  }catch(e){ add('warn', 'ماقدرتش أقرا المفاتيح'); }
+  try{
+    const r = await supabaseClient.functions.invoke('ai-gateway', { body:{ diagnose:true } });
+    if(r.error || !r.data || !r.data.diagnose) add('warn', 'خدمة الذكاء ai-gateway ماردّتش على الفحص');
+    else { const d = r.data.diagnose; const okN = d.filter(x=>x.ok).length; add(okN===d.length && d.length ? 'ok' : 'warn', `اختبار فعلي للمزوّدين: ${okN} من ${d.length} شغّال`); }
+  }catch(e){ add('warn', 'خدمة الذكاء ai-gateway ماردّتش على الفحص'); }
+  const bad = lines.filter(l=>l.lv!=='ok').length;
+  const ico = {ok:'✅', warn:'⚠️', bad:'❌'}, col = {ok:'inherit', warn:'var(--warn)', bad:'var(--danger)'};
+  out.innerHTML = `<div style="font-weight:600; margin-bottom:4px;">${bad ? `🩺 النتيجة: ${bad} حاجة محتاجة انتباه` : '🩺 النتيجة: كل حاجة تمام'}</div>` +
+    lines.map(l=>`<div style="color:${col[l.lv]};">${ico[l.lv]} ${faEsc(l.txt)}</div>`).join('');
 }
 
 async function initSuperAdminScreen(){
