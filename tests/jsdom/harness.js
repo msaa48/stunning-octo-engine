@@ -44,6 +44,6 @@ const ctx={console,db,Date,Math,JSON,Set,Object,Array,String,Number,RegExp,parse
  getAdminSubscriptionCounts:()=>({expired:1,pending:1}), timeStr:iso=>iso.slice(11,16), showToast:()=>{}, supabaseClient:{}, assistantInputChanged:()=>{},
 };
 vm.createContext(ctx);
-const code=helpers+'\n'+grade+'\n'+evmeta+'\n'+wk+'\n'+adminMeta+'\n'+block+'\n'+askBlock+'\nthis.__api={assistantPlan,assistantExecute,assistantScope,assistantToolsFor,assistantParse,assistantSuggest,assistantCatalog,ASSIST_TOOLS,get ctxState(){return assistantCtx},setCtx(v){assistantCtx=v}};';
+const code=helpers+'\n'+grade+'\n'+evmeta+'\n'+wk+'\n'+adminMeta+'\n'+block+'\n'+askBlock+'\nthis.__api={assistantPlan,assistantExecute,assistantScope,assistantToolsFor,assistantParse,assistantSuggest,assistantCatalog,ASSIST_TOOLS,get ctxState(){return assistantCtx},setCtx(v){assistantCtx=v},get pending(){return assistantPending},resetPending(){assistantPending=null}};';
 vm.runInContext(code,ctx);
 module.exports={ctx,api:ctx.__api,db};

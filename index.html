@@ -5966,6 +5966,63 @@ const ASSIST_TOOLS = {
         more: allRows.length>10 ? `+${allRows.length-10} حالة تانية في تاب المدفوعات` : '', footer:{name:'openRoleTab', arg:'payments', label:'عرض كل المدفوعات'}};
     }
   },
+  // أدوات "المتأخرين" — مالهاش kw عن قصد: بتتنده من سؤال التوضيح (مين؟ ثم في إيه؟) أو من الـAI، مش من تخمين كلمة "متأخر"
+  late_arrivals: {
+    roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], ex:'مين الطلاب اللي جم متأخر النهاردة؟',
+    desc:'الطلاب اللي اتسجّل ليهم «جه متأخر» في حصص النهاردة. args: {}',
+    kw:[],
+    validate: () => ({}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const ids = new Set(sc.children.map(c=>c.id)); const first = {};
+      (db.events||[]).filter(e=> e.eventType==='LATE' && ids.has(e.childId) && isToday(e.eventTime)).forEach(e=>{ if(!first[e.childId] || e.eventTime<first[e.childId]) first[e.childId] = e.eventTime; });
+      const list = Object.keys(first).map(id=>({c:sc.children.find(x=>x.id===id), t:first[id]})).filter(x=>x.c);
+      if(!list.length) return {text:'مفيش حد اتسجّل «جه متأخر» النهاردة 👌'};
+      return {title:'🕒 جُم متأخرين النهاردة', summary:`${list.length} طالب اتسجّل ليهم «جه متأخر»`,
+        rows: list.slice(0,8).map(x=>({label:x.c.name, sub:'اتسجّل '+assistantFmtTime(x.t), act:assistantChildAct(sc.role, x.c.id)})),
+        more: list.length>8 ? `+${list.length-8} طالب تاني` : ''};
+    }
+  },
+  late_teachers: {
+    roles:['ADMIN'], ex:'مين المدرّسين المتأخرين النهاردة؟',
+    desc:'المدرّسين اللي سجّلوا حضور بعد الميعاد النهاردة، أو حصتهم بدأت ولسه ما سجّلوش حضور. args: {}',
+    kw:[],
+    validate: () => ({}),
+    run: (a, db) => {
+      const now = getSystemNow(); const checked = new Set(); const late = [];
+      (db.teacherAttendance||[]).filter(r=> r.type==='CHECK_IN' && isToday(r.time)).forEach(r=>{ checked.add(r.teacherId); if(isLateCheckIn(r.time)) late.push(r); });
+      const missing = (db.teachers||[]).filter(t=>{
+        if(checked.has(t.id)) return false;
+        const ct = getTeacherFirstClassTimeToday(t.id); if(!ct) return false;
+        const hm = ct.split(':').map(Number);
+        return now.getTime() >= new Date(now.getFullYear(), now.getMonth(), now.getDate(), hm[0], hm[1]).getTime();
+      });
+      if(!late.length && !missing.length) return {text:'مفيش مدرّس متأخر النهاردة 👌'};
+      const nm = id => { const t = (db.teachers||[]).find(x=>x.id===id); return t ? t.name : 'مدرّس'; };
+      const rows = late.map(r=>({label:nm(r.teacherId), sub:'سجّل حضور '+assistantFmtTime(r.time)+' (بعد الميعاد)'}))
+        .concat(missing.map(t=>({label:t.name, sub:'حصته بدأت '+getTeacherFirstClassTimeToday(t.id)+' ولسه ما سجّلش حضور'})));
+      return {title:'🕒 المدرّسين المتأخرين النهاردة', summary:`${late.length} سجّل حضور متأخر · ${missing.length} حصتهم بدأت ولسه`,
+        rows: rows.slice(0,8), more: rows.length>8 ? `+${rows.length-8} مدرّس تاني` : '', footer:{name:'openRoleTab', arg:'teacherAttendance', label:'عرض حضور المدرّسين'}};
+    }
+  },
+  overdue_parents: {
+    roles:['ADMIN'], ex:'مين أولياء الأمور المتأخرين في الدفع؟',
+    desc:'أولياء الأمور اللي أولادهم عليهم دفعات متأخرة أو اشتراك منتهي/في انتظار الدفع. args: {}',
+    kw:[],
+    validate: () => ({}),
+    run: (a, db) => {
+      const sc = assistantScope(db); const cm = localMonthStr(); const late = new Set();
+      (db.payments||[]).filter(p=> p.status!=='PAID' && p.month < cm && p.childId).forEach(p=> late.add(p.childId));
+      assistantUnpaidKids(sc, db).forEach(x=>{ if(x.st.key==='expired' || x.st.key==='pending') late.add(x.child.id); });
+      const rows = [];
+      (db.parents||[]).forEach(p=>{
+        const kids = (db.children||[]).filter(c=> (p.childIds||[]).indexOf(c.id)>=0 && late.has(c.id));
+        if(kids.length) rows.push({label:p.name, sub:kids.map(c=>c.name).join('، ')});
+      });
+      if(!rows.length) return {text:'مفيش ولي أمر عليه دفعات متأخرة 👌'};
+      return {title:'💳 أولياء أمور عليهم متأخرات', summary:`${rows.length} ولي أمر`, rows: rows.slice(0,8), more: rows.length>8 ? `+${rows.length-8} ولي أمر تاني` : '',
+        footer:{name:'openRoleTab', arg:'payments', label:'عرض كل المدفوعات'}};
+    }
+  },
   today_schedule: {
     roles:['ADMIN','TEACHER','ASSISTANT','PARENT'], day:true, ex:'عندي إيه النهاردة؟',
     desc:'الحصص اللي ليها معاد في يوم معين (النهاردة افتراضيًا). args: {"day":"today|tomorrow|yesterday|اسم اليوم بالعربي"}',
@@ -6418,6 +6475,67 @@ function assistantDetectDay(n){
   const d = ASSIST_DAYS.find(x=>x.re.test(n)); if(d) return d.name;
   return 'today';
 }
+/* ---------- أسئلة غامضة ("مين متأخر؟"): بنسأل توضيح (مين؟ ثم في إيه؟) بدل ما نخمّن ----------
+   الحالة assistantPending بتفضل لرسالة واحدة بس: لو الرد مش إجابة على السؤال بنمسحها ونعامله كسؤال جديد. */
+let assistantPending = null;   // {kind:'late', who, what}
+const ASSIST_LATE_RE = /(?:^|\s)(?:[وفب]|ل)?(?:ال)?(?:متاخر|اتاخر|بيتاخر|تاخر)\S{0,3}(?:\s|$)/;
+const ASSIST_LATE_SKIP_RE = /واجب|امتحان|اختبار|تسليم|شكوي|شكاوي|رسايل|رسالة|ردود/;   // "متأخر" هنا بمعنى تاني (واجب/شكوى..) فمش بنسأل
+const ASSIST_WHO = [
+  ['student',   /(?:^|\s)(?:ال)?(?:طالب|طلاب|طلبه|طفل|اطفال|ولاد|عيال)\S{0,2}(?:\s|$)/, '🧑‍🎓 طالب',   'الطلاب'],
+  ['teacher',   /(?:^|\s)(?:ال)?(?:مدرس|معلم)\S{0,3}(?:\s|$)/,                          '👩‍🏫 مدرّس',   'المدرسين'],
+  ['parent',    /(?:^|\s)(?:ال)?(?:ولي|اولياء|اهالي|والد)\S{0,3}(?:\s|$)/,               '👨‍👩‍👧 ولي أمر', 'اولياء الامور'],
+  ['assistant', /(?:^|\s)(?:ال)?(?:اسيستنت|اسيستانت|مساعد)\S{0,3}(?:\s|$)/,              '🧑‍💼 أسيستنت', 'الاسيستنت']
+];
+const ASSIST_WHAT = [
+  ['pay',    /(?:^|\s)(?:ال)?(?:دفع|فلوس|مصروف|مصاريف|اشتراك|قسط|اقساط|مدفوع|سداد|فواتير|فاتور|رسوم)\S{0,4}(?:\s|$)/, '💳 في الدفع',           'في الدفع'],
+  ['attend', /(?:^|\s)(?:ال)?(?:(?:حضور|حصه|حصص|ميعاد|معاد|مواعيد|وصول|جاي|جايين|انصراف)\S{0,3}|جه|جم|وصل)(?:\s|$)/, '🕒 في الحضور والمواعيد', 'في الحضور']
+];
+// اللي متاح فعلًا لكل نوع (عشان منعرضش اختيارات مالهاش بيانات ورا)
+const ASSIST_LATE_OPTS = {student:['pay','attend'], teacher:['attend'], parent:['pay']};
+function assistantPickSlot(list, n){ for(const x of list){ if(x[1].test(n)) return x[0]; } return null; }
+function assistantChoices(list, ids){ return list.filter(x=> !ids || ids.indexOf(x[0])>=0).map(x=>({label:x[2], q:x[3]})); }
+function assistantLateStep(role, who, what){
+  if(role!=='ADMIN'){
+    // غير المدير نطاقه طلابه (أو أولاده لولي الأمر) فمفيش سؤال "مين"
+    if(who && who!=='student'){ assistantPending = null; return {reply:'ده مش متاح لحسابك. أقدر أساعدك في متأخرات طلابك.'}; }
+    who = 'student';
+  }
+  if(!who){
+    assistantPending = {kind:'late', who:null, what};
+    return {reply:'تقصد مين بالظبط اللي متأخر؟', chips:assistantChoices(ASSIST_WHO, role==='ADMIN' ? ['student','teacher','parent','assistant'] : null)};
+  }
+  if(who==='assistant'){ assistantPending = null; return {reply:'الأسيستنت مالهمش تسجيل حضور ولا مواعيد في النظام، فمقدرش أحدد مين اتأخر منهم.'}; }
+  const opts = ASSIST_LATE_OPTS[who];
+  if(what && opts.indexOf(what)<0){
+    assistantPending = {kind:'late', who, what:null};
+    const wl = {student:'الطلاب', teacher:'المدرّسين', parent:'أولياء الأمور'}[who];
+    return {reply:`ده مش متاح عن ${wl} في النظام. المتاح:`, chips:assistantChoices(ASSIST_WHAT, opts)};
+  }
+  if(!what && opts.length>1){
+    assistantPending = {kind:'late', who, what:null};
+    return {reply:'متأخر في إيه بالظبط؟', chips:assistantChoices(ASSIST_WHAT, opts)};
+  }
+  assistantPending = null;
+  what = what || opts[0];
+  if(who==='student' && what==='pay') return role==='PARENT' ? {tool:'subscription_status', args:{}, conf:10} : {tool:'overdue_payments', args:{}, conf:10};
+  if(who==='student') return {tool:'late_arrivals', args:{}, conf:10};
+  if(who==='teacher') return {tool:'late_teachers', args:{}, conf:10, intro:'هعرض المدرّسين المتأخرين في الحضور النهاردة (ده المتاح عن المدرّسين في النظام):'};
+  return {tool:'overdue_parents', args:{}, conf:10, intro:'هعرض أولياء الأمور المتأخرين في الدفع (ده المتاح عن أولياء الأمور في النظام):'};
+}
+// بيشتغل في أول assistantPlan لو في سؤال توضيح مستني إجابة (إجابة قصيرة بس، وإلا بنعتبرها سؤال جديد)
+function assistantResolvePending(n, role){
+  const p = assistantPending; assistantPending = null;
+  if(!p || n.split(' ').length>4) return null;
+  if(p.who===null){ const who = assistantPickSlot(ASSIST_WHO, n); return who ? assistantLateStep(role, who, p.what) : null; }
+  const what = assistantPickSlot(ASSIST_WHAT, n); return what ? assistantLateStep(role, p.who, what) : null;
+}
+// أول سؤال غامض: "متأخر" من غير ما نعرف مين ولا في إيه
+function assistantAmbiguous(n, role){
+  if(!ASSIST_LATE_RE.test(n) || ASSIST_LATE_SKIP_RE.test(n)) return null;
+  const who = assistantPickSlot(ASSIST_WHO, n), what = assistantPickSlot(ASSIST_WHAT, n);
+  if(what==='pay' && !who) return null;   // "مين المتأخرين في الدفع؟" واضحة — الأداة الموجودة بتجاوب عليها
+  return assistantLateStep(role, who, what);
+}
 const ASSIST_OPEN_RE = /^(?:افتحلي|افتح|فتح|روح|اذهب|وديني|خدني|اعرض|وريني)\s*(?:ل|لي|علي|الي|ع)?\s*(.+)$/;
 const ASSIST_FETCH_RE = /^(?:هاتلي|هات لي|جيبلي|جيب لي|عايز اشوف|عاوز اشوف|عايز افتح|عاوز افتح|ممكن افتح)\s*(?:شاشه|قسم|صفحه|تاب)\s*(.+)$/;
 // ضمير يرجع لآخر طالب: «وهو/وهي/عنه…» أو «الطالب ده». ما بنعتبرش «الشهر ده / الاسبوع ده» ضمير طالب
@@ -6481,6 +6599,8 @@ function assistantPlan(q){
   if(!n) return null;
   if(/^(?:سلام عليكم|السلام عليكم|سلام|اهلا|اهلين|مرحبا|هاي|هلا|صباح الخير|مساء الخير|صباح النور|ازيك)[\s!.؟?]*$/.test(n)) return {reply:'أهلًا بيك 👋 قولّي أساعدك في إيه؟ ممكن تسألني «تقدر تساعدني في إيه؟» عشان تشوف إمكانياتي.', conf:10};
   if(/^(?:شكرا|متشكر|متشكره|تسلم|تسلمي|ميرسي|مشكور|جزاك الله)/.test(n)) return {reply:'العفو 🌷 لو محتاج أي حاجة تانية أنا موجود.', conf:10};
+  // لو سألناه سؤال توضيح في الرسالة اللي فاتت ("تقصد مين؟") فالرد ده غالبًا إجابته
+  if(assistantPending){ const pr = assistantResolvePending(n, role); if(pr) return pr; }
   const db = loadDB(); const sc = assistantScope(db);
   // 0) "هاتلي شاشة X / جيبلي قسم X": لو القسم مش موجود نقول كده ونعرض الأقسام المتاحة
   const mf = n.match(ASSIST_FETCH_RE);
@@ -6502,6 +6622,8 @@ function assistantPlan(q){
   const kidInfo = assistantDetectKids(n, sc);
   const pronoun = ASSIST_PRONOUN_RE.test(n) && !!assistantCtx.childId;
   const hasKidSlot = !!kidInfo || pronoun;
+  // سؤال غامض زي "مين متأخر؟": نسأل توضيح (مين؟ ثم في إيه؟) بدل ما نخمّن — إلا لو في اسم طالب أو ضمير واضح
+  if(!hasKidSlot){ const amb = assistantAmbiguous(n, role); if(amb) return amb; }
   const scores = [];
   assistantToolsFor(role).forEach((k, idx)=>{
     const t = ASSIST_TOOLS[k]; let s = 0;
@@ -6605,6 +6727,12 @@ function assistantRenderResult(r){
   assistantAddRow('bot', h);
   return Promise.resolve();
 }
+// أزرار اختيارات لسؤال توضيح — الضغط عليها بيبعت نصها كإجابة (askText)
+function assistantAddChoices(chips){
+  const h = '<div style="display:flex; flex-wrap:wrap; gap:8px;">' + chips.map(c=>`<button class="ai-act" data-act="askText" data-arg="${faEsc(c.q)}" style="padding:7px 14px; font-size:13px;">${faEsc(c.label)}</button>`).join('') + '</div>';
+  assistantAddRow('bot', h);
+  return Promise.resolve();
+}
 function assistantSetBusy(b){ assistantBusy = b; assistantInputChanged(); }
 // الترتيب: (1) فهم محلي أوفلاين — لو واثق بينفّذ فورًا من غير AI (أسرع وبيوفّر حد المنصة اليومي)
 // (2) لو مش واثق والـAI متاح بنسأله يختار أداة (3) لو الـAI وقع/مش متاح بنرجع للمحلي أو لاقتراحات "هل تقصد؟"
@@ -6663,8 +6791,13 @@ async function assistantAsk(question){
   try{
     let plan = null;
     try{ plan = assistantPlan(q); }catch(e){ console.error('assistantPlan', e); plan = null; }
-    if(plan && plan.reply){ await assistantAddText(plan.reply); assistantHistory.push({u:q, b:plan.reply}); assistantLogOutcome('local'); return; }
+    if(plan && plan.reply){
+      await assistantAddText(plan.reply);
+      if(plan.chips && plan.chips.length) assistantAddChoices(plan.chips);   // سؤال توضيح: اختيارات تتدوس بدل الكتابة
+      assistantHistory.push({u:q, b:plan.reply}); assistantLogOutcome('local'); return;
+    }
     if(plan && plan.conf >= ASSIST_HIGH){
+      if(plan.intro) await assistantAddText(plan.intro);
       await assistantExecute(plan);
       assistantHistory.push({u:q, b:'(نفّذت '+plan.tool+')'});
       assistantLogOutcome('local');
@@ -6837,7 +6970,7 @@ function assistantBack(){
 }
 function assistantNewChat(){
   if(assistantBusy) return;
-  assistantHistory = []; assistantCtx = {childId:null};
+  assistantHistory = []; assistantCtx = {childId:null}; assistantPending = null;
   const log = document.getElementById('ai-asst-log'); if(log) log.innerHTML = '';
   const scr = document.getElementById('ai-chat-screen'); if(scr) scr.classList.remove('has-msgs');
   const sc = document.getElementById('asst-scroll'); if(sc) sc.scrollTop = 0;
