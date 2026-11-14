@@ -13,7 +13,7 @@
     --bg:#faf7f0; --card:#ffffff; --text:#1c2b45; --muted:#7a7466;
     --border:#e8e0d0; --success:#3d8a5f; --danger:#c0433a; --warn:#c2873a;
     --ink:#1c2b45; --paper:#faf7f0; --gold:#c9a45c;
-    --shadow-1:var(--shadow-1); --shadow-2:var(--shadow-2); --shadow-3:var(--shadow-3);
+    --shadow-1:rgba(28,43,69,.08); --shadow-2:rgba(28,43,69,.14); --shadow-3:rgba(28,43,69,.22);
     --modal-scrim:rgba(28,43,69,.45); --input-bg:#ffffff; --cancel-bg:#f0ead9;
     --tint-warm:#fbeee5; --tint-pending-bg:#fbeed1; --tint-pending-fg:#93610f;
     --tint-resolved-bg:#dcefe1; --tint-resolved-fg:#1e6b3d;
@@ -6534,6 +6534,8 @@ function renderAdminStats(){
   const checkedInTeacherIds = new Set(db.teacherAttendance.filter(r=>r.type==='CHECK_IN' && isToday(r.time)).map(r=>r.teacherId));
   const teachersCheckedInToday = checkedInTeacherIds.size;
   const subs = getAdminSubscriptionCounts(db);
+  const overdueCount = db.payments.filter(p=> p.status!=='PAID' && p.month < localMonthStr()).length;
+  const financeCount = overdueCount + subs.expired + subs.pending;
   const orphansCount = getChildrenWithoutGuardian(db).length;
   const pendingComplaintsCount = db.complaints.filter(c=>c.status==='PENDING').length;
 
@@ -6550,7 +6552,7 @@ function renderAdminStats(){
       <div class="hero-chips">
         <div class="hero-chip" onclick="openAdminSection('teacherAttendance')"><b>${teachersCheckedInToday}/${db.teachers.length}</b><span>مدرّسين حضروا</span></div>
         <div class="hero-chip" onclick="openAdminSection('calendar')"><b>${todayEvents.length}</b><span>أحداث اليوم</span></div>
-        <div class="hero-chip" onclick="openAdminSection('payments')"><b>${subs.expired+subs.pending}</b><span>محتاج متابعة مالية</span></div>
+        <div class="hero-chip" onclick="openAdminSection('payments')"><b>${financeCount}</b><span>محتاج متابعة مالية</span></div>
       </div>
     </div>`;
 
@@ -6559,7 +6561,7 @@ function renderAdminStats(){
     {tab:'children', num:db.children.length, dot:orphansCount},
     {tab:'teachers', num:db.teachers.length, dot:0},
     {tab:'classrooms', num:db.classrooms.length, dot:0},
-    {tab:'payments', num:null, dot:subs.expired+subs.pending},
+    {tab:'payments', num:null, dot:financeCount},
     {tab:'calendar', num:todayEvents.length, dot:0},
     {tab:'__more', num:null, dot:pendingComplaintsCount}
   ];
