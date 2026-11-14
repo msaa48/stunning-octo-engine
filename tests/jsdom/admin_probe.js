@@ -1,0 +1,5 @@
+const {ctx,api}=require('./harness');
+ctx.assistantRenderResult=async r=>{out.push(r)};ctx.assistantAddText=async t=>{out.push({text:t})};
+const out=[];ctx.session.role='ADMIN';ctx.session.personId=null;
+const qs=['كام طالب عندي','عدد المدرسين','ايرادات الشهر ده كام','مين اكتر طالب غايب','حصص بكرة','مين المدرس اللي عنده حصة دلوقتي','مين المتأخرين في الدفع','تقرير احمد سامي','احمد سامي حضر النهارده','اشتراك منى خالد','اشتراكات هتنتهي الاسبوع ده','في شكاوي','طلبات استثناء','افتح المدفوعات','افتح مرتبات المدرسين','افتح الاشتراكات','عايز اضيف طالب','امسح الطالب احمد','ابعت رسالة لولي امر احمد','كام مجموعة عندي','مين المدرس بتاع الرياضيات','ملخص النهاردة','المدرسين اللي مجوش النهاردة','اجمالي المدفوعات المتأخرة','قارن بين الشهر ده والشهر اللي فات','ازيك','تقدر تعمل ايه'];
+(async()=>{for(const q of qs){const p=api.assistantPlan(q);out.length=0;let r=p?(p.reply?'💬 رد جاهز':`${p.tool} conf=${p.conf}${p.conf<4?' ⚠️ (هيسأل AI)':''}`):'❌ مش مفهوم → AI';if(p&&p.tool&&p.conf>=4){await api.assistantExecute(p);const x=out[0]||{};r+=' ⇒ '+(x.text||x.title||'')+(x.summary?' — '+x.summary:'');}console.log('«'+q+'» → '+r);}})();
