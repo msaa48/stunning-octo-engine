@@ -3,7 +3,7 @@ const html=fs.readFileSync(require('path').join(__dirname,'..','..','index.html'
 function slice(startMarker,endMarker){const a=html.indexOf(startMarker);const b=html.indexOf(endMarker,a);if(a<0||b<0)throw new Error('marker '+startMarker);return html.slice(a,b);}
 const block=slice('/* ===== المساعد الذكي لكل الأدوار','/* ---------- واجهة المحادثة ---------- */');
 const askBlock=slice('function assistantSetBusy(b){','function assistantInputChanged(){');
-const fns=['function normalizeArabic','function pad2','function localDateStr','function localMonthStr','function addDaysStr','function isToday'];
+const fns=['function getLatestSubscription','function normalizeArabic','function pad2','function localDateStr','function localMonthStr','function addDaysStr','function isToday'];
 let helpers='';
 fns.forEach(f=>{const a=html.indexOf(f);let depth=0,i=html.indexOf('{',a);const st=a;for(;i<html.length;i++){if(html[i]=='{')depth++;else if(html[i]=='}'){depth--;if(!depth){break;}}}helpers+=html.slice(st,i+1)+'\n';});
 const grade=html.match(/const GRADE_LABELS = \{[^\n]*\};/)[0];

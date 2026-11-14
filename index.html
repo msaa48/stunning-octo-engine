@@ -5886,9 +5886,13 @@ const ASSIST_TOOLS = {
       const subs = getAdminSubscriptionCounts(db);
       const ids = Object.keys(byChild).filter(id=> (db.children||[]).some(c=>c.id===id));
       if(!ids.length && !subs.expired && !subs.pending) return {text:'مفيش مدفوعات متأخرة ولا اشتراكات منتهية 👌'};
+      const fu = assistantSubsFollowUp(db);
+      const allRows = ids.map(id=>{ const c = db.children.find(x=>x.id===id); return {label:c.name, sub:`${byChild[id].n} دفعة متأخرة · ${byChild[id].sum} ج`, act:{name:'openStudent', arg:id, label:'فتح'}}; })
+        .concat(fu.expired.map(x=>({label:x.child.name, sub:`اشتراك منتهي · ${x.room.name}`, act:{name:'openStudent', arg:x.child.id, label:'فتح'}})))
+        .concat(fu.pending.map(x=>({label:x.child.name, sub:`فاتورة معلّقة · ${x.room.name}`, act:{name:'openStudent', arg:x.child.id, label:'فتح'}})));
       return {title:'💳 المتابعة المالية', summary:`${ids.length} طالب عليهم دفعات متأخرة · ${subs.expired} اشتراك منتهي · ${subs.pending} فاتورة معلّقة`,
-        rows: ids.slice(0,8).map(id=>{ const c = db.children.find(x=>x.id===id); return {label:c.name, sub:`${byChild[id].n} دفعة · ${byChild[id].sum} ج`, act:{name:'openStudent', arg:id, label:'فتح'}}; }),
-        more: ids.length>8 ? `+${ids.length-8} طالب تاني في تاب المدفوعات` : '', footer:{name:'openRoleTab', arg:'payments', label:'عرض كل المدفوعات'}};
+        rows: allRows.slice(0,10),
+        more: allRows.length>10 ? `+${allRows.length-10} حالة تانية في تاب المدفوعات` : '', footer:{name:'openRoleTab', arg:'payments', label:'عرض كل المدفوعات'}};
     }
   },
   today_schedule: {
@@ -6007,6 +6011,81 @@ const ASSIST_TOOLS = {
         }
       }
       return {title:'☀️ ملخص النهاردة', rows};
+    }
+  },
+  teacher_performance: {
+    roles:['ADMIN'], range:true, ex:'مين من المدرّسين أداؤه منخفض آخر أسبوع؟',
+    desc:'ترتيب المدرّسين بدرجة الأداء (من 5) في فترة، بنفس معايير تقييم الأداء. args: {"range":"last7|this_week|last_week|this_month|last_month","order":"low|high"}',
+    kw:[[new RegExp('(?=.*(?:مدرس|معلم))(?=.*(?:اداء|اداو|ادايه|ادائ|منخفض|ضعيف|افضل|احسن|اسوا|متميز|مستوي|مقصر))'),6]],
+    validate: a => ({range: ASSIST_RANGE_KEYS.indexOf(a&&a.range)>=0 ? a.range : 'last7', order: (a&&a.order)==='low' ? 'low' : 'high'}),
+    run: (a, db) => {
+      const teachers = db.teachers||[];
+      if(!teachers.length) return {text:'مفيش مدرّسين مسجّلين لسه.'};
+      const rg = assistantRangeFor(a.range); const cfg = getEvalConfig(db);
+      const rows = teachers.map(t=>{
+        let d = null; try{ d = computeTeacherScoreDetail(db, t.id, rg.start.getFullYear(), rg.start.getMonth(), cfg, rg); }catch(e){ d = null; }
+        return {t, d};
+      });
+      const withData = rows.filter(r=> r.d && r.d.hasData).sort((p,q)=> a.order==='low' ? p.d.overallScore-q.d.overallScore : q.d.overallScore-p.d.overallScore);
+      const noData = rows.filter(r=> !(r.d && r.d.hasData));
+      const mk = r=>{
+        const parts = r.d.rows.filter(x=> x.enabled && x.score!==null);
+        const weak = parts.slice().sort((p,q)=> p.score-q.score)[0];
+        return {label:r.t.name, sub:`${r.d.overallScore.toFixed(1)}/5${weak ? ' · أضعف نقطة: '+weak.label+' ('+weak.score.toFixed(1)+'/5)' : ''}`};
+      };
+      const out = withData.map(mk).concat(noData.map(r=>({label:r.t.name, sub:'مفيش بيانات كفاية في الفترة دي'})));
+      return {title: a.order==='low' ? '📉 المدرّسين من الأضعف للأقوى' : '📈 المدرّسين من الأقوى للأضعف',
+        summary:`${rg.label} · ${withData.length} مدرّس عندهم بيانات من ${teachers.length}`,
+        rows: out.slice(0,8), more: out.length>8 ? `+${out.length-8} مدرّس تاني` : '',
+        footer: assistantTabFooter('ADMIN','teacherEvaluations')};
+    }
+  },
+  teachers_exams: {
+    roles:['ADMIN'], ex:'مين من المدرّسين شغّال على امتحانات؟',
+    desc:'المدرّسين اللي عملوا امتحانات (عددها وآخر واحد). args: {}',
+    kw:[[new RegExp('(?=.*(?:مدرس|معلم))(?=.*(?:امتحان|اختبار|كويز))'),6]],
+    validate: () => ({}),
+    run: async (a, db) => {
+      let data = null;
+      try{
+        const r = await supabaseClient.from('exams').select('teacher_id,teacher_name,title,classroom_name,scheduled_at,archived,created_at').order('created_at',{ascending:false}).limit(300);
+        if(r.error) throw r.error; data = r.data || [];
+      }catch(e){ return {text:'ماقدرتش أجيب الامتحانات دلوقتي. اتأكد من الاتصال وجرّب تاني.'}; }
+      if(!data.length) return {text:'مفيش مدرّسين عملوا امتحانات لحد دلوقتي.'};
+      const now = getSystemNow(); const by = {};
+      data.forEach(x=>{
+        const k = x.teacher_id || x.teacher_name || '?';
+        const g = by[k] = by[k] || {name:x.teacher_name || 'مدرّس', total:0, active:0, upcoming:0, last:x};
+        g.total++; if(!x.archived) g.active++;
+        if(!x.archived && x.scheduled_at && new Date(x.scheduled_at) > now) g.upcoming++;
+      });
+      const list = Object.keys(by).map(k=>by[k]).sort((p,q)=> q.active-p.active || q.total-p.total);
+      return {title:'🧠 المدرّسين والامتحانات', summary:`${list.length} مدرّس عملوا امتحانات · ${data.length} امتحان`,
+        rows: list.slice(0,8).map(g=>({label:g.name, sub:`${g.total} امتحان (${g.active} شغّال${g.upcoming?` · ${g.upcoming} جاي`:''}) · آخر واحد: ${String(g.last.title||'').slice(0,30)}`})),
+        more: list.length>8 ? `+${list.length-8} مدرّس تاني` : ''};
+    }
+  },
+  reports_hub: {
+    roles:['ADMIN','TEACHER','ASSISTANT'], ex:'إيه التقارير المتاحة؟',
+    desc:'قايمة التقارير الجاهزة اللي المساعد يقدر يطلّعها. args: {}',
+    kw:[[new RegExp('(?:^|\\s)(?:[وفب]|ل)?(?:ال)?(?:تقارير|تقرير|احصا\\S*)(?:\\s|$)'),5]],
+    validate: () => ({}),
+    run: () => {
+      const role = assistantRole(); const avail = assistantToolsFor(role);
+      const cand = ['day_summary','teacher_performance','overdue_payments','absent_today','teachers_exams','pending_exceptions','my_groups'];
+      const rows = cand.filter(k=> avail.indexOf(k)>=0 && ASSIST_TOOLS[k] && ASSIST_TOOLS[k].ex).slice(0,6).map(k=>({label:ASSIST_TOOLS[k].ex, act:{name:'askLocal', arg:'t:'+k, label:'عرض'}}));
+      return {title:'📊 التقارير المتاحة', summary:'مفيش شاشة اسمها «تقارير»، بس دي التقارير اللي أقدر أطلّعها لك فورًا:', rows};
+    }
+  },
+  chat_memory: {
+    roles:['ADMIN','TEACHER','PARENT','ASSISTANT'], ex:'هل إنت فاكر كلامنا؟',
+    desc:'رد على سؤال المستخدم عن ذاكرة المحادثة. args: {}',
+    kw:[[new RegExp('(?:^|\\s)(?:متذكر|متذكره|فاكر|فاكره|بتفتكر|بتتذكر|ذاكرتك|تفتكر|تتذكر)'),6]],
+    validate: () => ({}),
+    run: () => {
+      const h = assistantHistory||[];
+      if(!h.length) return {text:'لسه ما اتكلمناش في المحادثة دي. أنا بحتفظ بآخر أسئلتك في المحادثة الحالية بس، ومابحفظهاش بعد ما تقفل الشاشة أو تدوس «جديدة».'};
+      return {title:'🧠 فاكر المحادثة', summary:`أيوه، فاكر آخر ${h.length} سؤال في المحادثة دي (مابحفظهاش بعد ما تقفل الشاشة أو تدوس «جديدة»).`, rows: h.slice(-4).reverse().map(x=>({label:x.u}))};
     }
   },
   open_screen: {
@@ -6139,7 +6218,48 @@ function assistantDetectDay(n){
   return 'today';
 }
 const ASSIST_OPEN_RE = /^(?:افتحلي|افتح|فتح|روح|اذهب|وديني|خدني|اعرض|وريني)\s*(?:ل|لي|علي|الي|ع)?\s*(.+)$/;
+const ASSIST_FETCH_RE = /^(?:هاتلي|هات لي|جيبلي|جيب لي|عايز اشوف|عاوز اشوف|عايز افتح|عاوز افتح|ممكن افتح)\s*(?:شاشه|قسم|صفحه|تاب)\s*(.+)$/;
 const ASSIST_PRONOUN_RE = /(?:^|\s)(?:وهو|وهي|عنه|عنها|بتاعه|بتاعها|ده|دي|دا|نفسه|نفسها)(?:\s|$)/;
+
+// فترات الأسبوع عندنا: بتبدأ السبت. بترجّع {key,label,start,end}
+function assistantRangeFor(key){
+  const now = getSystemNow();
+  const d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const back = (d0.getDay()+1) % 7;                       // السبت=0 ... الجمعة=6
+  const weekStart = new Date(d0); weekStart.setDate(d0.getDate()-back);
+  const endOf = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23,59,59);
+  if(key==='last_week'){ const s0 = new Date(weekStart); s0.setDate(s0.getDate()-7); const e0 = new Date(weekStart); e0.setDate(e0.getDate()-1); return {key, label:'الأسبوع اللي فات', start:s0, end:endOf(e0)}; }
+  if(key==='this_week') return {key, label:'الأسبوع ده', start:weekStart, end:now};
+  if(key==='last_month'){ const s0 = new Date(now.getFullYear(), now.getMonth()-1, 1); const e0 = new Date(now.getFullYear(), now.getMonth(), 0); return {key, label:'الشهر اللي فات', start:s0, end:endOf(e0)}; }
+  if(key==='this_month') return {key, label:'الشهر ده', start:new Date(now.getFullYear(), now.getMonth(), 1), end:now};
+  const s0 = new Date(d0); s0.setDate(s0.getDate()-6);
+  return {key:'last7', label:'آخر 7 أيام', start:s0, end:now};
+}
+const ASSIST_RANGE_KEYS = ['last7','this_week','last_week','this_month','last_month'];
+function assistantDetectRange(n){
+  if(/(?:اسبوع|اسابيع)\s*(?:ال)?(?:ي فات|اللي فات|الماضي|الفايت|اللي عدي|الي فات|الي عدي)|الاسبوع الماضي|اسبوع ماضي/.test(n)) return 'last_week';
+  if(/(?:هذا|ده|دا|الحالي)\s*(?:ال)?اسبوع|الاسبوع (?:ده|دا|الحالي)/.test(n)) return 'this_week';
+  if(/شهر\s*(?:ال)?(?:ي فات|اللي فات|الماضي|الفايت|اللي عدي|الي فات|الي عدي)|الشهر الماضي/.test(n)) return 'last_month';
+  if(/الشهر (?:ده|دا|الحالي)|هذا الشهر/.test(n)) return 'this_month';
+  return 'last7';
+}
+function assistantDetectOrder(n){
+  if(/منخفض|ضعيف|اسوا|اقل|وحش|ضعف|متدني|هابط|مقصر|تعبان/.test(n)) return 'low';
+  return 'high';
+}
+// اشتراكات منتهية / فواتير معلّقة بالأسماء (نفس منطق getAdminSubscriptionCounts)
+function assistantSubsFollowUp(db){
+  const today = localDateStr(); const expired = [], pending = [];
+  (db.enrollments||[]).forEach(e=>{
+    const child = (db.children||[]).find(c=>c.id===e.childId), room = (db.classrooms||[]).find(r=>r.id===e.classroomId);
+    if(!child || !room) return;
+    const sub = getLatestSubscription(db, e.childId, e.classroomId);
+    if(!sub) return;
+    if(sub.status==='pending'){ pending.push({child, room}); return; }
+    if(getSubscriptionState(sub, today).key==='expired') expired.push({child, room});
+  });
+  return {expired, pending};
+}
 function assistantPlan(q){
   const role = assistantRole(); if(!role) return null;
   const raw = String(q||'').trim(); const n = normalizeArabic(raw).replace(/[؟?!.,،؛:]+/g,' ').replace(/\s+/g,' ').trim();
@@ -6147,9 +6267,20 @@ function assistantPlan(q){
   if(/^(?:سلام عليكم|السلام عليكم|سلام|اهلا|اهلين|مرحبا|هاي|هلا|صباح الخير|مساء الخير|صباح النور|ازيك)[\s!.؟?]*$/.test(n)) return {reply:'أهلًا بيك 👋 قولّي أساعدك في إيه؟ ممكن تسألني «تقدر تساعدني في إيه؟» عشان تشوف إمكانياتي.', conf:10};
   if(/^(?:شكرا|متشكر|متشكره|تسلم|تسلمي|ميرسي|مشكور|جزاك الله)/.test(n)) return {reply:'العفو 🌷 لو محتاج أي حاجة تانية أنا موجود.', conf:10};
   const db = loadDB(); const sc = assistantScope(db);
+  // 0) "هاتلي شاشة X / جيبلي قسم X": لو القسم مش موجود نقول كده ونعرض الأقسام المتاحة
+  const mf = n.match(ASSIST_FETCH_RE);
+  if(mf){
+    const want = mf[1].trim();
+    if(/تقرير|تقارير|احصا/.test(want)) return role==='PARENT' ? {tool:'student_report', args:{}, conf:9} : {tool:'reports_hub', args:{}, conf:10};
+    const words0 = ASSIST_SCREEN_WORDS_BY_ROLE[role] || [];
+    for(const pair of words0){ if(pair[0].test(want)) return {tool:'open_screen', args:{screen:pair[1]}, conf:10}; }
+    const meta0 = assistantScreenMeta(role);
+    if(meta0) return {reply:'مفيش قسم اسمه «'+want+'» في واجهتك. الأقسام اللي أقدر أفتحها: '+Object.keys(meta0).map(k=>meta0[k].label).join('، ')+'.', conf:10};
+  }
   // 1) أوامر الفتح
   const mo = n.match(ASSIST_OPEN_RE);
   if(mo && ASSIST_SCREEN_WORDS_BY_ROLE[role]){
+    if(/(?:^|\s)(?:ال)?(?:تقرير|تقارير|احصا)/.test(mo[1]) && role!=='PARENT') return {tool:'reports_hub', args:{}, conf:10};
     for(const pair of ASSIST_SCREEN_WORDS_BY_ROLE[role]){ if(pair[0].test(mo[1])) return {tool:'open_screen', args:{screen:pair[1]}, conf:10}; }
   }
   // 2) تسجيل نقاط لكل أداة متاحة للدور
@@ -6178,6 +6309,7 @@ function assistantPlan(q){
     const t = ASSIST_TOOLS[best.k]; const args = {};
     if(t.kid||t.kidOpt){ if(kidInfo) args.name = kidInfo.name; else if(pronoun) args.ctx = true; }
     if(t.day) args.day = assistantDetectDay(n);
+    if(t.range){ args.range = assistantDetectRange(n); args.order = assistantDetectOrder(n); }
     return {tool:best.k, args, conf:best.s, alt:scores.slice(1,3).map(x=>x.k)};
   }
   // 4) اسم طالب لوحده (أو مع كلام عام) → تقرير/بحث
@@ -6192,7 +6324,7 @@ async function assistantExecute(p){
   if(!t || t.roles.indexOf(role)<0) return false;
   const args = t.validate(p.args||{});
   if(!args){ await assistantAddText('محتاج تفاصيل أكتر، تقصد مين أو أنهي قسم بالظبط؟'); return false; }
-  const r = t.run(args, loadDB());
+  const r = await t.run(args, loadDB());
   const list = r && r.multi ? r.multi : [r];
   for(const x of list){ await assistantRenderResult(x); }
   return true;
@@ -6371,7 +6503,7 @@ async function assistantRunCatalog(id){
   const t = ASSIST_TOOLS[it.tool]; if(!t || t.roles.indexOf(role)<0) return;
   const args = t.validate(it.args); if(!args) return;
   assistantAddRow('me', faEsc(text));
-  const r = t.run(args, loadDB());
+  const r = await t.run(args, loadDB());
   const list = r && r.multi ? r.multi : [r];
   for(const x of list){ await assistantRenderResult(x); }
 }
@@ -11690,12 +11822,21 @@ function workingDaysInMonth(year, monthIndex0, uptoDate, offDays){
 }
 
 // ---- بيانات المدرّس الخام للشهر (بتتحسب مرة واحدة وكل القياسات بتقرا منها) ----
-function buildEvalContext(db, teacherId, year, monthIndex0, cfg){
-  const monthStart = new Date(year, monthIndex0, 1);
-  const monthEnd = new Date(year, monthIndex0+1, 0, 23,59,59);
+function workingDaysInRange(start, end, offDays){
+  offDays = offDays || defaultEvalConfig().offDays;
+  let count = 0;
+  for(let d = new Date(start.getFullYear(), start.getMonth(), start.getDate()); d <= end; d.setDate(d.getDate()+1)){
+    if(!offDays.includes(d.getDay())) count++;
+  }
+  return count;
+}
+// range (اختياري): {start, end} بدل الشهر الكامل — بيستخدمه المساعد لأداء الأسبوع
+function buildEvalContext(db, teacherId, year, monthIndex0, cfg, range){
+  const monthStart = range ? range.start : new Date(year, monthIndex0, 1);
+  const monthEnd = range ? range.end : new Date(year, monthIndex0+1, 0, 23,59,59);
   const now = getSystemNow();
   const isCurrentMonth = (year===now.getFullYear() && monthIndex0===now.getMonth());
-  const effectiveEnd = isCurrentMonth ? now : monthEnd;
+  const effectiveEnd = range ? (range.end < now ? range.end : now) : (isCurrentMonth ? now : monthEnd);
   const inRange = iso => { const t = new Date(iso); return t>=monthStart && t<=effectiveEnd; };
   const dFrom = localDateStr(monthStart), dTo = localDateStr(effectiveEnd);
   const inDay = s => !!s && s>=dFrom && s<=dTo;
@@ -11711,7 +11852,7 @@ function buildEvalContext(db, teacherId, year, monthIndex0, cfg){
   const checkOuts = att.filter(r=>r.type==='CHECK_OUT');
   const daysAttended = new Set(checkIns.map(r=> new Date(r.time).toDateString())).size;
   const daysWithCheckout = new Set(checkOuts.map(r=> new Date(r.time).toDateString())).size;
-  const expectedDays = workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd, cfg.offDays) || 1;
+  const expectedDays = (range ? workingDaysInRange(monthStart, effectiveEnd, cfg.offDays) : workingDaysInMonth(year, monthIndex0, isCurrentMonth ? now : monthEnd, cfg.offDays)) || 1;
   const lateCount = checkIns.filter(r=> isLateCheckIn(r.time, cfg)).length;
 
   const loggedEvents = (db.events||[]).filter(e=> childIds.includes(e.childId) && inRange(e.eventTime)).length;
@@ -11736,7 +11877,7 @@ function buildEvalContext(db, teacherId, year, monthIndex0, cfg){
     });
   });
   const mk = year + '-' + String(monthIndex0+1).padStart(2,'0');
-  const manual = Object.assign({}, ...(db.teacherEvaluations||[]).filter(e=> e.source==='MANUAL' && e.teacherId===teacherId && e.month===mk).map(e=> e.manual||{}));
+  const manual = range ? {} : Object.assign({}, ...(db.teacherEvaluations||[]).filter(e=> e.source==='MANUAL' && e.teacherId===teacherId && e.month===mk).map(e=> e.manual||{}));
   const attendanceCount = (db.attendance||[]).filter(a=> a.teacherId===teacherId && inDay(a.sessionDate)).length;
   const evaluationsGiven = (db.evaluations||[]).filter(e=> e.teacherId===teacherId && e.date && inRange(e.date)).length;
   const tasksDone = (db.taskCompletions||[]).filter(c=> c.teacherId===teacherId && c.done && inDay(c.date)).length;
@@ -11763,9 +11904,9 @@ function evalScoreFromValue(value, scoring){
 }
 
 // الحساب بالتفصيل (بيستخدمه التقييم الشهري وكمان "جرّب قبل ما تحفظ" في الإعدادات)
-function computeTeacherScoreDetail(db, teacherId, year, monthIndex0, cfg){
+function computeTeacherScoreDetail(db, teacherId, year, monthIndex0, cfg, range){
   cfg = cfg || getEvalConfig(db);
-  const x = buildEvalContext(db, teacherId, year, monthIndex0, cfg);
+  const x = buildEvalContext(db, teacherId, year, monthIndex0, cfg, range);
   const rows = cfg.criteria.map(c=>{
     const m = EVAL_METRICS[c.metric];
     const r = m.compute(x, c.params || {}, c);
