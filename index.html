@@ -1062,6 +1062,22 @@
     <div id="sa-invoices-list"></div>
 
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <span>❓ أسئلة المساعد</span>
+      <span style="display:flex; gap:6px; align-items:center;">
+        <select id="sa-q-days" onchange="saQRender()" style="font-size:12px;"><option value="7">7 أيام</option><option value="30" selected>30 يوم</option><option value="90">90 يوم</option></select>
+        <button class="badge" onclick="saQRender()">تحديث</button>
+      </span>
+    </div>
+    <div id="sa-q-summary" class="list-sub" style="margin-bottom:6px; line-height:1.8;"></div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+      <button class="badge" id="sa-q-tab-need" onclick="saQTab('need')">محتاجة تطوير</button>
+      <button class="badge" id="sa-q-tab-ai" onclick="saQTab('ai')">اتجاوبت بالـAI</button>
+      <button class="badge" id="sa-q-tab-done" onclick="saQTab('done')">تم</button>
+      <button class="badge" onclick="saQCopy()">📋 انسخ المحتاجة لـClaude</button>
+    </div>
+    <div id="sa-q-list"></div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
       <span>🔑 مفاتيح الذكاء الاصطناعي</span>
       <span style="display:flex; gap:6px;">
         <button class="badge" onclick="saKeysDiagnose()">🔍 فحص</button>
@@ -4827,6 +4843,60 @@ let saTeamCache = [];
 let saInvoicesCache = [];
 let saShowTrash = false;
 
+/* ---------- أسئلة المساعد (شاشة المالك): إيه اللي المستخدمين بيسألوه وماتجاوبش أوفلاين ---------- */
+let saQData = null, saQTabNow = 'need';
+const SA_Q_ROLES = {ADMIN:'مدير', TEACHER:'مدرّس', PARENT:'ولي أمر', ASSISTANT:'أسيستنت'};
+function saQItems(tab){
+  const qs = (saQData && saQData.questions) || [];
+  if(tab==='done') return qs.filter(x=> x.resolved);
+  if(tab==='ai') return qs.filter(x=> !x.resolved && x.none===0 && x.fallback===0 && x.ai>0);
+  return qs.filter(x=> !x.resolved && (x.none>0 || x.fallback>0));
+}
+function saQTab(t){ saQTabNow = t; saQList(); }
+function saQList(){
+  const box = document.getElementById('sa-q-list'); if(!box) return;
+  ['need','ai','done'].forEach(k=>{ const b = document.getElementById('sa-q-tab-'+k); if(b) b.style.fontWeight = (k===saQTabNow) ? '700' : '400'; });
+  const items = saQItems(saQTabNow);
+  if(!items.length){ box.innerHTML = '<div class="list-sub">' + (saQData ? 'مفيش أسئلة هنا.' : '') + '</div>'; return; }
+  box.innerHTML = items.slice(0,40).map((x,i)=>{
+    const roles = (x.roles||[]).map(r=> SA_Q_ROLES[r]||r).join('، ');
+    const how = x.none ? 'ماتجاوبتش' : x.fallback ? 'تخمين ضعيف' : 'اتجاوبت بالـAI';
+    return `<div style="padding:7px 0; border-bottom:1px solid var(--border,#eee);">
+      <div style="font-size:13.5px; line-height:1.7;">${faEsc(x.q)}</div>
+      <div class="list-sub" style="font-size:11.5px;">${x.cnt} مرة · ${x.centers} مؤسسة · ${faEsc(roles)} · ${how} · آخر مرة ${faEsc(assistantFmtDate(x.last_seen))}</div>
+      <div style="margin-top:4px;"><button class="badge" onclick="saQMark(${i}, ${x.resolved?'false':'true'})">${x.resolved?'↩ رجّعها':'✔ اتحلّت'}</button></div>
+    </div>`;
+  }).join('') + (items.length>40 ? `<div class="list-sub" style="margin-top:6px;">+${items.length-40} سؤال تاني</div>` : '');
+}
+async function saQRender(){
+  const sum = document.getElementById('sa-q-summary'); if(!sum) return;
+  sum.textContent = '⏳ …';
+  const days = parseInt(document.getElementById('sa-q-days').value, 10) || 30;
+  const { data, error } = await supabaseClient.rpc('assistant_questions_overview', { p_days: days });
+  if(error){ saQData = null; sum.textContent = '⚠️ ' + (/forbidden/.test(error.message||'') ? 'متاح للمالك وفريق المنصة بس' : 'ماقدرتش أجيب الأسئلة'); saQList(); return; }
+  saQData = data;
+  const st = data.stats || {}; const tot = (st.local||0)+(st.ai||0)+(st.fallback||0)+(st.none||0);
+  if(!tot){ sum.textContent = 'لسه مفيش بيانات. بتتجمّع من استخدام المساعد.'; }
+  else {
+    const pc = v => Math.round((v/tot)*100);
+    sum.innerHTML = `${tot} سؤال · <b>${pc(st.local||0)}%</b> اتجاوب أوفلاين · ${pc(st.ai||0)}% بالـAI · <span style="color:${(st.none||0)?'var(--danger)':'inherit'}">${pc((st.none||0)+(st.fallback||0))}% ماتجاوبش أو تخمين ضعيف</span>`;
+  }
+  saQList();
+}
+async function saQMark(i, resolved){
+  const items = saQItems(saQTabNow); const x = items[i]; if(!x) return;
+  const { error } = await supabaseClient.rpc('assistant_question_mark', { p_q: x.q, p_resolved: !!resolved });
+  if(error){ showToast('⚠️ ماقدرتش أحفظ'); return; }
+  x.resolved = !!resolved; saQList();
+}
+async function saQCopy(){
+  const items = saQItems('need').slice(0,30);
+  if(!items.length){ showToast('مفيش أسئلة محتاجة تطوير'); return; }
+  const txt = 'دي أسئلة مستخدمين حقيقيين للمساعد الذكي في مسار وماتجاوبتش أوفلاين (الأكتر تكرارًا الأول). عايزك تضيف لكل مجموعة منها أداة أو صيغة جديدة في المساعد المحلي من غير ما تكسر الموجود، وتضيفها لبنك الأسئلة في tests/jsdom:\n\n' + items.map((x,i)=> `${i+1}. ${x.q} (${x.cnt} مرة · ${(x.roles||[]).join('/')})`).join('\n');
+  try{ await navigator.clipboard.writeText(txt); showToast('📋 اتنسخت'); }
+  catch(e){ window.prompt('انسخ النص ده:', txt); }
+}
+
 /* ---------- لوحة مفاتيح الـAI عند مالك المنصة ----------
    السر الكامل مابيرجعش للمتصفح أبدًا (بيتخزّن في Vault): بنعرض آخر 4 حروف بس، والتعديل = استبدال السر.
    كل التعديلات بتتسجّل في ai_key_audit. القراءة لمالك المنصة وفريقه، والتعديل للمالك الأساسي فقط. */
@@ -5154,6 +5224,7 @@ async function initSuperAdminScreen(){
   const statusLabel = {trial:'تجربة', active:'مفعّلة', past_due:'متأخرة بالدفع', suspended:'موقوفة', cancelled:'ملغاة'};
   const statusColor = {trial:'#6b7280', active:'#16a34a', past_due:'#d97706', suspended:'#dc2626', cancelled:'#6b7280'};
   saKeysRender();
+  saQRender();
 
   document.getElementById('sa-centers-list').innerHTML = saCentersCache.map(c=>`
     <div class="list-row">
@@ -6205,6 +6276,39 @@ const ASSIST_TOOLS = {
     }
   }
 };
+/* صيغ إضافية جاية من بنك الأسئلة (tests/jsdom/question_bank.js) — بتتضاف لأدوات موجودة من غير ما نعدّل تعريفها.
+   أي صيغة جديدة تطلع من «أسئلة المساعد» في شاشة المالك تتضاف هنا + حالة في البنك. */
+[
+  ['absent_today', KW('ماحضرش','محضرش','ماحضروش','غابو','غابوا'), 4],
+  ['top_absent', new RegExp('(?:كتير|كثير|دايما|دائما)\\S*\\s+(?:\\S+\\s+){0,2}?(?:ال)?(?:غياب|غايب|بيغيب)|(?:بيغيب|يغيب|غيابه)\\S*\\s+(?:\\S+\\s+){0,1}?(?:كتير|كثير)|ترتيب\\s+(?:ال)?غياب|(?:ال)?غياب\\s+(?:ال)?متكرر'), 8],
+  ['teachers_absent_today', new RegExp('(?:مدرس|معلم)\\S*\\s+(?:\\S+\\s+){0,3}?(?:لسه|ماسجل|مسجل)\\S*\\s+(?:\\S+\\s+){0,1}?(?:حضور|حضر)'), 8],
+  ['overdue_payments', KW('مدفعش','مدفعوش','مدفعو','مديونيات','مديونيه'), 4],
+  ['calendar_upcoming', KW('اجازه امتي','العطله','عطله','اجازه رسميه'), 6],
+  ['day_summary', /(?:^|\s)الوضع(?:\s|$)/, 4],
+  ['child_attendance', KW('غابت','غابتش','غبت','غابو'), 4],
+  ['child_evals', KW('مستواه','مستواها'), 5],
+  ['child_today', KW('عملت ايه','اتعلمت ايه','حصل معاه ايه','حصل معاها ايه'), 5],
+  ['teacher_performance', new RegExp('ترتيب\\s+(?:ال)?(?:مدرس|معلم)'), 6],
+  ['teachers_exams', new RegExp('(?:مين|حد)\\s+(?:\\S+\\s+){0,2}?(?:شغال|عامل|عمل|بيعمل)\\S*\\s+(?:\\S+\\s+){0,2}?(?:امتحان|اختبار|كويز)'), 6],
+  ['read_only_notice', new RegExp('^(?:عايز|عاوز)?\\s*(?:ان)?\\s*(?:سجل|سجلي)\\S*\\s+(?:\\S+\\s+){0,1}(?:دفعه|دفع|حضور|غياب|اشتراك|حصه|ملاحظه|تقييم)'), 6],
+  ['absent_today', KW('مجاش','ماجاش','ماجو'), 4],
+  ['teachers_absent_today', new RegExp('(?:مدرس|معلم)\\S*\\s+(?:\\S+\\s+){0,3}?(?:ما\\s?(?:جاش|جوش|حضر\\S*|سجل\\S*)|مجاش|مجوش)'), 8],
+  ['overdue_payments', KW('ماخر','متاخرين','السداد','سداد','واقف','واقفه'), 4],
+  ['overdue_payments', new RegExp('(?=.*اشتراك)(?=.*(?:خلصان|خلصت|خلصانه|منتهيه|وقف))'), 6],
+  ['complaints', KW('اشتكوا','اشتكت','بيشتكوا','تظلم'), 4],
+  ['today_schedule', new RegExp('(?:هيشتغل|هيحضر|هيجي)\\S*\\s+(?:\\S+\\s+){0,2}?(?:النهارده|بكره|بكرا|امبارح)'), 4],
+  ['counts', new RegExp('(?:^|\\s)(?:كام|عدد)\\s+(?:ال)?(?:عيل|طفل|ولد|بنت|اولاد)'), 4],
+  ['top_absent', new RegExp('(?:اكتر|اكثر|اعلي)\\S*\\s+(?:\\S+\\s+){0,2}?(?:بيغيب|يغيب|بتغيب)|(?:^|\\s)اغيب\\S*|غياب\\S*\\s+(?:\\S+\\s+){0,1}?(?:عالي|كبير|مرتفع|زايد)'), 8],
+  ['child_attendance', KW('جت','جات','جيت','جم'), 4],
+  ['subscription_status', KW('مسدد','مسدده','مسددين','خالص','دافع'), 4],
+  ['absent_today', new RegExp('(?:طلب|عيال|ولاد|اطفال|حد)\\S*\\s+(?:\\S+\\s+){0,3}?(?:مش|ما)\\s?(?:جاي|جايين|جي|حاضر)\\S*'), 6],
+  ['overdue_payments', KW('مسددش','مسددوش'), 4],
+  ['pending_exceptions', KW('اعذار','عذر','اعتذار'), 4],
+  ['complaints', new RegExp('(?:ملاحظات|اراء|استفسارات)\\S*\\s+(?:\\S+\\s+){0,1}?(?:من\\s+)?(?:ال)?(?:اهالي|اولياء|ولي)'), 5],
+  ['teacher_performance', new RegExp('(?:مدرس|معلم)\\S*\\s+(?:\\S+\\s+){0,2}?(?:ملتزم|منضبط|شاطر|متميز)|(?:تقييم|ترتيب)\\s+(?:ال)?(?:مدرس|معلم)'), 6],
+  ['day_summary', KW('نظره عامه','نظره عامة','نظره سريعه'), 4],
+  ['day_summary', new RegExp('حصل\\s+(?:\\S+\\s+){0,2}?(?:السنتر|المركز)|(?:السنتر|المركز)\\s+(?:\\S+\\s+){0,2}?(?:النهارده|دلوقتي)'), 5],
+].forEach(x=>{ if(ASSIST_TOOLS[x[0]]) ASSIST_TOOLS[x[0]].kw.push([x[1], x[2]]); });
 function assistantToolsFor(role){ return Object.keys(ASSIST_TOOLS).filter(k=> ASSIST_TOOLS[k].roles.indexOf(role)>=0); }
 
 /* ---------- الإجراءات المسموحة للأزرار (اسم ثابت + معرّف بيتراجع عليه قبل التنفيذ) ---------- */
@@ -6504,6 +6608,53 @@ function assistantRenderResult(r){
 function assistantSetBusy(b){ assistantBusy = b; assistantInputChanged(); }
 // الترتيب: (1) فهم محلي أوفلاين — لو واثق بينفّذ فورًا من غير AI (أسرع وبيوفّر حد المنصة اليومي)
 // (2) لو مش واثق والـAI متاح بنسأله يختار أداة (3) لو الـAI وقع/مش متاح بنرجع للمحلي أو لاقتراحات "هل تقصد؟"
+/* ---------- تسجيل الأسئلة اللي مااتجاوبتش أوفلاين (لتحسين المساعد) ----------
+   بنسجّل نوع النتيجة بس لكل سؤال: local (اتجاوب أوفلاين) / ai / fallback / none. نص السؤال بيتبعت بس لو مااتجاوبش أوفلاين،
+   وبعد ما نشيل منه أسماء الأشخاص المعروفة والأرقام والإيميلات. بيتخزّن مؤقتًا على الجهاز وبيتبعت لما النت يرجع. */
+const ASSIST_QLOG_KEY = 'masar_asst_qlog_v1';
+let assistantQLogTimer = null;
+function assistantQLogRead(){ try{ const o = JSON.parse(localStorage.getItem(ASSIST_QLOG_KEY)||'{}'); return (o && typeof o==='object') ? o : {}; }catch(e){ return {}; } }
+function assistantQLogWrite(o){ try{ localStorage.setItem(ASSIST_QLOG_KEY, JSON.stringify(o)); }catch(e){} }
+function assistantSanitizeQ(raw){
+  let t = String(raw||'').trim().slice(0,160);
+  t = t.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '[بريد]').replace(/[0-9٠-٩]{3,}/g, '#');
+  const names = new Set();
+  try{
+    const db = loadDB();
+    [db.children, db.teachers, db.parents, db.assistants].forEach(list=> (list||[]).forEach(p=> assistantTokens(p.name||'').forEach(tok=>{ if(tok.length>=3 && !ASSIST_STOP.has(tok)) names.add(tok); })));
+  }catch(e){}
+  return t.split(/(\s+)/).map(w=>{
+    const n = normalizeArabic(w).replace(/[؟?!.,،؛:]/g,'').replace(/^(?:ال|لل)/,'');
+    if(n.length<3) return w;
+    for(const nm of names){ const m = nm.replace(/^ال/,''); if(m===n || (n.length>=4 && m.length>=4 && (m.startsWith(n) || n.startsWith(m)))) return '[اسم]'; }
+    return w;
+  }).join('');
+}
+function assistantLogOutcome(kind, q){
+  try{
+    if(['local','ai','fallback','none'].indexOf(kind)<0) return;
+    const st = assistantQLogRead(); st.stats = st.stats || {local:0, ai:0, fallback:0, none:0}; st.stats[kind] = (st.stats[kind]||0) + 1;
+    if(kind!=='local' && q){ st.items = st.items || []; if(st.items.length<30) st.items.push({q:assistantSanitizeQ(q), outcome:kind}); }
+    assistantQLogWrite(st);
+    clearTimeout(assistantQLogTimer); assistantQLogTimer = setTimeout(assistantQLogFlush, 4000);
+  }catch(e){}
+}
+async function assistantQLogFlush(){
+  try{
+    if(typeof supabaseClient==='undefined' || (typeof navigator!=='undefined' && navigator.onLine===false)) return;
+    const snap = assistantQLogRead();
+    const has = (snap.items && snap.items.length) || (snap.stats && Object.keys(snap.stats).some(k=> snap.stats[k]>0));
+    if(!has) return;
+    assistantQLogWrite({});
+    const { error } = await supabaseClient.rpc('assistant_log_batch', { p_items: snap.items || [], p_stats: snap.stats || {} });
+    if(error){   // رجّع اللي ماتبعتش (من غير ما نكرر لو حصل جديد في الأثناء)
+      const cur = assistantQLogRead(); cur.stats = cur.stats || {local:0, ai:0, fallback:0, none:0};
+      Object.keys(snap.stats||{}).forEach(k=> cur.stats[k] = (cur.stats[k]||0) + snap.stats[k]);
+      cur.items = (snap.items||[]).concat(cur.items||[]).slice(0,30); assistantQLogWrite(cur);
+    }
+  }catch(e){}
+}
+
 async function assistantAsk(question){
   const q = String(question||'').trim().slice(0,200);
   if(!q || assistantBusy || !assistantCanUse()) return;
@@ -6512,10 +6663,11 @@ async function assistantAsk(question){
   try{
     let plan = null;
     try{ plan = assistantPlan(q); }catch(e){ console.error('assistantPlan', e); plan = null; }
-    if(plan && plan.reply){ await assistantAddText(plan.reply); assistantHistory.push({u:q, b:plan.reply}); return; }
+    if(plan && plan.reply){ await assistantAddText(plan.reply); assistantHistory.push({u:q, b:plan.reply}); assistantLogOutcome('local'); return; }
     if(plan && plan.conf >= ASSIST_HIGH){
       await assistantExecute(plan);
       assistantHistory.push({u:q, b:'(نفّذت '+plan.tool+')'});
+      assistantLogOutcome('local');
       return;
     }
     if(assistantAiReady()){
@@ -6528,9 +6680,11 @@ async function assistantAsk(question){
           if(assistantTypeSpeed) await new Promise(r=>setTimeout(r, 450)); // لمسة بصرية بس
           th.stop(); await assistantExecute(out);
           assistantHistory.push({u:q, b:'(نفّذت '+out.tool+')'});
+          assistantLogOutcome('ai', q);
         } else {
           th.stop(); await assistantAddText(out.reply);
           assistantHistory.push({u:q, b:out.reply});
+          assistantLogOutcome('none', q);
         }
         return;
       }catch(e){
@@ -6552,8 +6706,10 @@ async function assistantFallback(q, plan){
     await assistantAddText('مش متأكد 100% من قصدك، بس ده أقرب حاجة لقيتها من بياناتك:');
     await assistantExecute(plan);
     assistantHistory.push({u:q, b:'(نتيجة '+plan.tool+' محلية)'});
+    assistantLogOutcome('fallback', q);
     return;
   }
+  assistantLogOutcome('none', q);
   const opts = assistantSuggest(q);
   if(!opts.length){ await assistantAddText('مفهمتش طلبك. جرّب «تقدر تساعدني في إيه؟» عشان تشوف أسئلة أقدر أجاوب عليها.'); return; }
   await assistantAddText('مش قادر أفهم طلبك بالظبط. تقصد واحد من دول؟');
@@ -6641,7 +6797,7 @@ function assistantRenderSuggestions(){
   if(box.getAttribute('data-role')===role && box.children.length) return;
   box.innerHTML = ''; box.setAttribute('data-role', role);
   const wt = document.getElementById('asst-welcome-text'); if(wt) wt.textContent = ASSIST_WELCOME_BY_ROLE[role] || '';
-  const wn = document.getElementById('asst-welcome-note'); if(wn) wn.textContent = ASSIST_NOTE_BY_ROLE[role] || '';
+  const wn = document.getElementById('asst-welcome-note'); if(wn) wn.textContent = (ASSIST_NOTE_BY_ROLE[role] || '') + ' الأسئلة اللي مابفهمهاش بتتسجّل من غير أسماء عشان نحسّن المساعد.';
   const sb = document.getElementById('asst-settings-btn'); if(sb) sb.style.display = role==='ADMIN' ? '' : 'none';
   (ASSIST_SUGGESTIONS_BY_ROLE[role] || []).forEach(sg=>{
     const b = document.createElement('button'); b.className = 'asst-sug';
