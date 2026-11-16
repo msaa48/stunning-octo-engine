@@ -147,6 +147,14 @@
   .topbar.parent{background:linear-gradient(120deg,var(--parent-1),var(--parent-2));}
   .topbar.admin{background:linear-gradient(120deg,var(--admin-1),var(--admin-2));}
   .topbar .title{font-weight:700; font-size:16px; font-family:'Cairo',sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 auto;}
+  .lai{max-width:340px; margin:0 auto 14px; text-align:center; font-size:12.5px; line-height:1.8; color:var(--ink);}
+  .lai .lai-msg{margin-bottom:8px; color:var(--muted);} .lai .lai-msg.err{color:#c0392b;}
+  .lai-row{display:flex; gap:8px; justify-content:center;}
+  .lai-btn{border:0; background:var(--admin-2,#4a6cf7); color:#fff; padding:9px 16px; border-radius:20px; font-family:inherit; font-size:13px; cursor:pointer;}
+  .lai-btn.ghost{background:transparent; color:var(--ink); border:1px solid var(--border,#ddd);}
+  .lai-bar{height:8px; border-radius:6px; background:var(--border,#ddd); overflow:hidden;} .lai-bar i{display:block; height:100%; background:var(--admin-2,#4a6cf7); transition:width .3s;}
+  .lai-ok{font-weight:700; color:#1e8e5a; margin-bottom:4px;}
+  .lai-del{border:0; background:transparent; color:var(--muted); font-size:11.5px; text-decoration:underline; cursor:pointer; font-family:inherit;}
   .asst-status{display:block; margin:0 auto 14px; border:1px solid var(--border,#ddd); background:transparent; color:var(--ink); padding:7px 14px; border-radius:20px; font-size:12.5px; font-family:inherit; cursor:pointer;}
   .topbar .logout{background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff; padding:6px 13px; border-radius:20px; font-size:12.5px; cursor:pointer; font-family:inherit; font-weight:600; flex:0 0 auto; white-space:nowrap;}
   .notif-bell{position:relative; background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.3); color:#fff; width:34px; height:34px; border-radius:50%; font-size:16px; cursor:pointer; flex:0 0 auto; display:flex; align-items:center; justify-content:center;}
@@ -1237,6 +1245,7 @@
         <h2>أهلًا بيك 👋</h2>
         <p id="asst-welcome-text">أنا مساعد مسار. اسألني عن طلابك ومدفوعاتك، أو قولّي أفتحلك أي قسم في السنتر.</p>
         <button class="asst-status" id="asst-ai-status" onclick="openAiSettings()"></button>
+        <div class="lai" id="asst-localai" style="display:none"></div>
         <div class="asst-sugs" id="asst-sugs"></div>
         <div class="asst-note" id="asst-welcome-note">🔒 بقرا بيانات سنترك بس ومبعدّلش حاجة. اللي بيتبعت للمزوّد كلامك إنت بس، مش بيانات الطلاب.</div>
       </div>
@@ -2652,6 +2661,7 @@ function pushOrReplaceTabState(screenId, tab){
 
 function showScreen(id, opts){
   opts = opts || {};
+  if(id !== 'ai-chat-screen' && typeof localAiUnload==='function') localAiUnload();   // نفضّي رام الموديل لما نسيب المساعد
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   const target = document.getElementById(id);
   target.style.animation = 'none';
@@ -6670,6 +6680,24 @@ async function assistantAsk(question){
       assistantLogOutcome('local');
       return;
     }
+    // 1) الموديل على الجهاز (لو متفعّل): لو فشل/اتأخر/رد غلط نكمّل بالـAPI من غير ما المستخدم يحس
+    if(typeof localAiUsable==='function' && localAiUsable()){
+      const th0 = assistantThinking();
+      try{
+        const lp = localAiPrompt(q);
+        const out0 = localAiInterpret(await localAiAsk('assistant', lp.system, lp.user));
+        if(out0){
+          localAiFails = 0;
+          if(out0.tool){ th0.stop(); await assistantExecute(out0); assistantHistory.push({u:q, b:'(نفّذت '+out0.tool+')'}); assistantLogOutcome('ai', q); }
+          else { th0.stop(); await assistantAddText(out0.reply); assistantHistory.push({u:q, b:out0.reply}); assistantLogOutcome('none', q); }
+          return;
+        }
+        throw new Error('rejected');
+      }catch(e){
+        th0.stop();
+        if(String(e&&e.message)!=='rejected' && ++localAiFails>=3){ localAiOffUntil = Date.now()+10*60*1000; localAiFails = 0; }   // 3 فشل ورا بعض: نريّحه 10 دقايق
+      }
+    }
     if(assistantAiReady()){
       const th = assistantThinking();
       try{
@@ -6806,10 +6834,213 @@ function assistantRenderSuggestions(){
     box.appendChild(b);
   });
 }
+/* ===== الذكاء الاصطناعي على الجهاز (Transformers.js + Qwen2.5-0.5B) =====
+   موديل صغير بيتحمّل مرة واحدة على موبايل المستخدم ويتخزّن في الكاش، وبيشتغل جوه المتصفح من غير API.
+   سلسلة الرد في المساعد: المحرّك المحلي (regex) → الموديل ده → الـAPI → الأسئلة الجاهزة.
+   ممنوع استخدامه في تصحيح الامتحانات أو أي قرار درجات (ده بيفضل على السيرفر). الدالة localAiAsk بترفض أي غرض غير 'assistant'. */
+const LOCAL_AI = {
+  LIB: 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2',   // نسخة مثبّتة (اتنشرت 2026-10-27)
+  MODEL: 'onnx-community/Qwen2.5-0.5B-Instruct',
+  CACHE: 'transformers-cache',                                               // اسم كاش المكتبة نفسها
+  VARIANTS: {q4f16:{device:'webgpu', mb:483}, q8:{device:'wasm', mb:512}},   // WebGPU بيستخدم q4f16، والمعالج (WASM) بيستخدم q8
+  TIMEOUT_MS: 20000, MAX_NEW_TOKENS: 160, MAX_PROMPT_CHARS: 2600, STORAGE_FLAG: 'masarLocalAi'
+};
+let localAiLib = null, localAiPipe = null, localAiLoading = null, localAiDevice = null, localAiReady = false, localAiBusyInstall = false;
+let localAiFails = 0, localAiOffUntil = 0, localAiStop = null;
+
+function localAiHint(){ try{ return JSON.parse(localStorage.getItem(LOCAL_AI.STORAGE_FLAG)||'null'); }catch(e){ return null; } }   // تلميح بس، الحقيقة في الكاش
+function localAiSetHint(v){ try{ if(v) localStorage.setItem(LOCAL_AI.STORAGE_FLAG, JSON.stringify(v)); else localStorage.removeItem(LOCAL_AI.STORAGE_FLAG); }catch(e){} }
+
+// فحص الجهاز: بيرجّع {ok, reason, dtype, device, mb}
+async function localAiCheckDevice(force){
+  if(localAiDevice && !force) return localAiDevice;
+  const no = reason => (localAiDevice = {ok:false, reason});
+  try{
+    if(typeof WebAssembly==='undefined' || typeof caches==='undefined' || !window.isSecureContext) return no('المتصفح مش بيدعم تخزين الموديل');
+    if(typeof navigator.deviceMemory==='number' && navigator.deviceMemory < 4) return no('رامات الجهاز أقل من 4 جيجا');
+    let dtype = 'q8', device = 'wasm';
+    try{
+      if(navigator.gpu){
+        const ad = await navigator.gpu.requestAdapter();
+        if(ad && ad.features && ad.features.has('shader-f16')){ dtype = 'q4f16'; device = 'webgpu'; }
+      }
+    }catch(e){}
+    const v = LOCAL_AI.VARIANTS[dtype];
+    if(navigator.storage && navigator.storage.estimate){
+      const est = await navigator.storage.estimate();
+      if(est && est.quota && (est.quota - (est.usage||0)) < v.mb*1.3*1048576) return no('المساحة المتاحة في المتصفح مش كفاية');
+    }
+    return (localAiDevice = {ok:true, dtype, device, mb:v.mb});
+  }catch(e){ return no('تعذّر فحص الجهاز'); }
+}
+
+// تأكيد حقيقي إن ملفات الموديل في الكاش (مش علامة بس): config + tokenizer + ملف onnx بحجمه المتوقع
+async function localAiVerify(dtype){
+  try{
+    if(typeof caches==='undefined') return false;
+    const dt = dtype || (localAiHint()||{}).dtype; if(!dt || !LOCAL_AI.VARIANTS[dt]) return false;
+    const c = await caches.open(LOCAL_AI.CACHE); const keys = await c.keys();
+    const mine = keys.filter(r=> r.url.indexOf('/'+LOCAL_AI.MODEL+'/')>=0);
+    const has = s => mine.some(r=> r.url.split('?')[0].endsWith(s));
+    if(!has('/config.json') || !has('/tokenizer.json')) return false;
+    const onnx = mine.find(r=> r.url.split('?')[0].endsWith('/onnx/model_'+dt+'.onnx')); if(!onnx) return false;
+    const res = await c.match(onnx); if(!res) return false;
+    const len = +res.headers.get('content-length')||0;
+    return !len || len >= LOCAL_AI.VARIANTS[dt].mb*1048576*0.9;
+  }catch(e){ return false; }
+}
+
+async function localAiGetLib(){
+  if(!localAiLib){ localAiLib = await import(LOCAL_AI.LIB); localAiLib.env.allowLocalModels = false; localAiLib.env.useBrowserCache = true; }
+  return localAiLib;
+}
+
+// ----- التحميل (مرة واحدة) -----
+async function localAiInstall(onProgress){
+  if(localAiBusyInstall) return false; localAiBusyInstall = true;
+  try{
+    const dev = await localAiCheckDevice(); if(!dev.ok) throw new Error(dev.reason);
+    try{ if(navigator.storage && navigator.storage.persist) await navigator.storage.persist(); }catch(e){}   // تخزين دايم
+    const lib = await localAiGetLib(); const files = {};
+    const pipe = await lib.pipeline('text-generation', LOCAL_AI.MODEL, {
+      dtype: dev.dtype, device: dev.device,
+      progress_callback: p=>{
+        if(!p || !p.file) return;
+        if(p.status==='progress' && p.total){ files[p.file] = {l:p.loaded||0, t:p.total}; }
+        else if(p.status==='done' && files[p.file]){ files[p.file].l = files[p.file].t; }
+        else return;
+        let l = 0, t = 0; Object.keys(files).forEach(k=>{ l += files[k].l; t += files[k].t; });
+        if(t && onProgress) onProgress(Math.min(99, Math.round(l/t*100)));
+      }
+    });
+    try{ if(pipe && pipe.dispose) await pipe.dispose(); }catch(e){}   // نفضّي الرام، الملفات فضلت في الكاش
+    const ok = await localAiVerify(dev.dtype);
+    if(!ok) throw new Error('التحميل خلص بس الملفات مش موجودة في تخزين المتصفح');
+    localAiSetHint({dtype:dev.dtype, at:Date.now()}); localAiReady = true; localAiFails = 0; localAiOffUntil = 0;
+    if(onProgress) onProgress(100);
+    return true;
+  } finally { localAiBusyInstall = false; }
+}
+
+async function localAiRemove(){
+  try{ await localAiUnload(); }catch(e){}
+  try{
+    const c = await caches.open(LOCAL_AI.CACHE); const keys = await c.keys();
+    for(const r of keys){ if(r.url.indexOf('/'+LOCAL_AI.MODEL+'/')>=0) await c.delete(r); }
+  }catch(e){}
+  localAiSetHint(null); localAiReady = false;
+}
+
+// ----- التشغيل (بيتحمّل في الرام عند أول سؤال بس) -----
+function localAiLoad(){
+  if(localAiPipe) return Promise.resolve(localAiPipe);
+  if(localAiLoading) return localAiLoading;
+  const h = localAiHint(); if(!h) return Promise.reject(new Error('no-model'));
+  const dev = LOCAL_AI.VARIANTS[h.dtype]; if(!dev) return Promise.reject(new Error('bad-hint'));
+  localAiLoading = (async ()=>{
+    const lib = await localAiGetLib();
+    const p = await lib.pipeline('text-generation', LOCAL_AI.MODEL, {dtype:h.dtype, device:dev.device});
+    localAiPipe = p; return p;
+  })();
+  localAiLoading.then(()=>{ localAiLoading = null; }, ()=>{ localAiLoading = null; });
+  return localAiLoading;
+}
+async function localAiUnload(){
+  const p = localAiPipe; localAiPipe = null; localAiLoading = null;
+  if(localAiStop){ try{ localAiStop.interrupt(); }catch(e){} }
+  try{ if(p && p.dispose) await p.dispose(); }catch(e){}
+}
+function localAiUsable(){ return localAiReady && assistantRole()==='ADMIN' && Date.now() > localAiOffUntil; }   // مرحلة التجربة: للمدير بس
+
+// بيرجّع نص الرد الخام. لو عدّى المهلة: بيوقف التوليد ويرمي 'timeout' (والتحميل بيكمّل في الخلفية للسؤال الجاي)
+async function localAiAsk(purpose, system, user){
+  if(purpose !== 'assistant') throw new Error('forbidden');   // الموديل للمساعد بس: مش للامتحانات ولا الدرجات
+  const lib = await localAiGetLib();
+  const timeout = new Promise((_, rej)=> setTimeout(()=> rej(new Error('timeout')), LOCAL_AI.TIMEOUT_MS));
+  const work = (async ()=>{
+    const pipe = await localAiLoad();
+    localAiStop = new lib.InterruptableStoppingCriteria();
+    const msgs = [{role:'system', content:system}, {role:'user', content:user}];
+    const out = await pipe(msgs, {max_new_tokens:LOCAL_AI.MAX_NEW_TOKENS, do_sample:true, temperature:0.2, top_p:0.9, repetition_penalty:1.1, stopping_criteria:localAiStop});
+    const g = out && out[0] && out[0].generated_text;
+    return Array.isArray(g) ? String((g[g.length-1]||{}).content||'') : String(g||'');
+  })();
+  try{ return await Promise.race([work, timeout]); }
+  catch(e){ if(String(e&&e.message)==='timeout' && localAiStop){ try{ localAiStop.interrupt(); }catch(_){} } throw e; }
+}
+
+// فلتر الجودة: بنقبل JSON سليم بأداة صحيحة، أو رد عربي قصير. أي حاجة تانية → null (يروح للـAPI)
+function localAiInterpret(raw){
+  raw = String(raw||'').trim(); if(!raw) return null;
+  const m = raw.match(/\{[\s\S]*\}/); if(!m) return null;
+  let j; try{ j = JSON.parse(m[0]); }catch(e){ return null; }
+  const role = assistantRole();
+  if(j && typeof j.tool==='string'){
+    if(!Object.prototype.hasOwnProperty.call(ASSIST_TOOLS, j.tool) || ASSIST_TOOLS[j.tool].roles.indexOf(role)<0) return null;
+    const args = ASSIST_TOOLS[j.tool].validate(j.args||{}); return args ? {tool:j.tool, args} : null;
+  }
+  if(j && typeof j.reply==='string'){
+    const r = j.reply.trim(); if(r.length<3 || r.length>300) return null;
+    const letters = (r.match(/\p{L}/gu)||[]).length, arabic = (r.match(/[؀-ۿ]/g)||[]).length;
+    if(!letters || arabic/letters < 0.7) return null;     // مش عربي
+    if(/مش متأكد|معرفش/.test(r) && r.length<12) return null;
+    return {reply:r};
+  }
+  return null;
+}
+function localAiPrompt(question){
+  const role = assistantRole();
+  const tools = assistantToolsFor(role).map(k=>`- ${k}: ${ASSIST_TOOLS[k].desc}`).join('\n');
+  const system = `إنت مساعد جوه منصة "مسار" لإدارة السناتر. اتكلم بالعامية المصرية، وماتتكلمش غير في مواضيع المنصة (استخدامها، بيانات السنتر، شرح مبسط). لو مش متأكد قول "مش متأكد" ومتألفش.\nاختار أداة واحدة بس من القايمة، وماتخترعش أدوات:\n${tools}\nردّ بـJSON واحد بس: {"tool":"اسم","args":{}} أو {"reply":"جملة قصيرة بالمصري"}.`.slice(0, LOCAL_AI.MAX_PROMPT_CHARS);
+  const hist = assistantHistory.slice(-1).map(h=>`المستخدم: ${h.u}\nأنت: ${h.b}`).join('\n');
+  return {system, user: (hist ? hist+'\n' : '') + 'سؤال المستخدم: ' + question};
+}
+
+// ----- واجهة الزر في شاشة المساعد -----
+function localAiPaint(state, extra){
+  const el = document.getElementById('asst-localai'); if(!el) return;
+  extra = extra || {};
+  const e = faEsc;
+  if(state==='hidden'){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  if(state==='unsupported') el.innerHTML = `<div class="lai-msg">ℹ️ جهازك مش مناسب لتشغيل الذكاء الاصطناعي عليه (${e(extra.reason||'')}). المساعد شغّال عادي عن طريق الإنترنت.</div>`;
+  else if(state==='offer') el.innerHTML = `<button class="lai-btn" id="lai-start" type="button">⚡ تفعيل المساعد الذكي على جهازك</button>`;
+  else if(state==='confirm') el.innerHTML = `<div class="lai-msg">هيتحمّل موديل ذكاء اصطناعي صغير على جهازك (حوالي <b>${extra.mb} ميجا</b>) مرة واحدة بس. الأفضل تكون على واي فاي. بعدها هيشتغل على جهازك من غير تكلفة.</div><div class="lai-row"><button class="lai-btn" id="lai-go" type="button">ابدأ التحميل</button><button class="lai-btn ghost" id="lai-cancel" type="button">إلغاء</button></div>`;
+  else if(state==='progress') el.innerHTML = `<div class="lai-msg">⏳ بنحمّل الموديل… <b id="lai-pct">${extra.pct||0}%</b> (سيب الصفحة مفتوحة)</div><div class="lai-bar"><i id="lai-fill" style="width:${extra.pct||0}%"></i></div>`;
+  else if(state==='error') el.innerHTML = `<div class="lai-msg err">⚠️ ${e(extra.msg||'حصلت مشكلة في التحميل')}</div><div class="lai-row"><button class="lai-btn" id="lai-start" type="button">حاول تاني</button></div>`;
+  else if(state==='ready') el.innerHTML = `<div class="lai-ok">✓ المساعد الذكي مفعّل على جهازك</div><button class="lai-del" id="lai-del" type="button">حذف الموديل من جهازي</button>`;
+  const on = (id, fn)=>{ const b = document.getElementById(id); if(b) b.onclick = fn; };
+  on('lai-start', async ()=>{ const d = await localAiCheckDevice(); localAiPaint('confirm', {mb:d.mb}); });
+  on('lai-cancel', ()=> localAiPaint('offer'));
+  on('lai-go', async ()=>{
+    localAiPaint('progress', {pct:0});
+    try{
+      await localAiInstall(p=>{ const a = document.getElementById('lai-pct'), b = document.getElementById('lai-fill'); if(a) a.textContent = p+'%'; if(b) b.style.width = p+'%'; });
+      localAiPaint('ready');
+    }catch(err){ localAiPaint('error', {msg: (navigator.onLine===false ? 'مفيش إنترنت. ' : '') + 'التحميل ماكملش، جرّب تاني.'}); }
+  });
+  on('lai-del', async ()=>{ if(!confirm('تحذف الموديل من جهازك؟ تقدر تحمّله تاني بعدين.')) return; await localAiRemove(); localAiPaint('offer'); });
+}
+async function localAiRefreshCard(){
+  if(!document.getElementById('asst-localai')) return;
+  if(assistantRole()!=='ADMIN'){ localAiPaint('hidden'); return; }   // مرحلة التجربة: الزر للمدير بس
+  if(localAiBusyInstall) return;
+  const dev = await localAiCheckDevice();
+  if(!dev.ok){ localAiReady = false; localAiPaint('unsupported', {reason:dev.reason}); return; }
+  let ok = await localAiVerify();
+  if(!ok){   // مفيش علامة (أو اتمسحت) بس يمكن الملفات موجودة فعلًا: نجرّب النوعين
+    for(const dt of Object.keys(LOCAL_AI.VARIANTS)){ if(await localAiVerify(dt)){ localAiSetHint({dtype:dt, at:Date.now()}); ok = true; break; } }
+  }
+  localAiReady = ok;
+  if(!ok && localAiHint()) localAiSetHint(null);   // العلامة كانت موجودة بس الملفات اتمسحت
+  localAiPaint(ok ? 'ready' : 'offer');
+}
+
 function openAssistant(){
   if(!assistantCanUse()){ showToast('المساعد مش متاح لحسابك'); return; }
   assistantRenderSuggestions();
   assistantRefreshStatus();
+  localAiRefreshCard();
   showScreen('ai-chat-screen');
   assistantInputChanged();
 }
