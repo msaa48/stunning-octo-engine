@@ -7081,6 +7081,90 @@ function localAiPrompt(question){
   return {system, user: (hist ? hist+'\n' : '') + 'سؤال المستخدم: ' + question};
 }
 
+/* ===== TEMP: شات تجريبي على الموديل المحلي بس =====
+   مؤقت للتجربة: بيكلّم الموديل اللي على الجهاز مباشرة (من غير الفهم المحلي ولا الـAPI ولا تسجيل الأسئلة)
+   وبيعرض الأزمنة. للحذف بعد التجربة: امسح البلوك ده كله + زرار lai-lab-open في localAiPaint + معالجه. */
+let laiLabBusy = false, laiLabStop = null, laiLabHist = [], laiLabTimer = null;
+const LAI_LAB_SYSTEM = 'إنت مساعد ودود بتتكلم بالعامية المصرية وبتجاوب باختصار (جملتين أو تلاتة).';
+function laiLabClose(){
+  try{ if(laiLabStop) laiLabStop.interrupt(); }catch(e){}
+  if(laiLabTimer){ clearTimeout(laiLabTimer); laiLabTimer = null; }
+  laiLabBusy = false;
+  const el = document.getElementById('lai-lab'); if(el) el.remove();
+}
+function laiLabAdd(kind, text){
+  const box = document.getElementById('lai-lab-msgs'); if(!box) return null;
+  const d = document.createElement('div');
+  d.style.cssText = 'margin:8px 0; padding:9px 12px; border-radius:14px; max-width:92%; line-height:1.7; white-space:pre-wrap; word-break:break-word;' +
+    (kind==='me' ? 'background:#5b4b97; color:#fff; margin-inline-start:auto;' : kind==='sys' ? 'background:transparent; color:#8a7f6e; font-size:12px; text-align:center; max-width:100%;' : 'background:rgba(120,110,150,.13);');
+  d.textContent = text; box.appendChild(d); box.scrollTop = box.scrollHeight; return d;
+}
+async function laiLabSend(q){
+  q = String(q||'').trim().slice(0,400);
+  if(!q || laiLabBusy) return;
+  if(!localAiReady){ laiLabAdd('sys', 'الموديل لسه مش متفعّل على جهازك. اقفل الشاشة دي وفعّله الأول.'); return; }
+  laiLabBusy = true;
+  const btn = document.getElementById('lai-lab-send'), stopBtn = document.getElementById('lai-lab-stop');
+  if(btn) btn.disabled = true; if(stopBtn) stopBtn.style.display = '';
+  laiLabAdd('me', q);
+  const out = laiLabAdd('bot', '⏳ …');
+  const t0 = performance.now(); let tFirst = null, chunks = 0, text = '', tLoad = 0;
+  try{
+    const lib = await localAiGetLib();
+    if(!localAiPipe && out) out.textContent = '⏳ بحمّل الموديل في الرام… (أول مرة بتاخد وقت)';
+    const l0 = performance.now(); const pipe = await localAiLoad(); tLoad = performance.now() - l0;
+    laiLabStop = new lib.InterruptableStoppingCriteria();
+    laiLabTimer = setTimeout(()=>{ try{ laiLabStop.interrupt(); }catch(e){} }, 180000);   // أمان: أقصى 3 دقايق للرد
+    if(out) out.textContent = '';
+    const streamer = new lib.TextStreamer(pipe.tokenizer, {skip_prompt:true, skip_special_tokens:true, callback_function: t=>{
+      if(tFirst===null) tFirst = performance.now();
+      chunks++; text += t; if(out) out.textContent = text;
+      const box = document.getElementById('lai-lab-msgs'); if(box) box.scrollTop = box.scrollHeight;
+    }});
+    const msgs = [{role:'system', content:LAI_LAB_SYSTEM}].concat(laiLabHist.slice(-6)).concat([{role:'user', content:q}]);
+    const res = await pipe(msgs, {max_new_tokens:200, do_sample:true, temperature:0.3, top_p:0.9, repetition_penalty:1.1, stopping_criteria:laiLabStop, streamer});
+    const g = res && res[0] && res[0].generated_text;
+    const final = (Array.isArray(g) ? String((g[g.length-1]||{}).content||'') : String(g||'')).trim() || text.trim();
+    if(out) out.textContent = final || '(رد فاضي)';
+    laiLabHist.push({role:'user', content:q}, {role:'assistant', content:final}); if(laiLabHist.length > 8) laiLabHist = laiLabHist.slice(-8);
+    const tot = (performance.now() - t0) / 1000, gen = tFirst ? (performance.now() - tFirst) / 1000 : 0;
+    const cps = gen > 0.2 ? Math.round(final.length / gen) : 0;
+    laiLabAdd('sys', `⏱ تحميل الموديل ${Math.round(tLoad)}ms · أول كلمة بعد ${tFirst ? ((tFirst - t0)/1000).toFixed(1) : '—'}ث · الإجمالي ${tot.toFixed(1)}ث${cps ? ' · ~'+cps+' حرف/ث' : ''} (تقريبي)`);
+  }catch(e){
+    if(out) out.textContent = text ? text : '⚠️ ' + String((e && e.message) || 'حصلت مشكلة').slice(0, 140);
+    if(!text) laiLabAdd('sys', 'لو الرسالة دي بتتكرر، ابعتها للمطوّر.');
+  } finally {
+    if(laiLabTimer){ clearTimeout(laiLabTimer); laiLabTimer = null; }
+    laiLabBusy = false; laiLabStop = null;
+    if(btn) btn.disabled = false; if(stopBtn) stopBtn.style.display = 'none';
+    const inp = document.getElementById('lai-lab-input'); if(inp) inp.focus();
+  }
+}
+function openLocalAiLab(){
+  if(document.getElementById('lai-lab')) return;
+  const el = document.createElement('div'); el.id = 'lai-lab';
+  el.style.cssText = 'position:fixed; inset:0; z-index:99999; display:flex; flex-direction:column; background:var(--bg,#f9f6f0); color:var(--ink,#1d2433); padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);';
+  el.innerHTML = `<div style="display:flex; align-items:center; gap:8px; padding:12px 14px; background:#4a3d7a; color:#fff;">
+      <button id="lai-lab-close" type="button" style="background:rgba(255,255,255,.18); color:#fff; border:0; border-radius:10px; padding:6px 12px; font:inherit;">إغلاق ✕</button>
+      <div style="flex:1; font-weight:700;">🧪 شات تجريبي — الموديل المحلي بس</div></div>
+    <div style="padding:6px 14px; font-size:12px; color:#8a7f6e;">مؤقت للتجربة: بيكلّم الموديل اللي على جهازك مباشرة، من غير الفهم المحلي ولا الـAPI، ومابيتسجّلش حاجة.</div>
+    <div id="lai-lab-msgs" style="flex:1; overflow-y:auto; padding:6px 14px;"></div>
+    <div style="display:flex; gap:8px; padding:10px 14px;">
+      <input id="lai-lab-input" type="text" maxlength="400" placeholder="اكتب سؤالك للموديل…" autocomplete="off" style="flex:1; padding:11px 14px; border-radius:22px; border:1px solid var(--border,#d9d2c3); font:inherit; background:#fff; color:#1d2433;">
+      <button id="lai-lab-stop" type="button" style="display:none; background:#c0433a; color:#fff; border:0; border-radius:22px; padding:0 14px; font:inherit;">⏹</button>
+      <button id="lai-lab-send" type="button" style="background:#5b4b97; color:#fff; border:0; border-radius:22px; padding:0 18px; font:inherit;">إرسال</button>
+    </div>`;
+  document.body.appendChild(el);
+  const inp = document.getElementById('lai-lab-input');
+  const send = ()=>{ const v = inp.value; inp.value = ''; laiLabSend(v); };
+  document.getElementById('lai-lab-send').onclick = send;
+  inp.onkeydown = ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); send(); } };
+  document.getElementById('lai-lab-stop').onclick = ()=>{ try{ if(laiLabStop) laiLabStop.interrupt(); }catch(e){} };
+  document.getElementById('lai-lab-close').onclick = laiLabClose;
+  laiLabAdd('sys', localAiReady ? (localAiPipe ? 'الموديل محمّل في الرام وجاهز.' : 'أول سؤال هيحمّل الموديل في الرام وهياخد وقت.') : 'الموديل لسه مش متفعّل. اقفل الشاشة دي وفعّله من الشاشة الرئيسية للمساعد.');
+}
+/* ===== END TEMP ===== */
+
 // ----- واجهة الزر في شاشة المساعد -----
 function localAiPaint(state, extra){
   const el = document.getElementById('asst-localai'); if(!el) return;
@@ -7093,12 +7177,13 @@ function localAiPaint(state, extra){
   else if(state==='confirm') el.innerHTML = `<div class="lai-msg">هيتحمّل موديل ذكاء اصطناعي صغير على جهازك (حوالي <b>${extra.mb} ميجا</b>) مرة واحدة بس. الأفضل تكون على واي فاي. بعدها هيشتغل على جهازك من غير تكلفة.</div><div class="lai-row"><button class="lai-btn" id="lai-go" type="button">ابدأ التحميل</button><button class="lai-btn ghost" id="lai-cancel" type="button">إلغاء</button></div><div class="lai-row"><button class="lai-btn ghost" id="lai-native" type="button">📥 تحميل من إشعارات الموبايل</button></div>`;
   else if(state==='progress') el.innerHTML = `<div class="lai-msg">⏳ بنحمّل الموديل… <b id="lai-pct">${extra.pct||0}%</b> (سيب الصفحة مفتوحة)</div><div class="lai-bar"><i id="lai-fill" style="width:${extra.pct||0}%"></i></div>`;
   else if(state==='error') el.innerHTML = `<div class="lai-msg err">⚠️ ${e(extra.msg||'حصلت مشكلة في التحميل')}</div>${extra.detail?`<div class="lai-msg" dir="ltr" style="font-size:11px;opacity:.7">${e(extra.detail)}</div>`:''}<div class="lai-row"><button class="lai-btn" id="lai-start" type="button">حاول تاني</button></div><div class="lai-row"><button class="lai-btn ghost" id="lai-native" type="button">📥 تحميل من إشعارات الموبايل</button></div>`;
-  else if(state==='ready') el.innerHTML = `<div class="lai-ok">✓ المساعد الذكي مفعّل على جهازك</div><button class="lai-del" id="lai-del" type="button">حذف الموديل من جهازي</button>`;
+  else if(state==='ready') el.innerHTML = `<div class="lai-ok">✓ المساعد الذكي مفعّل على جهازك</div><button class="lai-btn ghost" id="lai-lab-open" type="button">🧪 شات تجريبي على الموديل (مؤقت)</button><button class="lai-del" id="lai-del" type="button">حذف الموديل من جهازي</button>`;
   else if(state==='native') el.innerHTML = `<div class="lai-msg">طريقة أضمن على الموبايل:<br>١) اضغط «نزّل الملف». هيبدأ في إشعارات الموبايل (حوالي <b>${extra.mb} ميجا</b>) وتقدر تقفل الصفحة وتستنى.<br>٢) لما يخلص ارجع هنا واضغط «اختار الملف اللي نزل».</div><div class="lai-row"><button class="lai-btn" id="lai-dl" type="button">⬇️ نزّل الملف</button><button class="lai-btn" id="lai-pick" type="button">📂 اختار الملف اللي نزل</button></div><div class="lai-row"><button class="lai-btn ghost" id="lai-cancel" type="button">رجوع</button></div>`;
   else if(state==='importing') el.innerHTML = `<div class="lai-msg">⏳ بنجهّز الملف على جهازك… (سيب الصفحة مفتوحة لحظات)</div>`;
   const on = (id, fn)=>{ const b = document.getElementById(id); if(b) b.onclick = fn; };
   on('lai-start', async ()=>{ const d = await localAiCheckDevice(); localAiPaint('confirm', {mb:d.mb}); });
   on('lai-cancel', ()=> localAiPaint('offer'));
+  on('lai-lab-open', ()=> openLocalAiLab());
   on('lai-native', async ()=>{ const d = await localAiCheckDevice(); localAiPaint('native', {mb:d.mb, dtype:d.dtype}); });
   on('lai-dl', async ()=>{ const d = await localAiCheckDevice(); try{ window.open(localAiNativeUrl(d.dtype), '_blank', 'noopener'); }catch(e){} });
   on('lai-pick', ()=>{
