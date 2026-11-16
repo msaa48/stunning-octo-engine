@@ -41,7 +41,7 @@ const ctx={console,db,Date,Math,JSON,Set,Object,Array,String,Number,RegExp,parse
  session:{role:'ADMIN',personId:null},
  loadDB:()=>db, getSystemNow:()=>new Date(2026,10,4,14,0,0),
  getSubscriptionState:(sub,today)=>{if(!sub)return{key:'none',label:'بدون اشتراك'};if(sub.status==='pending')return{key:'pending',label:'في انتظار الدفع'};if(sub.status==='active'&&sub.periodEnd>=today)return{key:'active',label:'سارية لحد '+sub.periodEnd};return{key:'expired',label:'منتهي من '+sub.periodEnd};},
- getAdminSubscriptionCounts:()=>({expired:1,pending:1}), timeStr:iso=>iso.slice(11,16), showToast:()=>{}, supabaseClient:{}, assistantInputChanged:()=>{},
+ getAdminSubscriptionCounts:()=>({expired:1,pending:1}), timeStr:iso=>iso.slice(11,16), showToast:()=>{}, supabaseClient:{}, assistantInputChanged:()=>{}, assistantAddChoices:()=>{},
 };
 vm.createContext(ctx);
 const code=helpers+'\n'+grade+'\n'+evmeta+'\n'+wk+'\n'+adminMeta+'\n'+block+'\n'+askBlock+'\nthis.__api={assistantPlan,assistantExecute,assistantScope,assistantToolsFor,assistantParse,assistantSuggest,assistantCatalog,ASSIST_TOOLS,get ctxState(){return assistantCtx},setCtx(v){assistantCtx=v},get pending(){return assistantPending},resetPending(){assistantPending=null}};';

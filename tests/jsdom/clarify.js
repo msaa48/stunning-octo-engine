@@ -32,9 +32,9 @@ db.teacherAttendance=[{id:'ta1',teacherId:'t1',type:'CHECK_IN',time:'2026-11-04T
  ok(out[0] && /أحمد محمد علي/.test(JSON.stringify(out[0])), 'late_arrivals بيرجّع الطالب اللي اتسجّل «جه متأخر»');
  // 5) مدرّس → اختيار واحد متاح فبينفّذ مع توضيح إنه المتاح
  api.assistantPlan('مين متأخر'); p=api.assistantPlan('المدرسين');
- ok(p && p.tool==='late_teachers' && p.intro, 'مدرّس → late_teachers (الخيار الوحيد المتاح) مع جملة توضيح');
+ ok(p && p.tool==='teachers_absent_today' && p.intro, 'مدرّس → teachers_absent_today (الخيار الوحيد المتاح) مع جملة توضيح');
  out.length=0; await api.assistantExecute(p);
- ok(/أ\. سعاد/.test(JSON.stringify(out[0])) && !/حضور 09/.test('') , 'late_teachers بيطلّع المدرّس اللي حصته بدأت ولسه ما سجّلش');
+ ok(/أ\. سعاد/.test(JSON.stringify(out[0])) && !/حضور 09/.test('') , 'teachers_absent_today بيطلّع المدرّس اللي حصته بدأت ولسه ما سجّلش');
  // 6) ولي أمر → overdue_parents
  api.assistantPlan('مين متأخر'); p=api.assistantPlan('ولي أمر');
  ok(p && p.tool==='overdue_parents', 'ولي أمر → overdue_parents');
@@ -46,7 +46,7 @@ db.teacherAttendance=[{id:'ta1',teacherId:'t1',type:'CHECK_IN',time:'2026-11-04T
  // 8) أسئلة واضحة ماتتغيرش
  role('ADMIN');
  p=api.assistantPlan('مين المتأخرين في الدفع؟'); ok(p && p.tool==='overdue_payments' && !p.reply, '«مين المتأخرين في الدفع؟» لسه بتتنفّذ مباشرة');
- p=api.assistantPlan('المدرسين المتأخرين'); ok(p && p.tool==='late_teachers', '«المدرسين المتأخرين» → late_teachers مباشرة');
+ p=api.assistantPlan('المدرسين المتأخرين'); ok(p && p.tool==='teachers_absent_today', '«المدرسين المتأخرين» → teachers_absent_today مباشرة');
  p=api.assistantPlan('الطلاب المتأخرين'); ok(p && /في إيه/.test(p.reply), '«الطلاب المتأخرين» → بيسأل في إيه');
  api.resetPending(); p=api.assistantPlan('مين جه متأخر'); ok(p && /مين بالظبط/.test(p.reply), '«مين جه متأخر» → بيسأل مين (طالب ولا مدرّس)');
  p=api.assistantPlan('الواجب متأخر'); ok(!(p && p.chips), '«الواجب متأخر» → مش بيسأل (معنى تاني)');
@@ -55,7 +55,7 @@ db.teacherAttendance=[{id:'ta1',teacherId:'t1',type:'CHECK_IN',time:'2026-11-04T
  api.assistantPlan('مين متأخر'); p=api.assistantPlan('افتح المدفوعات');
  ok(p && p.tool==='open_screen' && api.pending===null, 'رد مالوش علاقة → سؤال جديد والحالة اتمسحت');
  api.assistantPlan('مين متأخر'); p=api.assistantPlan('مين المدرسين اللي عندي النهاردة وحصصهم ايه');
- ok(!(p && p.tool==='late_teachers'), 'جملة طويلة مش بتتاخد كإجابة');
+ ok(!(p && p.tool==='teachers_absent_today'), 'جملة طويلة مش بتتاخد كإجابة');
  // 10) سؤال "في إيه" بإجابة غير متاحة
  role('ADMIN'); api.assistantPlan('المدرسين المتأخرين في الدفع'); 
  role('ADMIN'); p=api.assistantPlan('ولي الامر المتأخر في الحضور');
