@@ -1086,6 +1086,13 @@
     <div id="sa-q-list"></div>
 
     <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+      <span>🎛️ طرق ربط المساعد بالشات</span>
+      <button class="badge" onclick="saSwitchesRender()">تحديث</button>
+    </div>
+    <div class="list-sub" style="margin-bottom:6px; line-height:1.8;">السؤال بيعدّي على الطرق دي بالترتيب. اقفل أو افتح أي طريقة، والتغيير بيتطبّق على كل المستخدمين خلال دقيقة تقريبًا.</div>
+    <div id="sa-sw-list"></div>
+
+    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
       <span>🔑 مفاتيح الذكاء الاصطناعي</span>
       <span style="display:flex; gap:6px;">
         <button class="badge" onclick="saKeysDiagnose()">🔍 فحص</button>
@@ -4937,6 +4944,32 @@ function saKeyRow(k){
     </div>
   </div>`;
 }
+const SA_SWITCH_META = [
+  {k:'local_engine', n:'1) الفهم المحلي (من غير نت)', d:'بيفهم الأسئلة المعروفة من بيانات الجهاز نفسها: سريع ومجاني. لو قفلته كل الأسئلة هتروح للموديل أو الـAPI.'},
+  {k:'on_device', n:'2) الموديل على الجهاز', d:'موديل صغير بيتحمّل على موبايل المستخدم ويرد من غير تكلفة. تحت تقدر تحدد مين يشوف زر تفعيله.'},
+  {k:'api', n:'3) الـAPI (الإنترنت)', d:'مفاتيح المركز أو المنصة. لو قفلته المساعد مش هيكلّم أي مزوّد خارجي (الامتحانات مش متأثرة).'},
+  {k:'suggestions', n:'4) الأسئلة الجاهزة و«هل تقصد؟»', d:'آخر خطوة لما كل حاجة تانية متفهمش السؤال.'}
+];
+async function saSwitchesRender(){
+  const box = document.getElementById('sa-sw-list'); if(!box) return;
+  box.textContent = '⏳ …';
+  await aiSwitchesLoad(true);
+  const owner = !!session.isOwner;
+  const warn = !aiSwitchesLoaded ? '<div class="list-sub" style="color:#b45309; margin-bottom:6px;">⚠️ مقدرتش أقرا الإعدادات من السيرفر (يمكن الـmigration لسه ماتطبّقتش). المعروض هو الافتراضي.</div>' : '';
+  box.innerHTML = warn + SA_SWITCH_META.map(m=>{
+    const on = !!AI_SWITCHES[m.k];
+    let extra = '';
+    if(m.k==='on_device') extra = `<div style="margin-top:6px; font-size:12.5px;">مين يشوفه: <select ${owner?'':'disabled'} onchange="saSwitchSet('on_device', null, this.value)"><option value="ADMIN" ${AI_SWITCHES.on_device_roles==='ADMIN'?'selected':''}>المدير بس (تجربة)</option><option value="ALL" ${AI_SWITCHES.on_device_roles==='ALL'?'selected':''}>كل الأدوار</option></select></div>`;
+    return `<div style="padding:8px 0; border-bottom:1px solid var(--border,#eee);"><div style="display:flex; justify-content:space-between; align-items:center; gap:8px;"><b>${faEsc(m.n)}</b><button class="badge" ${owner?'':'disabled'} style="min-width:64px; ${on?'background:#1e8e5a; color:#fff;':'background:#9ca3af; color:#fff;'}" onclick="saSwitchSet('${m.k}', ${!on}, null)">${on?'شغّال ✓':'مقفول'}</button></div><div class="list-sub" style="line-height:1.7; margin-top:3px;">${faEsc(m.d)}</div>${m.k==='on_device'?extra:''}</div>`;
+  }).join('') + (owner ? '' : '<div class="list-sub" style="margin-top:6px;">التعديل للمالك الأساسي بس.</div>');
+}
+async function saSwitchSet(key, enabled, value){
+  if(enabled===false && (key==='api' || key==='local_engine') && !confirm(key==='api' ? 'تقفل الـAPI للمساعد؟ الأسئلة اللي المحرّك المحلي ما يفهمهاش مش هتتجاوب بالذكاء الاصطناعي الخارجي.' : 'تقفل الفهم المحلي؟ كل الأسئلة هتروح للموديل أو الـAPI، وده أبطأ وممكن يستهلك حد المنصة.')) return;
+  const { error } = await supabaseClient.rpc('ai_switch_set', {p_key:key, p_enabled: enabled, p_value: value});
+  if(error){ showToast('⚠️ ' + (/forbidden/.test(error.message||'') ? 'متاح للمالك الأساسي بس' : 'ماقدرتش أغيّر الإعداد')); saSwitchesRender(); return; }
+  showToast('✅ اتغيّر');
+  saSwitchesRender();
+}
 async function saKeysRender(){
   const box = document.getElementById('sa-keys-list'), sum = document.getElementById('sa-keys-summary');
   if(!box || !sum) return;
@@ -5234,6 +5267,7 @@ async function initSuperAdminScreen(){
   const statusLabel = {trial:'تجربة', active:'مفعّلة', past_due:'متأخرة بالدفع', suspended:'موقوفة', cancelled:'ملغاة'};
   const statusColor = {trial:'#6b7280', active:'#16a34a', past_due:'#d97706', suspended:'#dc2626', cancelled:'#6b7280'};
   saKeysRender();
+  saSwitchesRender();
   saQRender();
 
   document.getElementById('sa-centers-list').innerHTML = saCentersCache.map(c=>`
@@ -6370,7 +6404,25 @@ const ASSIST_NOTE_BY_ROLE = {
   PARENT: '🔒 بشوف بيانات أولادك إنت بس ومبعدّلش حاجة. أغلب الأسئلة بجاوب عليها من غير إنترنت.'
 };
 
-function assistantAiReady(){ return typeof aiChainCall==='function' && (typeof navigator==='undefined' || navigator.onLine!==false) && Date.now()>assistantAiOffUntil; }
+/* ===== مفاتيح تشغيل المساعد (بيتحكم فيها المالك من لوحة المالك) =====
+   الافتراضي = كله شغّال. لو القراءة من السيرفر فشلت أو الـmigration لسه ما اتطبّقتش، بنفضل على الافتراضي (مفيش حاجة تقع). */
+const AI_SWITCH_DEFAULTS = {local_engine:true, on_device:true, api:true, suggestions:true, on_device_roles:'ADMIN'};
+let AI_SWITCHES = Object.assign({}, AI_SWITCH_DEFAULTS), aiSwitchesAt = 0, aiSwitchesLoaded = false;
+async function aiSwitchesLoad(force){
+  if(!force && Date.now()-aiSwitchesAt < 60000) return AI_SWITCHES;
+  aiSwitchesAt = Date.now();
+  try{
+    const { data, error } = await supabaseClient.rpc('ai_switches_get');
+    if(error || !Array.isArray(data)) return AI_SWITCHES;
+    const n = Object.assign({}, AI_SWITCH_DEFAULTS);
+    data.forEach(r=>{ if(r.key==='on_device'){ n.on_device = r.enabled!==false; n.on_device_roles = r.value==='ALL' ? 'ALL' : 'ADMIN'; } else if(r.key in n) n[r.key] = r.enabled!==false; });
+    AI_SWITCHES = n; aiSwitchesLoaded = true;
+  }catch(e){}
+  return AI_SWITCHES;
+}
+function aiOnDeviceAllowed(){ return !!AI_SWITCHES.on_device && (AI_SWITCHES.on_device_roles==='ALL' ? !!assistantRole() : assistantRole()==='ADMIN'); }
+
+function assistantAiReady(){ return AI_SWITCHES.api && typeof aiChainCall==='function' && (typeof navigator==='undefined' || navigator.onLine!==false) && Date.now()>assistantAiOffUntil; }
 function assistantBuildPrompt(question){
   const role = assistantRole();
   const tools = assistantToolsFor(role).map(k=>`- ${k}: ${ASSIST_TOOLS[k].desc}`).join('\n');
@@ -6672,7 +6724,7 @@ async function assistantAsk(question){
   assistantAddRow('me', faEsc(q));
   try{
     let plan = null;
-    try{ plan = assistantPlan(q); }catch(e){ console.error('assistantPlan', e); plan = null; }
+    try{ plan = AI_SWITCHES.local_engine ? assistantPlan(q) : null; }catch(e){ console.error('assistantPlan', e); plan = null; }
     if(plan && plan.reply){ await assistantAddText(plan.reply); assistantHistory.push({u:q, b:plan.reply}); assistantLogOutcome('local'); return; }
     if(plan && plan.conf >= ASSIST_HIGH){
       await assistantExecute(plan);
@@ -6730,6 +6782,12 @@ async function assistantAsk(question){
 }
 // الـAI مش متاح أو الفهم المحلي مش واثق: لو في تخمين معقول ننفّذه، وإلا نعرض "هل تقصد؟"
 async function assistantFallback(q, plan){
+  if(!AI_SWITCHES.suggestions){
+    assistantLogOutcome('none', q);
+    const anyOn = AI_SWITCHES.local_engine || AI_SWITCHES.api || aiOnDeviceAllowed();
+    await assistantAddText(anyOn ? 'مفهمتش طلبك. جرّب تصيغه بشكل تاني أو أوضح أكتر.' : 'المساعد متوقّف مؤقتًا من إدارة المنصة.');
+    return;
+  }
   if(plan && plan.tool && plan.conf >= 2){
     await assistantAddText('مش متأكد 100% من قصدك، بس ده أقرب حاجة لقيتها من بياناتك:');
     await assistantExecute(plan);
@@ -6950,7 +7008,7 @@ async function localAiUnload(){
   if(localAiStop){ try{ localAiStop.interrupt(); }catch(e){} }
   try{ if(p && p.dispose) await p.dispose(); }catch(e){}
 }
-function localAiUsable(){ return localAiReady && assistantRole()==='ADMIN' && Date.now() > localAiOffUntil; }   // مرحلة التجربة: للمدير بس
+function localAiUsable(){ return localAiReady && aiOnDeviceAllowed() && Date.now() > localAiOffUntil; }   // الأدوار المسموحة بتتحدد من لوحة المالك (الافتراضي: المدير بس)
 
 // بيرجّع نص الرد الخام. لو عدّى المهلة: بيوقف التوليد ويرمي 'timeout' (والتحميل بيكمّل في الخلفية للسؤال الجاي)
 async function localAiAsk(purpose, system, user){
@@ -7023,7 +7081,8 @@ function localAiPaint(state, extra){
 }
 async function localAiRefreshCard(){
   if(!document.getElementById('asst-localai')) return;
-  if(assistantRole()!=='ADMIN'){ localAiPaint('hidden'); return; }   // مرحلة التجربة: الزر للمدير بس
+  await aiSwitchesLoad();
+  if(!aiOnDeviceAllowed()){ localAiPaint('hidden'); return; }   // مقفول من لوحة المالك أو الدور مش مسموح
   if(localAiBusyInstall) return;
   const dev = await localAiCheckDevice();
   if(!dev.ok){ localAiReady = false; localAiPaint('unsupported', {reason:dev.reason}); return; }
@@ -7039,6 +7098,7 @@ async function localAiRefreshCard(){
 function openAssistant(){
   if(!assistantCanUse()){ showToast('المساعد مش متاح لحسابك'); return; }
   assistantRenderSuggestions();
+  aiSwitchesLoad();
   assistantRefreshStatus();
   localAiRefreshCard();
   showScreen('ai-chat-screen');
