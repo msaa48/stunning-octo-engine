@@ -59,6 +59,10 @@ let pass = 0, fail = 0; const ck = (n, c, x) => { if(c){ pass++; console.log('�
   // 1) جهاز ضعيف: رسالة بس من غير زر
   { const {p} = await open({mem:2, nogpu:true}); await openAst(p);
     ck('جهاز رامه 2GB: رسالة من غير زر', /مش مناسب/.test(await txt(p)) && !(await visible(p,'lai-start')), await txt(p)); await p.close(); }
+  // 1ب) غير المدير: الزر مخفي
+  { const {p} = await open({mem:4, nogpu:true}); await p.evaluate(()=>{ session.role='PARENT'; }); await openAst(p);
+    ck('ولي الأمر: مفيش زر ولا رسالة', !(await visible(p,'lai-start')) && (await txt(p)).trim()==='', await txt(p));
+    ck('ولي الأمر: الموديل مش مستخدم', await p.evaluate(()=> !localAiUsable())); await p.close(); }
   // 2) جهاز كويس بدون WebGPU → زر + تأكيد بحجم q8 (512) ثم تحميل وتفعيل
   const ctx = await b.newContext({viewport:{width:390,height:800}});
   { const {p, errs} = await open({mem:4, nogpu:true, ctx}); await openAst(p);

@@ -6950,7 +6950,7 @@ async function localAiUnload(){
   if(localAiStop){ try{ localAiStop.interrupt(); }catch(e){} }
   try{ if(p && p.dispose) await p.dispose(); }catch(e){}
 }
-function localAiUsable(){ return localAiReady && Date.now() > localAiOffUntil; }
+function localAiUsable(){ return localAiReady && assistantRole()==='ADMIN' && Date.now() > localAiOffUntil; }   // مرحلة التجربة: للمدير بس
 
 // بيرجّع نص الرد الخام. لو عدّى المهلة: بيوقف التوليد ويرمي 'timeout' (والتحميل بيكمّل في الخلفية للسؤال الجاي)
 async function localAiAsk(purpose, system, user){
@@ -7023,6 +7023,7 @@ function localAiPaint(state, extra){
 }
 async function localAiRefreshCard(){
   if(!document.getElementById('asst-localai')) return;
+  if(assistantRole()!=='ADMIN'){ localAiPaint('hidden'); return; }   // مرحلة التجربة: الزر للمدير بس
   if(localAiBusyInstall) return;
   const dev = await localAiCheckDevice();
   if(!dev.ok){ localAiReady = false; localAiPaint('unsupported', {reason:dev.reason}); return; }
