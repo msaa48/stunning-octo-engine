@@ -6900,7 +6900,7 @@ const LOCAL_AI = {
   LIB: 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2',   // نسخة مثبّتة (اتنشرت 2026-10-27)
   MODEL: 'onnx-community/Qwen2.5-0.5B-Instruct',
   CACHE: 'transformers-cache',                                               // اسم كاش المكتبة نفسها
-  VARIANTS: {q4f16:{device:'webgpu', mb:483}, q8:{device:'wasm', mb:512}},   // WebGPU بيستخدم q4f16، والمعالج (WASM) بيستخدم q8
+  VARIANTS: {q4f16:{device:'webgpu', mb:483, file:'model_q4f16.onnx'}, q8:{device:'wasm', mb:512, file:'model_quantized.onnx'}},   // اسم الملف حسب Transformers.js: q8 ← _quantized   // WebGPU بيستخدم q4f16، والمعالج (WASM) بيستخدم q8
   TIMEOUT_MS: 20000, MAX_NEW_TOKENS: 160, MAX_PROMPT_CHARS: 2600, STORAGE_FLAG: 'masarLocalAi'
 };
 let localAiLib = null, localAiPipe = null, localAiLoading = null, localAiDevice = null, localAiReady = false, localAiBusyInstall = false;
@@ -6941,7 +6941,7 @@ async function localAiVerify(dtype){
     const mine = keys.filter(r=> r.url.indexOf('/'+LOCAL_AI.MODEL+'/')>=0);
     const has = s => mine.some(r=> r.url.split('?')[0].endsWith(s));
     if(!has('/config.json') || !has('/tokenizer.json')) return false;
-    const onnx = mine.find(r=> r.url.split('?')[0].endsWith('/onnx/model_'+dt+'.onnx')); if(!onnx) return false;
+    const onnx = mine.find(r=> r.url.split('?')[0].endsWith('/onnx/'+LOCAL_AI.VARIANTS[dt].file)); if(!onnx) return false;
     const res = await c.match(onnx); if(!res) return false;
     const len = +res.headers.get('content-length')||0;
     return !len || len >= LOCAL_AI.VARIANTS[dt].mb*1048576*0.9;
@@ -6976,6 +6976,33 @@ async function localAiInstall(onProgress){
     if(!ok) throw new Error('التحميل خلص بس الملفات مش موجودة في تخزين المتصفح');
     localAiSetHint({dtype:dev.dtype, at:Date.now()}); localAiReady = true; localAiFails = 0; localAiOffUntil = 0;
     if(onProgress) onProgress(100);
+    return true;
+  } finally { localAiBusyInstall = false; }
+}
+
+// ----- طريقة بديلة: تحميل عادي من متصفح الموبايل (بيظهر في الإشعارات ويكمّل لو سبت الصفحة) + استيراد الملف -----
+function localAiModelUrl(path){ return 'https://huggingface.co/' + LOCAL_AI.MODEL + '/resolve/main/' + path; }
+function localAiNativeUrl(dtype){ return localAiModelUrl('onnx/' + LOCAL_AI.VARIANTS[dtype].file) + '?download=true'; }
+async function localAiImportFile(file){
+  if(localAiBusyInstall) return false; localAiBusyInstall = true;
+  try{
+    const dev = await localAiCheckDevice(); if(!dev.ok) throw new Error(dev.reason);
+    const v = LOCAL_AI.VARIANTS[dev.dtype];
+    if(!file || file.size < v.mb*1048576*0.9 || file.size > v.mb*1048576*1.2) throw new Error('الملف ده مش الملف المطلوب (الحجم المتوقع حوالي '+v.mb+' ميجا). نزّله من زرار «نزّل الملف» واختاره.');
+    try{ if(navigator.storage && navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+    const c = await caches.open(LOCAL_AI.CACHE);
+    const body = file.stream ? file.stream() : file;
+    await c.put(localAiModelUrl('onnx/'+v.file), new Response(body, {status:200, headers:{'Content-Type':'application/octet-stream', 'Content-Length':String(file.size)}}));
+    // الملفات الصغيرة (إعدادات + tokenizer): بتتحمّل من النت عادي
+    const must = {'config.json':1, 'tokenizer.json':1};
+    for(const f of ['config.json','generation_config.json','tokenizer.json','tokenizer_config.json']){
+      const u = localAiModelUrl(f);
+      if(await c.match(u)) continue;
+      try{ const r = await fetch(u); if(!r.ok) throw new Error('http '+r.status); await c.put(u, r); }
+      catch(e){ if(must[f]) throw new Error('الملف اتجهّز، بس مقدرتش أجيب ملفات الموديل الصغيرة. اتأكد من الإنترنت وجرّب تاني.'); }
+    }
+    if(!(await localAiVerify(dev.dtype))) throw new Error('الملف اتحفظ بس مش ظاهر في تخزين المتصفح. جرّب التحميل العادي تاني.');
+    localAiSetHint({dtype:dev.dtype, at:Date.now()}); localAiReady = true; localAiFails = 0; localAiOffUntil = 0;
     return true;
   } finally { localAiBusyInstall = false; }
 }
@@ -7063,19 +7090,33 @@ function localAiPaint(state, extra){
   el.style.display = '';
   if(state==='unsupported') el.innerHTML = `<div class="lai-msg">ℹ️ جهازك مش مناسب لتشغيل الذكاء الاصطناعي عليه (${e(extra.reason||'')}). المساعد شغّال عادي عن طريق الإنترنت.</div>`;
   else if(state==='offer') el.innerHTML = `<button class="lai-btn" id="lai-start" type="button">⚡ تفعيل المساعد الذكي على جهازك</button>`;
-  else if(state==='confirm') el.innerHTML = `<div class="lai-msg">هيتحمّل موديل ذكاء اصطناعي صغير على جهازك (حوالي <b>${extra.mb} ميجا</b>) مرة واحدة بس. الأفضل تكون على واي فاي. بعدها هيشتغل على جهازك من غير تكلفة.</div><div class="lai-row"><button class="lai-btn" id="lai-go" type="button">ابدأ التحميل</button><button class="lai-btn ghost" id="lai-cancel" type="button">إلغاء</button></div>`;
+  else if(state==='confirm') el.innerHTML = `<div class="lai-msg">هيتحمّل موديل ذكاء اصطناعي صغير على جهازك (حوالي <b>${extra.mb} ميجا</b>) مرة واحدة بس. الأفضل تكون على واي فاي. بعدها هيشتغل على جهازك من غير تكلفة.</div><div class="lai-row"><button class="lai-btn" id="lai-go" type="button">ابدأ التحميل</button><button class="lai-btn ghost" id="lai-cancel" type="button">إلغاء</button></div><div class="lai-row"><button class="lai-btn ghost" id="lai-native" type="button">📥 تحميل من إشعارات الموبايل</button></div>`;
   else if(state==='progress') el.innerHTML = `<div class="lai-msg">⏳ بنحمّل الموديل… <b id="lai-pct">${extra.pct||0}%</b> (سيب الصفحة مفتوحة)</div><div class="lai-bar"><i id="lai-fill" style="width:${extra.pct||0}%"></i></div>`;
-  else if(state==='error') el.innerHTML = `<div class="lai-msg err">⚠️ ${e(extra.msg||'حصلت مشكلة في التحميل')}</div><div class="lai-row"><button class="lai-btn" id="lai-start" type="button">حاول تاني</button></div>`;
+  else if(state==='error') el.innerHTML = `<div class="lai-msg err">⚠️ ${e(extra.msg||'حصلت مشكلة في التحميل')}</div>${extra.detail?`<div class="lai-msg" dir="ltr" style="font-size:11px;opacity:.7">${e(extra.detail)}</div>`:''}<div class="lai-row"><button class="lai-btn" id="lai-start" type="button">حاول تاني</button></div><div class="lai-row"><button class="lai-btn ghost" id="lai-native" type="button">📥 تحميل من إشعارات الموبايل</button></div>`;
   else if(state==='ready') el.innerHTML = `<div class="lai-ok">✓ المساعد الذكي مفعّل على جهازك</div><button class="lai-del" id="lai-del" type="button">حذف الموديل من جهازي</button>`;
+  else if(state==='native') el.innerHTML = `<div class="lai-msg">طريقة أضمن على الموبايل:<br>١) اضغط «نزّل الملف». هيبدأ في إشعارات الموبايل (حوالي <b>${extra.mb} ميجا</b>) وتقدر تقفل الصفحة وتستنى.<br>٢) لما يخلص ارجع هنا واضغط «اختار الملف اللي نزل».</div><div class="lai-row"><button class="lai-btn" id="lai-dl" type="button">⬇️ نزّل الملف</button><button class="lai-btn" id="lai-pick" type="button">📂 اختار الملف اللي نزل</button></div><div class="lai-row"><button class="lai-btn ghost" id="lai-cancel" type="button">رجوع</button></div>`;
+  else if(state==='importing') el.innerHTML = `<div class="lai-msg">⏳ بنجهّز الملف على جهازك… (سيب الصفحة مفتوحة لحظات)</div>`;
   const on = (id, fn)=>{ const b = document.getElementById(id); if(b) b.onclick = fn; };
   on('lai-start', async ()=>{ const d = await localAiCheckDevice(); localAiPaint('confirm', {mb:d.mb}); });
   on('lai-cancel', ()=> localAiPaint('offer'));
+  on('lai-native', async ()=>{ const d = await localAiCheckDevice(); localAiPaint('native', {mb:d.mb, dtype:d.dtype}); });
+  on('lai-dl', async ()=>{ const d = await localAiCheckDevice(); try{ window.open(localAiNativeUrl(d.dtype), '_blank', 'noopener'); }catch(e){} });
+  on('lai-pick', ()=>{
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.onnx,application/octet-stream,*/*';
+    inp.onchange = async ()=>{
+      const f = inp.files && inp.files[0]; if(!f) return;
+      localAiPaint('importing');
+      try{ await localAiImportFile(f); localAiPaint('ready'); }
+      catch(err){ localAiPaint('error', {msg: String((err&&err.message)||'حصلت مشكلة في تجهيز الملف').slice(0,160)}); }
+    };
+    inp.click();
+  });
   on('lai-go', async ()=>{
     localAiPaint('progress', {pct:0});
     try{
       await localAiInstall(p=>{ const a = document.getElementById('lai-pct'), b = document.getElementById('lai-fill'); if(a) a.textContent = p+'%'; if(b) b.style.width = p+'%'; });
       localAiPaint('ready');
-    }catch(err){ localAiPaint('error', {msg: (navigator.onLine===false ? 'مفيش إنترنت. ' : '') + 'التحميل ماكملش، جرّب تاني.'}); }
+    }catch(err){ const m = String((err&&err.message)||err||''); const ar = /[\u0600-\u06FF]/.test(m); localAiPaint('error', {msg: (navigator.onLine===false ? 'مفيش إنترنت. ' : '') + (ar ? m : 'التحميل ماكملش، جرّب تاني أو استخدم التحميل من إشعارات الموبايل.'), detail: ar ? '' : m.slice(0,90)}); }
   });
   on('lai-del', async ()=>{ if(!confirm('تحذف الموديل من جهازك؟ تقدر تحمّله تاني بعدين.')) return; await localAiRemove(); localAiPaint('offer'); });
 }

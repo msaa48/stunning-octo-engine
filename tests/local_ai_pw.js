@@ -8,14 +8,14 @@ export class InterruptableStoppingCriteria { interrupt(){ globalThis.__interrupt
 export async function pipeline(task, model, opts){
   const dt = opts.dtype, size = dt==='q4f16' ? 483*1048576 : 512*1048576;
   if(opts.progress_callback){
-    for(let i=1;i<=4;i++){ opts.progress_callback({status:'progress', file:'onnx/model_'+dt+'.onnx', loaded:size*i/4, total:size}); await new Promise(r=>setTimeout(r,30)); }
-    opts.progress_callback({status:'done', file:'onnx/model_'+dt+'.onnx'});
+    for(let i=1;i<=4;i++){ opts.progress_callback({status:'progress', file:'onnx/'+(dt==='q8'?'model_quantized.onnx':'model_'+dt+'.onnx'), loaded:size*i/4, total:size}); await new Promise(r=>setTimeout(r,30)); }
+    opts.progress_callback({status:'done', file:'onnx/'+(dt==='q8'?'model_quantized.onnx':'model_'+dt+'.onnx')});
   }
   if(!globalThis.__noCache){
     const c = await caches.open('transformers-cache'), base = 'https://huggingface.co/'+model+'/resolve/main/';
     await c.put(base+'config.json', new Response('{}', {headers:{'content-length':'2'}}));
     await c.put(base+'tokenizer.json', new Response('{}', {headers:{'content-length':'2'}}));
-    await c.put(base+'onnx/model_'+dt+'.onnx', new Response('x', {headers:{'content-length':String(size)}}));
+    await c.put(base+'onnx/'+(dt==='q8'?'model_quantized.onnx':'model_'+dt+'.onnx'), new Response('x', {headers:{'content-length':String(size)}}));
   }
   globalThis.__loads = (globalThis.__loads||0)+1;
   const fn = async (msgs, o) => {
