@@ -1,0 +1,19 @@
+{
+  "name": "masar-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "غلاف أندرويد (Capacitor) لمنصة مسار. الـAPK بيتبني على GitHub Actions (انظر ../docs/ANDROID_APK.md)",
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/clipboard": "^8.0.1",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "latest",
+    "@capacitor/share": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^4.0.0",
+    "@capacitor/cli": "^8.6.2"
+  }
+}

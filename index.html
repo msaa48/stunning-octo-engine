@@ -7602,6 +7602,55 @@ function searchBoxHtml(placeholder){
 }
 // بحث ذكي: بيوحّد الهمزات (أ/إ/آ) والألف المقصورة/الياء والتاء المربوطة/الهاء وبيشيل التشكيل
 // عشان "أشرف" و"اشرف" و"احمد" و"أحمد" يتطابقوا مع بعض في البحث
+/* ===== تطبيق أندرويد (Capacitor): جسر بسيط. بيشتغل جوه الـAPK بس، والموقع العادي مابيتأثرش =====
+   الـWebView مابيعملش 3 حاجات: الحافظة، فتح الروابط برا التطبيق، تنزيل الملفات (blob). الجسر بيوصّلهم ببلجنات Capacitor. */
+(function masarNativeBridge(){
+  const C = window.Capacitor;
+  const isNative = !!(C && typeof C.isNativePlatform === 'function' && C.isNativePlatform());
+  window.masarIsNative = function(){ return isNative; };
+  if(!isNative) return;
+  const cache = {};
+  const P = function(n){ if(!(n in cache)){ try{ cache[n] = (C.Plugins && C.Plugins[n]) || (C.registerPlugin ? C.registerPlugin(n) : null); }catch(e){ cache[n] = null; } } return cache[n]; };
+  // 1) الحافظة
+  try{
+    const cb = P('Clipboard');
+    if(cb) Object.defineProperty(navigator, 'clipboard', {configurable:true, value:{
+      readText: async function(){ const r = await cb.read(); return (r && r.value) || ''; },
+      writeText: async function(t){ await cb.write({string:String(t)}); }
+    }});
+  }catch(e){}
+  // 2) تنزيل/مشاركة الملفات: الـblob بيتحفظ في الكاش وبيتفتح شيت المشاركة (حفظ في الملفات / واتساب / Word …)
+  const blobs = new Map();
+  if(typeof URL !== 'undefined' && URL.createObjectURL){
+    const _create = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = function(obj){ const u = _create(obj); try{ if(typeof Blob !== 'undefined' && obj instanceof Blob) blobs.set(u, obj); }catch(e){} return u; };
+  }
+  function blobToBase64(b){ return new Promise(function(res, rej){ const r = new FileReader(); r.onload = function(){ res(String(r.result).split(',')[1] || ''); }; r.onerror = rej; r.readAsDataURL(b); }); }
+  async function saveAndShare(blob, name){
+    const fs = P('Filesystem'), sh = P('Share');
+    if(!fs || !sh){ try{ showToast('التنزيل مش متاح في التطبيق ده'); }catch(e){} return false; }
+    try{
+      const safe = String(name || 'file').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80);
+      const w = await fs.writeFile({path: safe, data: await blobToBase64(blob), directory: 'CACHE'});
+      await sh.share({title: safe, url: w.uri, dialogTitle: 'احفظ أو ابعت الملف'});
+      return true;
+    }catch(e){ try{ showToast('مقدرتش أجهّز الملف'); }catch(_){} return false; }
+  }
+  const _click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function(){
+    if(this.hasAttribute('download') && /^blob:/.test(this.href) && blobs.has(this.href)){ saveAndShare(blobs.get(this.href), this.getAttribute('download') || 'file'); return; }
+    return _click.apply(this, arguments);
+  };
+  // 3) فتح الروابط برا التطبيق + ملفات blob (ورقة الامتحان)
+  const _open = window.open.bind(window);
+  const stub = function(){ return {closed:false, close:function(){}, focus:function(){}}; };
+  window.open = function(url, target, feat){
+    const u = String(url || '');
+    if(/^blob:/.test(u) && blobs.has(u)){ saveAndShare(blobs.get(u), 'exam.html'); return stub(); }
+    if(/^(https?:|mailto:|tel:|whatsapp:)/i.test(u)){ const b = P('Browser'); if(b){ try{ b.open({url:u}); return stub(); }catch(e){} } }
+    return _open(url, target, feat);
+  };
+})();
 function normalizeArabic(s){
   if(!s) return '';
   return s.toString()
