@@ -35,3 +35,11 @@
 - زرار «🧪 شات تجريبي على الموديل (مؤقت)» بيظهر في كارت الموديل بعد ما يتفعّل. بيفتح شاشة كاملة بتكلّم الموديل على الجهاز مباشرة (`openLocalAiLab` / `laiLabSend`): من غير الفهم المحلي (regex)، ومن غير `aiChainCall`، ومن غير تسجيل أسئلة. بتعرض الرد وهو بيتولّد وسطر أزمنة (تحميل الموديل، أول كلمة، الإجمالي، حروف/ثانية تقريبي)، وزرار إيقاف، وأقصى مهلة 3 دقايق.
 - **للحذف:** امسح البلوك بين `/* ===== TEMP: شات تجريبي` و`/* ===== END TEMP ===== */` + زرار `lai-lab-open` ومعالجه في `localAiPaint` + `tests/jsdom/local_ai_lab.js`.
 - اختبار: `node tests/jsdom/local_ai_lab.js` (13 فحص بموديل وهمي). **مااتجرّبش بموديل حقيقي على موبايل.**
+
+## تطبيق أندرويد APK (20 نوفمبر 2026)
+- **الريبو:** `android-app/` (غلاف Capacitor 8) + `.github/workflows/android.yml`. الـAPK بيتبني على GitHub Actions ويتنشر في الإصدار `apk-latest` (رابط مباشر: `releases/download/apk-latest/masar.apk`). كل push على `index.html` أو `android-app/**` بيعمل build جديد (~5 دقايق). الوضعين: `bundled`/`live` (زرار Run workflow).
+- **الهوية:** `com.masar.centers`، الاسم «مسار»، minSdk 24 / targetSdk 36، إذن الإنترنت بس. الأيقونة مؤقتة (`android-app/assets/`).
+- **التوقيع:** keystore (PKCS12) اتولّد ومتخزّن في Secrets: `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`. **مفيش نسخة احتياطية منه خارج GitHub.**
+- **جسر أندرويد في `index.html`** (`masarNativeBridge`، قبل `normalizeArabic`): الحافظة، فتح الروابط برا التطبيق، تنزيل blob عبر Filesystem+Share. اختبار: `node tests/jsdom/native_bridge.js` (15 فحص ببلجنات وهمية).
+- **اتأكدت منه:** الـbuild نجح (run 44677750795)، الـAPK 3.4MB موقّع بالبصمة المتوقعة، وفيه الـ4 بلجنات (Browser, Clipboard, Filesystem, Share). **مااتجرّبش على جهاز حقيقي.**
+- التفاصيل والحدود: `docs/ANDROID_APK.md`.
